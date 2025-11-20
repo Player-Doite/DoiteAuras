@@ -55,8 +55,10 @@ local function ComputeGroupLayout(entries, groupName)
 	for _, e in ipairs(entries) do
 		if isKnown(e) then
 			local f = _G["DoiteIcon_" .. e.key]
-			-- Use frame flags if present; otherwise fall back to the candidate's 'show'
-			local wants = (f and (f._daShouldShow == true or f._daSliding == true)) or (e.show == true)
+			-- Use frame flags; fall back to 'show'; finally fall back to "currently visible" to avoid races
+			local wants = (f and (f._daShouldShow == true or f._daSliding == true))
+					   or (e.show == true)
+					   or (f and f:IsShown() == 1)
 
 			-- While editing, always include the edited member in the layout pool
 			if editKey and e.key == editKey then
@@ -212,20 +214,39 @@ end
 
 local function _buildSignatures(candidates)
     local perGroup = {}
+    local editKey = editingKey()
+
     for _, e in ipairs(candidates) do
         if isValidGroupMember(e) then
             local g = e.data.group
             perGroup[g] = perGroup[g] or {}
             local f = _G["DoiteIcon_" .. e.key]
-            local wants = (f and ((f._daShouldShow == true) or (f._daSliding == true))) and "1" or "0"
-            local ord = tostring(num(e.data.order, 999))
+
+            local wants
+            if editKey and e.key == editKey then
+                -- While editing, treat the member as present regardless of condition flips
+                wants = "1"
+            else
+                wants = (f and ((f._daShouldShow == true) or (f._daSliding == true))) and "1" or "0"
+            end
+
+            -- Keep the edited key stable at the front by using a very low "order" in the signature
+            local ord
+            if editKey and e.key == editKey then
+                ord = "000"
+            else
+                ord = string.format("%03d", num(e.data.order, 999))
+            end
+
             table.insert(perGroup[g], e.key .. ":" .. wants .. ":" .. ord)
         end
     end
+
     for g, arr in pairs(perGroup) do
         table.sort(arr)
         perGroup[g] = table.concat(arr, ",")
     end
+
     return perGroup
 end
 
