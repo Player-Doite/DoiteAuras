@@ -22,6 +22,17 @@ local UnitExists    = UnitExists
 local UnitIsFriend  = UnitIsFriend
 local UnitCanAttack = UnitCanAttack
 local UnitIsUnit    = UnitIsUnit
+local UnitClass     = UnitClass
+local UnitName      = UnitName
+local UnitHealth    = UnitHealth
+local UnitHealthMax = UnitHealthMax
+local UnitMana      = UnitMana
+local UnitManaMax   = UnitManaMax
+local GetComboPoints = GetComboPoints
+
+local str_find  = string.find
+local str_match = string.match
+local str_gsub  = string.gsub
 
 _lastAuraScanAt = 0  -- make global so the event handler doesn't capture it as an upvalue
 
@@ -53,10 +64,11 @@ end
 
 
 -- Dirty flags used by the central update loop (kept global so they're not upvalues)
-dirty_ability = false
-dirty_aura    = false
-dirty_target  = false
-dirty_power   = false
+dirty_ability      = false
+dirty_aura         = false
+dirty_target       = false
+dirty_power        = false
+dirty_ability_time = false  -- heartbeat for time-only updates (CD text / remainingEnabled)
 
 local DG = _G["DoiteGlow"]
 -- While the Doite edit panel is open, this global is set by DoiteEdit.lua
@@ -110,7 +122,7 @@ local function _GetTrackedByName()
                         t[nm] = lst
                     end
                     -- Lua 5.0-safe append
-                    table.insert(lst, { key = key, typ = data.type })
+                    table.insert(lst, key)
                 end
             end
         end
@@ -177,29 +189,37 @@ local function _ScanUnitAuras(unit)
         buffs[tn] = true
 
         local list = trackedByName and trackedByName[tn]
-        if list then
+        -- list should be a table of icon keys; guard just in case
+        if list and type(list) == "table" then
             local tex = UnitBuff(unit, i)
             if tex and tn and IconCache[tn] ~= tex then
                 IconCache[tn] = tex
                 DoiteAurasDB.cache[tn] = tex
-                if DoiteAurasDB.spells then
-                    local n = table.getn(list)
-                    for j = 1, n do
-                        local info = list[j]
-                        local s = DoiteAurasDB.spells[info.key]
-                        if s then s.iconTexture = tex end
+
+                local count = table.getn(list)
+                local j = 1
+                while j <= count do
+                    local key = list[j]  -- plain icon key string
+
+                    -- 1) Update DB spell icon
+                    if DoiteAurasDB.spells then
+                        local s = DoiteAurasDB.spells[key]
+                        if s then
+                            s.iconTexture = tex
+                        end
                     end
-                end
-                local n2 = table.getn(list)
-                for j = 1, n2 do
-                    local info = list[j]
-                    local f = _G["DoiteIcon_" .. info.key]
+
+                    -- 2) Update live icon frame texture
+                    local f = _G["DoiteIcon_" .. key]
                     if f and f.icon and (f.icon:GetTexture() ~= tex) then
                         f.icon:SetTexture(tex)
                     end
+
+                    j = j + 1
                 end
             end
         end
+
         i = i + 1
     end
 
@@ -213,29 +233,37 @@ local function _ScanUnitAuras(unit)
         debuffs[tn] = true
 
         local list = trackedByName and trackedByName[tn]
-        if list then
+        -- list should be a table of icon keys; guard just in case
+        if list and type(list) == "table" then
             local tex = UnitDebuff(unit, i)
-            if tex and tn then
+            if tex and tn and IconCache[tn] ~= tex then
                 IconCache[tn] = tex
                 DoiteAurasDB.cache[tn] = tex
-                if DoiteAurasDB.spells then
-                    local n = table.getn(list)
-                    for j = 1, n do
-                        local info = list[j]
-                        local s = DoiteAurasDB.spells[info.key]
-                        if s then s.iconTexture = tex end
+
+                local count = table.getn(list)
+                local j = 1
+                while j <= count do
+                    local key = list[j]  -- plain icon key string
+
+                    -- 1) Update DB spell icon
+                    if DoiteAurasDB.spells then
+                        local s = DoiteAurasDB.spells[key]
+                        if s then
+                            s.iconTexture = tex
+                        end
                     end
-                end
-                local n2 = table.getn(list)
-                for j = 1, n2 do
-                    local info = list[j]
-                    local f = _G["DoiteIcon_" .. info.key]
+
+                    -- 2) Update live icon frame texture
+                    local f = _G["DoiteIcon_" .. key]
                     if f and f.icon and (f.icon:GetTexture() ~= tex) then
                         f.icon:SetTexture(tex)
                     end
+
+                    j = j + 1
                 end
             end
         end
+
         i = i + 1
     end
 
@@ -294,22 +322,6 @@ local function _AbilityRemainingByName(spellName)
     if not spellName then return nil end
     local idx = _GetSpellIndexByName(spellName)
     return _AbilityRemainingSeconds(idx, BOOKTYPE_SPELL)
-end
-
--- Cooldown (remaining, totalDuration) by spell name; nil,nil if not in book
-local function _AbilityCooldownByName(spellName)
-    if not spellName then return nil, nil end
-    local idx = _GetSpellIndexByName(spellName)
-    if not idx then return nil, nil end
-
-    local start, dur = GetSpellCooldown(idx, BOOKTYPE_SPELL)
-    if start and dur and start > 0 and dur > 0 then
-        local rem = (start + dur) - GetTime()
-        if rem < 0 then rem = 0 end
-        return rem, dur
-    else
-        return 0, dur or 0
-    end
 end
 
 -- Cooldown (remaining, totalDuration) by spell name; nil,nil if not in book
@@ -416,8 +428,8 @@ _G.DoiteConditions_ClearTrinketFirstMemory = _ClearTrinketFirstMemory
 -- Parse itemID and [Name] out of a WoW item link
 local function _ParseItemLink(link)
     if not link then return nil, nil end
-    local itemId = tonumber(string.match(link, "item:(%d+)"))
-    local name   = string.match(link, "%[(.+)%]")
+    local itemId = tonumber(str_match(link, "item:(%d+)"))
+    local name   = str_match(link, "%[(.+)%]")
     return itemId, name
 end
 
@@ -518,8 +530,8 @@ local function _GetInventorySlotState(slot)
         local txt = fs:GetText()
         if txt then
             local lower = string.lower(txt)
-            if string.find(lower, "use:") or string.find(lower, "use ")
-               or string.find(lower, "consume") then
+            if str_find(lower, "use:") or str_find(lower, "use ")
+               or str_find(lower, "consume") then
                 isUse = true
                 break
             end
@@ -830,26 +842,28 @@ end
 -- =================================================================
 _G["Doite_LastUsedSpell"] = _G["Doite_LastUsedSpell"] or nil
 _G["Doite_LastUsedAt"]    = _G["Doite_LastUsedAt"]    or 0
-local _CooldownOwner_Set
-local _CooldownOwner_IsOwned
 
 local _OP_until, _OP_target = 0, nil
 local _REV_until            = 0
 
 local function _Now() return GetTime() or 0 end
 
+-- Forward declarations so _CL_Parse sees these as locals, not globals.
+local _CooldownOwner_Set
+local _CooldownOwner_IsOwned
+
 local function _CL_Parse(msg)
     -- Record last used spell (kept for other features)
        do
         local gained =
-              string.match(msg, "^You gain (.+)%.$")
-           or string.match(msg, "^You gain (.+) %(%d+%)%.$")
-           or string.match(msg, "^You are afflicted by (.+)%.$")
-           or string.match(msg, "^You are afflicted by (.+) %(%d+%)%.$")
+              str_match(msg, "^You gain (.+)%.$")
+           or str_match(msg, "^You gain (.+) %(%d+%)%.$")
+           or str_match(msg, "^You are afflicted by (.+)%.$")
+           or str_match(msg, "^You are afflicted by (.+) %(%d+%)%.$")
 
         if gained then
             -- Strip trailing " (1)" etc if it sneaks into the capture
-            gained = string.gsub(gained, "%s*%(%d+%)$", "")
+            gained = str_gsub(gained, "%s*%(%d+%)$", "")
 
             -- Only treat it as "our" spell if it actually exists in *our* spellbook.
             local idx = _GetSpellIndexByName(gained)
@@ -862,12 +876,12 @@ local function _CL_Parse(msg)
     end
 
    do
-        local n = string.match(msg, "^Your%s+(.+)%s+hits")
-              or string.match(msg, "^Your%s+(.+)%s+crits")
-              or string.match(msg, "^Your%s+(.+)%s+misses")
-              or string.match(msg, "^Your%s+(.+)%s+is%s+absorbed")
-              or string.match(msg, "^Your%s+(.+)%s+was%s+dodged")
-              or string.match(msg, "^Your%s+(.+)%s+was%s+parried")
+        local n = str_match(msg, "^Your%s+(.+)%s+hits")
+              or str_match(msg, "^Your%s+(.+)%s+crits")
+              or str_match(msg, "^Your%s+(.+)%s+misses")
+              or str_match(msg, "^Your%s+(.+)%s+is%s+absorbed")
+              or str_match(msg, "^Your%s+(.+)%s+was%s+dodged")
+              or str_match(msg, "^Your%s+(.+)%s+was%s+parried")
         if n then
             _G["Doite_LastUsedSpell"] = n
             _G["Doite_LastUsedAt"] = _Now()
@@ -877,26 +891,29 @@ local function _CL_Parse(msg)
         end
     end
 
-    -- Overpower proc: target dodges your attack/ability (5s, target-locked)
-    do
-        local tgt = string.match(msg, "^You attack%.%s+(.+)%s+dodges%.")
-                or string.match(msg, "^Your%s+.+%s+was%s+dodged%s+by%s+(.+)%.")
-        if tgt then
-            _OP_target = tgt
-            _OP_until  = _Now() + 5.0
-            -- Force ability re-evaluation so Overpower icons update immediately
+    -- Warrior-only reactive proc parsing (Overpower / Revenge)
+    if _isWarrior then
+        -- Overpower proc: target dodges your attack/ability (5s, target-locked)
+        do
+            local tgt = str_match(msg, "^You attack%.%s+(.+)%s+dodges%.")
+                    or str_match(msg, "^Your%s+.+%s+was%s+dodged%s+by%s+(.+)%.")
+            if tgt then
+                _OP_target = tgt
+                _OP_until  = _Now() + 5.0
+                -- Force ability re-evaluation so Overpower icons update immediately
+                dirty_ability = true
+            end
+        end
+
+        if str_find(msg, "You dodge")
+           or str_find(msg, "You parry")
+           or str_find(msg, "You block")
+           or ((str_find(msg, " hits you for ") or str_find(msg, " crits you for "))
+               and str_find(msg, " blocked)")) then
+            _REV_until = _Now() + 5.0
             dirty_ability = true
         end
     end
-
-	if string.find(msg, "You dodge") 
-	   or string.find(msg, "You parry") 
-	   or string.find(msg, "You block") 
-	   or ((string.find(msg, " hits you for ") or string.find(msg, " crits you for "))
-       and string.find(msg, " blocked)")) then
-		_REV_until = _Now() + 5.0
-		dirty_ability = true
-	end
 end
 
 -- Minimal listener: include “hits” so partial blocks like "(xx blocked)" are seen
@@ -910,7 +927,32 @@ _daCL:RegisterEvent("CHAT_MSG_SPELL_PERIODIC_SELF_DAMAGE")
 _daCL:RegisterEvent("CHAT_MSG_COMBAT_CREATURE_VS_SELF_MISSES")  -- "<Mob> attacks. You dodge/parry."
 _daCL:RegisterEvent("CHAT_MSG_COMBAT_CREATURE_VS_SELF_HITS")    -- "<Mob> hits you for N. (M blocked)"
 _daCL:RegisterEvent("CHAT_MSG_SPELL_CREATURE_VS_SELF_DAMAGE")   -- "<Mob>'s <Spell> hits you... (M blocked)"
-_daCL:SetScript("OnEvent", function() local m = arg1 or "" _CL_Parse(m) end)
+_daCL:SetScript("OnEvent", function()
+    local m = arg1
+    if not m or m == "" then return end
+
+    -- Fast pre-filter: if the line doesn't even mention "You" or "Your",
+    -- it cannot be one of the patterns we care about.
+    if not str_find(m, "You ") and not str_find(m, "Your ") then
+        return
+    end
+
+    _CL_Parse(m)
+end)
+
+local function _UpdateCombatLogRegistration()
+    if not _daCL then return end
+
+    if _isWarrior then
+        _daCL:RegisterEvent("CHAT_MSG_COMBAT_CREATURE_VS_SELF_MISSES")
+        _daCL:RegisterEvent("CHAT_MSG_COMBAT_CREATURE_VS_SELF_HITS")
+        _daCL:RegisterEvent("CHAT_MSG_SPELL_CREATURE_VS_SELF_DAMAGE")
+    else
+        _daCL:UnregisterEvent("CHAT_MSG_COMBAT_CREATURE_VS_SELF_MISSES")
+        _daCL:UnregisterEvent("CHAT_MSG_COMBAT_CREATURE_VS_SELF_HITS")
+        _daCL:UnregisterEvent("CHAT_MSG_SPELL_CREATURE_VS_SELF_DAMAGE")
+    end
+end
 
 -- Helpers consumed by ability-usable override
 function _Warrior_Overpower_OK()
@@ -967,6 +1009,11 @@ local _CooldownOwners = {}  -- [spellName] = { untilTime = number }
 
 function _CooldownOwner_Set(spellName)
     if not spellName then return end
+
+    -- Only shared-cooldown spells care about ownership.
+    if not _IsSharedCooldownSpell(spellName) then
+        return
+    end
 
     -- Use the real spell cooldown from the spellbook
     local rem, dur = _AbilityCooldownByName(spellName)
@@ -1157,11 +1204,24 @@ local function _HasCursive()
 end
 
 local function _GetUnitGuid(unit)
-    if not unit or not UnitExists then return nil end
+    if not unit or type(UnitExists) ~= "function" then
+        return nil
+    end
+
+    -- Turtle: UnitExists(unit) returns existsFlag, guid, ...
     local exists, guid = UnitExists(unit)
-    if exists and guid then
+    if exists and guid and guid ~= "" then
         return guid
     end
+
+    -- Other clients where UnitExists doesn't return a GUID but UnitGUID exists
+    if type(UnitGUID) == "function" then
+        local g = UnitGUID(unit)
+        if g and g ~= "" then
+            return g
+        end
+    end
+
     return nil
 end
 
@@ -1500,8 +1560,8 @@ end
 -- Normalize editor labels so logic is robust to wording differences
 local function _NormalizeFormLabel(s)
     if not s or s == "" then return "All" end
-    s = string.gsub(s, "^%s+", "")
-    s = string.gsub(s, "%s+$", "")
+    s = str_gsub(s, "^%s+", "")
+    s = str_gsub(s, "%s+$", "")
     -- unify "All ..." variants (editor may say "All Auras", "All stances", etc.)
     if s == "All" or s == "All forms" or s == "All stances" or s == "All Auras" then
         return "All"
@@ -1634,7 +1694,7 @@ local function _EnsureAuraTexture(frame, data)
     if not frame or not frame.icon or not data then return end
 
     local curTex = frame.icon:GetTexture()
-    local isPlaceholder = (curTex == nil) or (type(curTex) == "string" and string.find(curTex, "INV_Misc_QuestionMark"))
+    local isPlaceholder = (curTex == nil) or (type(curTex) == "string" and str_find(curTex, "INV_Misc_QuestionMark"))
 
     local c = data.conditions and data.conditions.aura
     local name = data.displayName or data.name
@@ -1786,6 +1846,105 @@ local function _EnsureItemTexture(frame, data)
     end
 end
 
+-- === Time-logic helpers (for heartbeat pruning) =================
+
+-- Does an Ability icon use any time-based features?
+local function _IconHasTimeLogic_Ability(data)
+    if not data or not data.conditions or not data.conditions.ability then
+        return false
+    end
+    local c = data.conditions.ability
+    if c.textTimeRemaining == true then
+        return true
+    end
+    if c.remainingEnabled == true then
+        return true
+    end
+    return false
+end
+
+-- Does an Item icon use any time-based features?
+local function _IconHasTimeLogic_Item(data)
+    if not data or not data.conditions or not data.conditions.item then
+        return false
+    end
+    local c = data.conditions.item
+    if c.textTimeRemaining == true then
+        return true
+    end
+    if c.remainingEnabled == true then
+        return true
+    end
+    return false
+end
+
+-- Global flag: do we have ANY ability/item icons that need the 0.5s heartbeat?
+_hasAnyAbilityTimeLogic = false
+-- Global flag: do we have ANY reason to track target auras at all?
+_hasAnyTargetAuraUsage = true  -- default true for safety
+
+local function _RebuildAuraUsageFlags()
+    _hasAnyTargetAuraUsage = false
+
+    -- 1) Live icons
+    if DoiteAurasDB and DoiteAurasDB.spells then
+        local key, data
+        for key, data in pairs(DoiteAurasDB.spells) do
+            if type(data) == "table" then
+                -- Any explicit Buff/Debuff icon that can ever point at target?
+                if data.type == "Buff" or data.type == "Debuff" then
+                    local c = data.conditions and data.conditions.aura
+                    if c then
+                        if c.targetHarm or c.targetHelp then
+                            _hasAnyTargetAuraUsage = true
+                            return
+                        end
+                    end
+                end
+
+                -- Any ability/item auraConditions that can check target?
+                local ca = data.conditions and data.conditions.ability
+                if ca and ca.auraConditions and ca.targetHarm or ca and ca.targetHelp then
+                    _hasAnyTargetAuraUsage = true
+                    return
+                end
+                local ci = data.conditions and data.conditions.item
+                if ci and ci.auraConditions and ci.targetHarm or ci and ci.targetHelp then
+                    _hasAnyTargetAuraUsage = true
+                    return
+                end
+            end
+        end
+    end
+
+    -- 2) Editor-only icons
+    if DoiteDB and DoiteDB.icons then
+        local key, data
+        for key, data in pairs(DoiteDB.icons) do
+            if type(data) == "table" then
+                if data.type == "Buff" or data.type == "Debuff" then
+                    local c = data.conditions and data.conditions.aura
+                    if c and (c.targetHarm or c.targetHelp) then
+                        _hasAnyTargetAuraUsage = true
+                        return
+                    end
+                end
+
+                local ca = data.conditions and data.conditions.ability
+                if ca and ca.auraConditions and (ca.targetHarm or ca.targetHelp) then
+                    _hasAnyTargetAuraUsage = true
+                    return
+                end
+                local ci = data.conditions and data.conditions.item
+                if ci and ci.auraConditions and (ci.targetHarm or ci.targetHelp) then
+                    _hasAnyTargetAuraUsage = true
+                    return
+                end
+            end
+        end
+    end
+end
+
 ---------------------------------------------------------------
 -- Ability condition evaluation
 ---------------------------------------------------------------
@@ -1810,28 +1969,23 @@ local function CheckAbilityConditions(data)
     local show = true
 
     -- === 1. Cooldown / usability ===
-	local spellName = data.displayName or data.name
-	local spellIndex = _GetSpellIndexByName(spellName)
-	local bookType = BOOKTYPE_SPELL
-	local foundInBook = (spellIndex ~= nil)
+    local spellName = data.displayName or data.name
+    local spellIndex = _GetSpellIndexByName(spellName)
+    local bookType = BOOKTYPE_SPELL
+    local foundInBook = (spellIndex ~= nil)
 
-	if not foundInBook then
-		return false
-	end
+    if not foundInBook then
+        return false
+    end
 
     local function IsOnCooldown(idx)
         if not idx then return false end
-        local start, dur, enable = GetSpellCooldown(idx, bookType)
+        local start, dur = GetSpellCooldown(idx, bookType)
         return (start and start > 0 and dur and dur > 1.5)
     end
 
     if c.mode == "usable" and spellIndex then
         local _, cls = UnitClass("player"); cls = cls and string.upper(cls) or ""
-        local function IsOnCooldown(idx)
-            if not idx then return false end
-            local start, dur = GetSpellCooldown(idx, bookType)
-            return (start and start > 0 and dur and dur > 1.5)
-        end
         local onCooldown = IsOnCooldown(spellIndex)
 
         -- === WARRIOR override for Overpower/Revenge ===
@@ -1904,19 +2058,9 @@ local function CheckAbilityConditions(data)
         end
 
     elseif c.mode == "notcd" and spellIndex then
-        local function IsOnCooldown(idx)
-            if not idx then return false end
-            local start, dur = GetSpellCooldown(idx, bookType)
-            return (start and start > 0 and dur and dur > 1.5)
-        end
         if IsOnCooldown(spellIndex) then show = false end
 
     elseif c.mode == "oncd" and spellIndex then
-        local function IsOnCooldown(idx)
-            if not idx then return false end
-            local start, dur = GetSpellCooldown(idx, bookType)
-            return (start and start > 0 and dur and dur > 1.5)
-        end
         if not IsOnCooldown(spellIndex) then show = false end
     end
 
@@ -2680,8 +2824,13 @@ function DoiteConditions:EvaluateAll()
     -- 1) Live icons (runtime set)
     if live then
         for key, data in pairs(live) do
-            if data and data.type then
+            -- Defensive: skip and clean up any corrupted entries so they
+            -- can't break the evaluation loop.
+            if type(data) ~= "table" then
+                live[key] = nil
+            elseif data.type then
                 data.key = key
+
                 if data.type == "Ability" or data.type == "Item" then
                     local show, glow, grey
                     if data.type == "Ability" then
@@ -2690,6 +2839,7 @@ function DoiteConditions:EvaluateAll()
                         show, glow, grey = CheckItemConditions(data)
                     end
                     DoiteConditions:ApplyVisuals(key, show, glow, grey)
+
                 elseif data.type == "Buff" or data.type == "Debuff" then
                     local show, glow, grey = CheckAuraConditions(data)
                     DoiteConditions:ApplyVisuals(key, show, glow, grey)
@@ -2702,8 +2852,11 @@ function DoiteConditions:EvaluateAll()
     if edit then
         for key, data in pairs(edit) do
             if (not live) or (not live[key]) then
-                if data and data.type then
+                if type(data) ~= "table" then
+                    edit[key] = nil
+                elseif data.type then
                     data.key = key
+
                     if data.type == "Ability" or data.type == "Item" then
                         local show, glow, grey
                         if data.type == "Ability" then
@@ -2712,6 +2865,7 @@ function DoiteConditions:EvaluateAll()
                             show, glow, grey = CheckItemConditions(data)
                         end
                         DoiteConditions:ApplyVisuals(key, show, glow, grey)
+
                     elseif data.type == "Buff" or data.type == "Debuff" then
                         local show, glow, grey = CheckAuraConditions(data)
                         DoiteConditions:ApplyVisuals(key, show, glow, grey)
@@ -3247,12 +3401,26 @@ function DoiteConditions:ApplyVisuals(key, show, glow, grey)
     end
 end
 
-
 function DoiteConditions_RequestEvaluate()
+    -- Re-scan icons so we know if anyone still needs the time heartbeat
+    if _RebuildAbilityTimeHeartbeatFlag then
+        _RebuildAbilityTimeHeartbeatFlag()
+    end
+    if _RebuildAuraUsageFlags then
+        _RebuildAuraUsageFlags()
+    end
     dirty_ability, dirty_aura, dirty_target, dirty_power = true, true, true, true
 end
 
-function DoiteConditions:EvaluateAbilities()
+function DoiteConditions:EvaluateAbilities(doLogic, doTime)
+    -- Default behaviour (no args): full logic + time, as before.
+    if doLogic == nil and doTime == nil then
+        doLogic, doTime = true, true
+    else
+        if doLogic == nil then doLogic = true end
+        if doTime  == nil then doTime  = false end
+    end
+
     local live = DoiteAurasDB and DoiteAurasDB.spells
     local edit = DoiteDB and DoiteDB.icons
     if not live and not edit then return end
@@ -3263,14 +3431,28 @@ function DoiteConditions:EvaluateAbilities()
     if live then
         for key, data in pairs(live) do
             if data and (data.type == "Ability" or data.type == "Item") then
-                data.key = key
-                local show, glow, grey
-                if data.type == "Ability" then
-                    show, glow, grey = CheckAbilityConditions(data)
-                else
-                    show, glow, grey = CheckItemConditions(data)
+                -- Decide whether this icon should be touched in this pass
+                local wantsTime = false
+                if doTime then
+                    if data.type == "Ability" then
+                        wantsTime = _IconHasTimeLogic_Ability(data)
+                    else -- "Item"
+                        wantsTime = _IconHasTimeLogic_Item(data)
+                    end
                 end
-                DoiteConditions:ApplyVisuals(key, show, glow, grey)
+
+                local wantsLogic = doLogic
+
+                if wantsLogic or wantsTime then
+                    data.key = key
+                    local show, glow, grey
+                    if data.type == "Ability" then
+                        show, glow, grey = CheckAbilityConditions(data)
+                    else
+                        show, glow, grey = CheckItemConditions(data)
+                    end
+                    DoiteConditions:ApplyVisuals(key, show, glow, grey)
+                end
             end
         end
     end
@@ -3280,14 +3462,27 @@ function DoiteConditions:EvaluateAbilities()
         for key, data in pairs(edit) do
             if (not live) or (not live[key]) then
                 if data and (data.type == "Ability" or data.type == "Item") then
-                    data.key = key
-                    local show, glow, grey
-                    if data.type == "Ability" then
-                        show, glow, grey = CheckAbilityConditions(data)
-                    else
-                        show, glow, grey = CheckItemConditions(data)
+                    local wantsTime = false
+                    if doTime then
+                        if data.type == "Ability" then
+                            wantsTime = _IconHasTimeLogic_Ability(data)
+                        else
+                            wantsTime = _IconHasTimeLogic_Item(data)
+                        end
                     end
-                    DoiteConditions:ApplyVisuals(key, show, glow, grey)
+
+                    local wantsLogic = doLogic
+
+                    if wantsLogic or wantsTime then
+                        data.key = key
+                        local show, glow, grey
+                        if data.type == "Ability" then
+                            show, glow, grey = CheckAbilityConditions(data)
+                        else
+                            show, glow, grey = CheckItemConditions(data)
+                        end
+                        DoiteConditions:ApplyVisuals(key, show, glow, grey)
+                    end
                 end
             end
         end
@@ -3304,18 +3499,22 @@ function DoiteConditions:EvaluateAuras()
     -- 1) Live icons (runtime set)
     if live then
         for key, data in pairs(live) do
-            if data and (data.type == "Buff" or data.type == "Debuff") then
+            if type(data) ~= "table" then
+                live[key] = nil
+            elseif data.type == "Buff" or data.type == "Debuff" then
                 local show, glow, grey = CheckAuraConditions(data)
                 DoiteConditions:ApplyVisuals(key, show, glow, grey)
             end
         end
     end
 
-    -- 2) Any extra editor-only icons (keys not in live)
+	-- 2) Any extra editor-only icons (keys not in live)
     if edit then
         for key, data in pairs(edit) do
             if (not live) or (not live[key]) then
-                if data and (data.type == "Buff" or data.type == "Debuff") then
+                if type(data) ~= "table" then
+                    edit[key] = nil
+                elseif data.type == "Buff" or data.type == "Debuff" then
                     local show, glow, grey = CheckAuraConditions(data)
                     DoiteConditions:ApplyVisuals(key, show, glow, grey)
                 end
@@ -3359,49 +3558,54 @@ _tick:SetScript("OnUpdate", function()
     _scanAccum = _scanAccum + dt
     _textAccum = _textAccum + dt
 
-    -- Refresh player & target auras every 0.2s
-    if _scanAccum >= 0.2 then
-        _scanAccum = 0
+    local AURA_SCAN_INTERVAL = 0.30
+	-- Refresh player & target auras every 0.2s
+	if _scanAccum >= AURA_SCAN_INTERVAL then
+		_scanAccum = 0
 
-        -- player
-        DoiteConditions_ScanUnitAuras("player")
-        dirty_aura = true
+		-- Always keep player snapshot fresh
+		DoiteConditions_ScanUnitAuras("player")
+		dirty_aura = true
 
-        -- target
-        if _G.UnitExists and _G.UnitExists("target") then
-            DoiteConditions_ScanUnitAuras("target")
-            dirty_aura = true
-        end
-    end
+		-- Only burn tooltip scans on target if *any* icon/config ever cares.
+		if _hasAnyTargetAuraUsage and _G.UnitExists and _G.UnitExists("target") then
+			DoiteConditions_ScanUnitAuras("target")
+			dirty_aura = true
+		end
+	end
 
     -- Keep warrior Overpower/Revenge procs in sync even if no other events fire
     DoiteConditions_WarriorProcTick()
 
-    -- Smooth remaining-time updates (abilities + auras) every 0.1s
-    -- Keeps overlay text ticking smoothly even on long CDs outside slide.
-    if _textAccum >= 0.2 then
-        _textAccum   = 0
-        dirty_ability = true  -- ability rem text
-        dirty_aura    = true  -- aura rem text
+    -- Smooth remaining-time updates (abilities) every 0.5s.
+    -- Only schedule a time-only pass if at least one icon actually uses time logic.
+    if _textAccum >= 0.5 then
+        _textAccum = 0
+        if _hasAnyAbilityTimeLogic then
+            dirty_ability_time = true   -- lightweight pass for CD text / remainingEnabled
+        end
     end
-
+	
     -- Render faster while sliding; else ~30fps
     local thresh = (next(DoiteConditions_SlideMgr.active) ~= nil) and 0.03 or 0.033
     if _acc < thresh then return end
     _acc = 0
 
-    local needAbility = dirty_ability or dirty_power
-    local needAura    = dirty_aura or dirty_target
+    local needAbilityLogic = dirty_ability or dirty_power
+    local needAbilityTime  = dirty_ability_time
+    local needAura         = dirty_aura or dirty_target
 
-    if needAbility then
-        _G.DoiteConditions:EvaluateAbilities()
+    if needAbilityLogic or needAbilityTime then
+        _G.DoiteConditions:EvaluateAbilities(needAbilityLogic, needAbilityTime)
     end
     if needAura then
         _G.DoiteConditions:EvaluateAuras()
     end
 
-    if needAbility or needAura then
+    if needAbilityLogic or needAbilityTime or needAura then
         dirty_aura, dirty_target, dirty_power = false, false, false
+        dirty_ability_time = false
+        -- While sliding, we still want ability icons updating each frame
         dirty_ability = next(DoiteConditions_SlideMgr.active) and true or false
     end
 end)
@@ -3423,11 +3627,9 @@ eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 eventFrame:RegisterEvent("UNIT_AURA")
 eventFrame:RegisterEvent("SPELL_UPDATE_COOLDOWN")
 eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
-eventFrame:RegisterEvent("ACTIONBAR_UPDATE_COOLDOWN")
 eventFrame:RegisterEvent("UNIT_MANA")
 eventFrame:RegisterEvent("UNIT_ENERGY")
 eventFrame:RegisterEvent("UNIT_RAGE")
-eventFrame:RegisterEvent("ACTIONBAR_UPDATE_USABLE")
 eventFrame:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
 eventFrame:RegisterEvent("SPELLS_CHANGED")
 eventFrame:RegisterEvent("UNIT_HEALTH")
@@ -3449,18 +3651,27 @@ eventFrame:SetScript("OnEvent", function()
         cls = cls and string.upper(cls) or ""
         _isWarrior = (cls == "WARRIOR")
 
-    elseif event == "UNIT_AURA" then
-        local now = _G.GetTime and _G.GetTime() or 0
-        if (now - _lastAuraScanAt) > 0.05 then
-            if arg1 == "player" then
-                DoiteConditions_ScanUnitAuras("player")
-                dirty_ability = true
-            elseif arg1 == "target" then
-                DoiteConditions_ScanUnitAuras("target")
-            end
-            dirty_aura = true
-            _lastAuraScanAt = now
+        -- Prime the time-heartbeat flag
+        if _RebuildAbilityTimeHeartbeatFlag then
+            _RebuildAbilityTimeHeartbeatFlag()
         end
+
+        -- Adjust combat-log listeners based on class
+        if _UpdateCombatLogRegistration then
+            _UpdateCombatLogRegistration()
+        end
+
+	elseif event == "UNIT_AURA" then
+		-- Mark aura state as dirty; the 0.3s timer in _tick will do the actual
+		-- tooltip-heavy scan once, instead of us doing it on every UNIT_AURA.
+		--
+		-- This introduces at most ~0.3s of "staleness" in auraSnapshot but
+		-- removes a *ton* of duplicate scanning in combat.
+		if arg1 == "player" or arg1 == "target" then
+			dirty_aura    = true
+			dirty_ability = true  -- abilities often key off aura conditions
+		end
+
 
     elseif event == "SPELLS_CHANGED" then
         local cache = _G.DoiteConditions_SpellIndexCache
@@ -3484,8 +3695,6 @@ eventFrame:SetScript("OnEvent", function()
         dirty_ability = true
 
     elseif event == "SPELL_UPDATE_COOLDOWN"
-        or event == "ACTIONBAR_UPDATE_COOLDOWN"
-        or event == "ACTIONBAR_UPDATE_USABLE"
         or event == "UPDATE_SHAPESHIFT_FORM" then
 
         dirty_ability = true

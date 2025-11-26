@@ -302,7 +302,7 @@ end
 
 _watch:SetScript("OnUpdate", function()
     _acc = _acc + (arg1 or 0)
-    if _acc < 0.1 then return end
+    if _acc < 0.2 then return end
     _acc = 0
 
     local needFlag = _G["DoiteGroup_NeedReflow"] == true
