@@ -33,7 +33,7 @@ _Have not added video yet_
 Alternatively, take this link and add to the launcher (addon tab -> "+ Add new addon") or similarly with GithubAddonsManager: https://github.com/Player-Doite/DoiteAuras
 
 ## Tip
-This project is free and built with care in my spare time. Tips are 100% optional, but always appreciated—and help fund the next cup of coffee ☕ Click the image below to support the cause!
+This project is free and built with care in my spare time. Tips are 100% optional, but always appreciated—and help fund the next cup of coffee. Click the image below to support the cause!
 
 [<img width="50" height="50" alt="Coffee" src="https://github.com/user-attachments/assets/183dbfd3-5b1b-4616-b110-09832d7bf153" />](https://buymeacoffee.com/doite)
 
