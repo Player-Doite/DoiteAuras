@@ -12,6 +12,16 @@ Looking for WeakAuras in Vanilla WoW? DoiteAuras is a lightweight, condition-bas
 
 _Please respect the license note._
 
+## Features
+- Able to track an ability, buff, debuff and/or item
+- Custom conditions (~50) to align when to show/hide icons
+- Custom "and/or () logic" builder for a more precise conditioning
+- Custom time tracking system for auras on the target
+- Custom icon glow visual effect, inspired by later clients
+- Custom animations for "soon of CD" (abilities)
+- Custom dynamic grouping system, collapsing towards a relative point
+- More to come.. (Bars, features, options)
+
 ## Tutorial & How-to instructions
 [![Watch the video](https://img.youtube.com/vi/T-D1KVIuvjA/maxresdefault.jpg)](https://youtu.be/T-D1KVIuvjA)
 _Have not added video yet_
