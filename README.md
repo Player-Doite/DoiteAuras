@@ -20,7 +20,7 @@ _Please respect the license note._
 - Custom icon glow visual effect, inspired by later clients
 - Custom animations for "soon of CD" (abilities)
 - Custom dynamic grouping system, collapsing towards a relative point
-- More to come.. (Bars, features, options)
+- More to come.. _(bars, mouseover support, features, options)_
 
 ## Tutorial & How-to instructions
 [![Watch the video](https://img.youtube.com/vi/L049puyYDV8/maxresdefault.jpg)](https://youtu.be/L049puyYDV8)
