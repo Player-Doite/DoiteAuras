@@ -11,16 +11,23 @@ _G["DoiteTrack"] = DoiteTrack
 -- Forward declarations (these are used before the utility section is defined)
 local _playerGUID_cached
 local _GetPlayerGUID
+local _HookCancelPlayerBuff
 
 function DoiteTrack:_OnPlayerLogin()
-    UnitExists   = _G.UnitExists
-    GetUnitField = _G.GetUnitField
-    SpellInfo    = _G.SpellInfo
+    UnitExists       = _G.UnitExists
+    GetUnitField     = _G.GetUnitField
+    SpellInfo        = _G.SpellInfo
+    CancelPlayerBuff = _G.CancelPlayerBuff
 
     -- Nampower: enable AuraCast events
     local SetCVar = _G.SetCVar
     if SetCVar then
         pcall(SetCVar, "NP_EnableAuraCastEvents", "1")
+    end
+
+    -- Hook right-click buff cancel (prevents false "fade" recordings on player)
+    if _HookCancelPlayerBuff then
+        _HookCancelPlayerBuff()
     end
 
     _playerGUID_cached = nil
@@ -161,6 +168,77 @@ local function _UnitExistsFlag(unit)
     if not UnitExists then return false end
     local e = UnitExists(unit)
     return (e == 1 or e == true)
+end
+
+-- Player click-off detection (CancelPlayerBuff hook)
+local _clickOffAt     = nil
+local _clickOffTex    = nil
+local _clickOffAuraId = nil
+
+local function _NormTexturePath(tex)
+    if not tex or tex == "" then return nil end
+    tex = string.gsub(tex, "/", "\\")
+    tex = string.lower(tex)
+    return tex
+end
+
+local function _GetSpellTextureNorm(spellId)
+    spellId = tonumber(spellId) or 0
+    if spellId <= 0 then return nil end
+
+    local cache = _G["DoiteTrack_SpellTextureCache"]
+    if not cache then
+        cache = {}
+        _G["DoiteTrack_SpellTextureCache"] = cache
+    end
+
+    local v = cache[spellId]
+    if v ~= nil then
+        if v == false then return nil end
+        return v
+    end
+
+    local tex = nil
+
+    if SpellInfo then
+        local ok, n, r, t = pcall(SpellInfo, spellId)
+        if ok and type(t) == "string" and t ~= "" then
+            tex = t
+        end
+    end
+
+    tex = _NormTexturePath(tex)
+    cache[spellId] = tex or false
+    return tex
+end
+
+_HookCancelPlayerBuff = function()
+    if _G["DoiteTrack_CPBHooked"] then
+        return
+    end
+
+    -- hook the GLOBAL function that the UI actually calls
+    local c = _G.CancelPlayerBuff
+    if not c or type(c) ~= "function" then
+        return
+    end
+
+    _G["DoiteTrack_CPBHooked"] = true
+
+    local orig = c
+
+    _G.CancelPlayerBuff = function(i)
+        local tex, _, auraId = nil, nil, nil
+        if UnitBuff then
+            tex, _, auraId = UnitBuff("player", i)
+        end
+
+        _clickOffAt     = (GetTime and GetTime() or 0)
+        _clickOffTex    = _NormTexturePath(tex)
+        _clickOffAuraId = tonumber(auraId) or nil
+
+        return orig(i)
+    end
 end
 
 ---------------------------------------------------------------
@@ -884,7 +962,7 @@ local function _RecordAuraForSession(session)
     a.cp        = session.cp or 0
     a.isDebuff  = (session.isDebuff == true)
 
-    -- Cache baseline duration so we don't re-query DB/DBC every tick
+    -- Cache baseline duration - don't re-query DB/DBC every tick
     local dur = session.fullDur
     if not dur or dur <= 0 then
         dur = a.fullDur
@@ -1943,28 +2021,72 @@ local function _EnsureOnUpdateEnabled()
                                 end
                             else
                                 if s.appliedAt then
-                                    local lastSeen = s.lastSeen or s.appliedAt or now2
-                                    local gap      = now2 - lastSeen
 
-                                    if gap > 1.5 then
-                                        _AbortSession(s, "aura faded off-target")
-                                        if s.willRecord then
-                                            _NotifyTrackingCancelled(s.spellName, "aura faded while not targeted")
-                                        elseif s.correctMode then
-                                            _DebugCorrection("cancel: aura faded while not targeted ("..tostring(s.spellId)..")")
-                                        end
-                                    else
-                                        local dur = lastSeen - s.appliedAt
-                                        if dur > 0.5 and dur < 600 then
-                                            _FinishSession(s, dur)
-                                            if s.willRecord then
-                                                _NotifyTrackingFinished(s.spellId, s.spellName, s.spellRank, s.cp, dur)
+                                    -- If the player manually right-clicked off a buff on themselves, abort (do NOT treat as a natural fade / do NOT record duration).
+                                    if unit == "player" and s.kind == "Buff" and _clickOffAt then
+                                        local dt = now2 - _clickOffAt
+
+                                        -- Expire marker quickly (keeps it tight + avoids false hits)
+                                        if dt > 1.0 then
+                                            _clickOffAt     = nil
+                                            _clickOffTex    = nil
+                                            _clickOffAuraId = nil
+                                        elseif dt >= 0 and dt <= 0.75 then
+                                            local matched = false
+
+                                            -- Best match: SuperWoW auraId (typically spellId)
+                                            if _clickOffAuraId and _clickOffAuraId == s.spellId then
+                                                matched = true
                                             end
-                                            -- correction-mode prints only if it actually applied an override (inside _FinishSession)
-                                        else
-                                            _AbortSession(s, "duration out of range")
+
+                                            -- Fallback: texture match (handles non-superwow / missing auraId)
+                                            if (not matched) and _clickOffTex then
+                                                local st = _GetSpellTextureNorm(s.spellId)
+                                                if st and st == _clickOffTex then
+                                                    matched = true
+                                                end
+                                            end
+
+                                            if matched then
+                                                _AbortSession(s, "player clicked off buff")
+                                                if s.willRecord then
+                                                    _NotifyTrackingCancelled(s.spellName, "buff clicked off")
+                                                elseif s.correctMode then
+                                                    _DebugCorrection("cancel: player clicked off buff ("..tostring(s.spellId)..")")
+                                                end
+
+                                                -- consume marker - don't cancel other sessions
+                                                _clickOffAt     = nil
+                                                _clickOffTex    = nil
+                                                _clickOffAuraId = nil
+                                            end
+                                        end
+                                    end
+
+                                    if not s.aborted then
+                                        local lastSeen = s.lastSeen or s.appliedAt or now2
+                                        local gap      = now2 - lastSeen
+
+                                        if gap > 1.5 then
+                                            _AbortSession(s, "aura faded off-target")
                                             if s.willRecord then
-                                                _NotifyTrackingCancelled(s.spellName, "duration out of range")
+                                                _NotifyTrackingCancelled(s.spellName, "aura faded while not targeted")
+                                            elseif s.correctMode then
+                                                _DebugCorrection("cancel: aura faded while not targeted ("..tostring(s.spellId)..")")
+                                            end
+                                        else
+                                            local dur = lastSeen - s.appliedAt
+                                            if dur > 0.5 and dur < 600 then
+                                                _FinishSession(s, dur)
+                                                if s.willRecord then
+                                                    _NotifyTrackingFinished(s.spellId, s.spellName, s.spellRank, s.cp, dur)
+                                                end
+                                                -- correction-mode prints only if it actually applied an override (inside _FinishSession)
+                                            else
+                                                _AbortSession(s, "duration out of range")
+                                                if s.willRecord then
+                                                    _NotifyTrackingCancelled(s.spellName, "duration out of range")
+                                                end
                                             end
                                         end
                                     end
@@ -2059,16 +2181,19 @@ function DoiteTrack:_OnSpellCastEvent()
         return
     end
 
-    if entry.trackSelf and (not entry.trackHelp) and (not entry.trackHarm) then
+    local selfOnly = (entry.trackSelf and (not entry.trackHelp) and (not entry.trackHarm))
+
+    if selfOnly then
         targetGuid = pGuid
-    elseif (not targetGuid) or targetGuid == "" or targetGuid == "0x000000000" or targetGuid == "0x0000000000000000" then
-        local tg = _GetUnitGuidSafe("target")
-        if tg and tg ~= "" then
-            targetGuid = tg
-        elseif entry.trackSelf then
-            targetGuid = pGuid
-        else
-            return
+    else
+        -- For target-based auras (help/harm), NEVER fall back to player.
+        if (not targetGuid) or targetGuid == "" or targetGuid == "0x000000000" or targetGuid == "0x0000000000000000" then
+            local tg = _GetUnitGuidSafe("target")
+            if tg and tg ~= "" then
+                targetGuid = tg
+            else
+                return
+            end
         end
     end
 
@@ -2205,7 +2330,7 @@ function DoiteTrack:_OnUnitCastEvent()
     local now = GetTime()
 
     local last = RecentCastBySpellId[spellId]
-    if last and (now - last) < 0.2 then
+    if last and (now - last) < 1.0 then
         return
     end
     RecentCastBySpellId[spellId] = now
@@ -2250,14 +2375,18 @@ function DoiteTrack:_OnUnitCastEvent()
         return
     end
 
-    -- self-only tracked auras must always bind to player GUID.
-    if entry.trackSelf and (not entry.trackHelp) and (not entry.trackHarm) then
+    local selfOnly = (entry.trackSelf and (not entry.trackHelp) and (not entry.trackHarm))
+
+    if selfOnly then
         targetGuid = pGuid
-    elseif not targetGuid or targetGuid == "" or targetGuid == "0x000000000" or targetGuid == "0x0000000000000000" then
-        if entry.trackSelf then
-            targetGuid = pGuid
-        else
-            return
+    else
+        if (not targetGuid) or targetGuid == "" or targetGuid == "0x000000000" or targetGuid == "0x0000000000000000" then
+            local tg = _GetUnitGuidSafe("target")
+            if tg and tg ~= "" then
+                targetGuid = tg
+            else
+                return
+            end
         end
     end
 
