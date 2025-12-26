@@ -2,6 +2,7 @@
 Looking for WeakAuras in Vanilla WoW? DoiteAuras is a lightweight, condition-based tracker for **abilities**, **buffs**, **debuffs**, **items** and **bars** in 1.12.
 
 ## OBS BETA TESTING. IF YOU ENCOUNTER ANY BUGS LET ME KNOW.
+_Yes, I know about the Paladin tracking of time: judgement of wisdom/light and i know how to fix, just risky_
 
 > [!IMPORTANT]
 >
