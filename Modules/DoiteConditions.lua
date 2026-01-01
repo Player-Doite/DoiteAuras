@@ -138,7 +138,7 @@ DoiteConditions._pendingRebuildPlayerTimers = false
 -- Forward declare so functions defined above can capture it as an upvalue
 local _RequestImmediateEval
 
-local _DoiteImmediateEval = CreateFrame("Frame")
+local _DoiteImmediateEval = CreateFrame("Frame", "DoiteImmediateEval")
 _DoiteImmediateEval:Hide()
 _DoiteImmediateEval._pending = false
 _DoiteImmediateEval:SetScript("OnUpdate", function()
@@ -194,7 +194,7 @@ end
 ----------------------------------------------------------------
 -- Edit-mode heartbeat: force frequent refresh while editor is open (prevents 0.5s delay / "needs a target" when idle)
 ----------------------------------------------------------------
-local _editTick = CreateFrame("Frame")
+local _editTick = CreateFrame("Frame", "DoiteEditTick")
 local _editAccum = 0
 
 -- Tuning: 0.10 feels instant but is still cheap.
@@ -1577,7 +1577,7 @@ local function _GetPlayerGUID()
     return nil
 end
 
-local _daCast = CreateFrame("Frame")
+local _daCast = CreateFrame("Frame", "DoiteCast")
 _daCast:RegisterEvent("UNIT_CASTEVENT")
 _daCast:SetScript("OnEvent", function()
     local casterGUID = arg1
@@ -1607,143 +1607,121 @@ _daCast:SetScript("OnEvent", function()
     _MarkSliderSeen(name)
 end)
 
-local function _CL_Parse(msg)
--- Warrior / Rogue / Mage reactive proc parsing
-	do
-		local _, cls = UnitClass("player")
-		cls = cls and string.upper(cls) or ""
-		local now = _Now()
+-- Check class and register only the events we need for reactive procs
+local _daClassCL = CreateFrame("Frame", "DoiteClassCL")
+local _daClassCL2 = CreateFrame("Frame", "DoiteClassCL2")
 
-		----------------------------------------------------------------
-		-- WARRIOR: Overpower (target dodged you) + Revenge (defensive reaction)
-		----------------------------------------------------------------
-		if cls == "WARRIOR" then
-			do
-				local tgt
-				local _, _, t1 = str_find(msg, "You attack%.%s+(.+)%s+dodges")
-				if t1 then
-					tgt = t1
-				else
-					local _, _, t2 = str_find(msg, "Your%s+.+%s+was%s+dodged%s+by%s+(.+)")
-					tgt = t2
-				end
+do
+	local _, cls = UnitClass("player")
+	cls = cls and string.upper(cls) or ""
 
-				if tgt then
-					tgt = str_gsub(tgt, "%s*[%.!%?]+%s*$", "")
+	if cls == "WARRIOR" then
+		-- Overpower: needs dodge detection
+		_daClassCL:RegisterEvent("CHAT_MSG_COMBAT_SELF_MISSES")
 
-					_OP_target = tgt
+		_daClassCL:SetScript("OnEvent", function()
+			local line = arg1
+			if not line or line == "" then return end
 
-					local dur = _ProcWindowDuration("Overpower") or 4.0
-					_OP_until  = now + dur
-					_ProcWindowSet("Overpower", _OP_until)
-				end
+			-- Overpower: target dodged you
+			local tgt
+			local _, _, t1 = str_find(line, "You attack%.%s+(.+)%s+dodges")
+			if t1 then
+				tgt = t1
+			else
+				local _, _, t2 = str_find(line, "Your%s+.+%s+was%s+dodged%s+by%s+(.+)")
+				tgt = t2
 			end
 
-			if str_find(msg, "You dodge")
-			   or str_find(msg, "You parry")
-			   or str_find(msg, "You block")
-			   or ((str_find(msg, " hits you for ") or str_find(msg, " crits you for "))
-				   and str_find(msg, " blocked)")) then
+			if tgt then
+				tgt = str_gsub(tgt, "%s*[%.!%?]+%s*$", "")
+				_OP_target = tgt
 
+				local now = _Now()
+				local dur = _ProcWindowDuration("Overpower") or 4.0
+				_OP_until = now + dur
+				_ProcWindowSet("Overpower", _OP_until)
+			end
+		end)
+
+		-- Revenge: needs incoming hits/blocks/parries/dodges
+		_daClassCL2:RegisterEvent("CHAT_MSG_COMBAT_CREATURE_VS_SELF_MISSES")
+		_daClassCL2:RegisterEvent("CHAT_MSG_COMBAT_CREATURE_VS_SELF_HITS")
+
+		_daClassCL2:SetScript("OnEvent", function()
+			local line = arg1
+			if not line or line == "" then return end
+
+			-- Revenge: you dodged/parried/blocked
+			if str_find(line, "You dodge")
+			   or str_find(line, "You parry")
+			   or str_find(line, "You block")
+			   or ((str_find(line, " hits you for ") or str_find(line, " crits you for "))
+				   and str_find(line, " blocked)")) then
+
+				local now = _Now()
 				local dur = _ProcWindowDuration("Revenge") or 4.0
 				_REV_until = now + dur
 				_ProcWindowSet("Revenge", _REV_until)
 
 				dirty_ability = true
 			end
-		end
+		end)
 
-		----------------------------------------------------------------
-		-- ROGUE: Surprise Attack (target dodges you)
-		-- No target tracking needed; just reset the window on any dodge.
-		----------------------------------------------------------------
-		if cls == "ROGUE" then
+	elseif cls == "ROGUE" then
+		-- Surprise Attack: needs dodge detection
+		_daClassCL:RegisterEvent("CHAT_MSG_COMBAT_SELF_MISSES")
+
+		_daClassCL:SetScript("OnEvent", function()
+			local line = arg1
+			if not line or line == "" then return end
+
+			-- Surprise Attack: target dodged you
 			local dodged = false
-
-			-- Match:
-			-- "You attack. <Target> dodges"
-			-- "Your <something> was dodged by <Target>"
-			do
-				local _, _, t1 = str_find(msg, "You attack%.%s+(.+)%s+dodges")
-				if t1 then
+			local _, _, t1 = str_find(line, "You attack%.%s+(.+)%s+dodges")
+			if t1 then
+				dodged = true
+			else
+				local _, _, t2 = str_find(line, "Your%s+.+%s+was%s+dodged%s+by%s+(.+)")
+				if t2 then
 					dodged = true
-				else
-					local _, _, t2 = str_find(msg, "Your%s+.+%s+was%s+dodged%s+by%s+(.+)")
-					if t2 then
-						dodged = true
-					end
 				end
 			end
 
 			if dodged then
 				local dur = _ProcWindowDuration("Surprise Attack")
 				if dur then
+					local now = _Now()
 					_ProcWindowSet("Surprise Attack", now + dur)
 					dirty_ability = true
 				end
 			end
-		end
+		end)
 
-		----------------------------------------------------------------
-		-- MAGE: Arcane Surge (one of the spells partially/fully resisted)
-		----------------------------------------------------------------
-		if cls == "MAGE" then
-			-- Match:
-			-- "Your <Spell> was resisted by <Target>"
-			-- "<Target> resists your <Spell>"
-			-- "Your <Spell> hits <Target> for X. (Y resisted)"
-			if str_find(msg, " was resisted") 
-			   or str_find(msg, " resisted%)")
-			   or str_find(msg, " resisted by")
-			   or str_find(msg, " resists your ") then
+	elseif cls == "MAGE" then
+		-- Arcane Surge: needs resist detection
+		_daClassCL:RegisterEvent("CHAT_MSG_SPELL_SELF_DAMAGE")
+
+		_daClassCL:SetScript("OnEvent", function()
+			local line = arg1
+			if not line or line == "" then return end
+
+			-- Arcane Surge: spell was resisted (fully or partially)
+			if str_find(line, " was resisted")
+			   or str_find(line, " resisted%)")
+			   or str_find(line, " resisted by")
+			   or str_find(line, " resists your ") then
 
 				local dur = _ProcWindowDuration("Arcane Surge")
 				if dur then
+					local now = _Now()
 					_ProcWindowSet("Arcane Surge", now + dur)
 					dirty_ability = true
 				end
 			end
-		end
+		end)
 	end
 end
-
--- SuperWoW: RAW_COMBATLOG gives the original event name + raw text
-local _daRawCL = CreateFrame("Frame")
-
--- SuperWoW: RAW_COMBATLOG fires for all combat lines
-_daRawCL:RegisterEvent("RAW_COMBATLOG")
-_daRawCL:RegisterEvent("CHAT_MSG_COMBAT_SELF_MISSES")
-_daRawCL:RegisterEvent("CHAT_MSG_COMBAT_CREATURE_VS_SELF_MISSES")
-_daRawCL:RegisterEvent("CHAT_MSG_COMBAT_CREATURE_VS_SELF_HITS")
-_daRawCL:RegisterEvent("CHAT_MSG_SPELL_SELF_MISSES")
-_daRawCL:RegisterEvent("CHAT_MSG_SPELL_SELF_DAMAGE")
-_daRawCL:RegisterEvent("CHAT_MSG_SPELL_SELF_BUFF")
-_daRawCL:RegisterEvent("CHAT_MSG_SPELL_PERIODIC_SELF_BUFFS")
-_daRawCL:RegisterEvent("CHAT_MSG_SPELL_PERIODIC_SELF_DAMAGE")
-
-_daRawCL:SetScript("OnEvent", function()
-    local line
-
-    if event == "RAW_COMBATLOG" then
-        -- SuperWoW: arg1 = original event name, arg2 = text with GUIDs
-        line = arg2
-    else
-        -- Classic CHAT_MSG_* events: arg1 is the human-readable line
-        line = arg1
-    end
-
-    if not line or line == "" then return end
-
-    -- Fast pre-filter: only for human chat lines. RAW_COMBATLOG can be GUID/link formatted.
-	if event ~= "RAW_COMBATLOG" then
-	  local ok = str_find(line, "You ") or str_find(line, "Your ")
-				 or str_find(line, " hits you for ") or str_find(line, " crits you for ")
-	  if not ok then return end
-	end
-
-
-    _CL_Parse(line)
-end)
 
 -- Helpers consumed by ability-usable override
 local function _Warrior_Overpower_OK()
@@ -1772,7 +1750,7 @@ local SlideMgr = {
 }
 _G.DoiteConditions_SlideMgr = SlideMgr
 
-local _slideTick = CreateFrame("Frame")
+local _slideTick = CreateFrame("Frame", "DoiteSlideTick")
 _slideTick:Hide()
 _slideTick:SetScript("OnUpdate", function()
     local now = GetTime()
@@ -3127,14 +3105,15 @@ local function _FmtRem(remSec)
         return math.floor(remSec / 3600) .. "+h"
     elseif remSec >= 60 then
         return math.floor(remSec / 60) .. "+m"
-    elseif remSec < 10 then
+    elseif remSec < 1.6 then
+	      -- only show tenths when under 1.6s left
         -- Stabilize tenths by truncating, not rounding up (matches old behavior)
         local t10 = math.floor(remSec * 10)
         local whole = math.floor(t10 / 10)
         local dec = t10 - (whole * 10)
-        return whole .. "." .. dec .. "s"
+        return whole .. "." .. dec
     else
-        return math.floor(remSec) .. "s"
+        return math.ceil(remSec)
     end
 end
 
@@ -6095,7 +6074,7 @@ function DoiteConditions_UpdateTimeText()
     end
 end
 
-local _tick = CreateFrame("Frame")
+local _tick = CreateFrame("Frame", "DoiteConditionsTick")
 
 -- Keep these as globals so the OnUpdate script doesn't capture them as upvalues
 _acc        = 0
@@ -6199,7 +6178,7 @@ dirty_ability, dirty_aura, dirty_target, dirty_power = true, true, true, true
 ---------------------------------------------------------------
 -- Event handling + smoother updates
 ---------------------------------------------------------------
-local eventFrame = CreateFrame("Frame")
+local eventFrame = CreateFrame("Frame", "DoiteConditionsEventFrame")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
 eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")

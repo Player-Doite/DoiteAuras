@@ -106,7 +106,7 @@ local function DoiteAuras_RebuildSpellTextureCache()
 end
 
 -- Event hook: rebuild on login/world and whenever the spellbook changes (talent/build swaps)
-local _daSpellTex = CreateFrame("Frame")
+local _daSpellTex = CreateFrame("Frame", "DoiteSpellTex")
 _daSpellTex:RegisterEvent("PLAYER_ENTERING_WORLD")
 _daSpellTex:RegisterEvent("SPELLS_CHANGED")
 _daSpellTex:SetScript("OnEvent", function()
@@ -2806,7 +2806,7 @@ local function DA_CreateMinimapButton()
 end
 
 -- create/show on load
-local _daMiniInit = CreateFrame("Frame")
+local _daMiniInit = CreateFrame("Frame", "DoiteMiniInit")
 _daMiniInit:RegisterEvent("ADDON_LOADED")
 _daMiniInit:SetScript("OnEvent", function()
   if event ~= "ADDON_LOADED" or arg1 ~= "DoiteAuras" then return end
@@ -2957,7 +2957,7 @@ function DA_RunLater(delay, func)
 end
 
 -- Version event listener (compare, notify, echo replies)
-local _daVer = CreateFrame("Frame")
+local _daVer = CreateFrame("Frame", "DoiteVersion")
 _daVer:RegisterEvent("CHAT_MSG_ADDON")
 _daVer:SetScript("OnEvent", function()
   if event ~= "CHAT_MSG_ADDON" then return end
@@ -3019,7 +3019,7 @@ end)
 -- Loaded message + delayed version broadcast(s)
 local _daRaidAnnounced = false
 
-local _daLoad = CreateFrame("Frame")
+local _daLoad = CreateFrame("Frame", "DoiteLoad")
 _daLoad:RegisterEvent("ADDON_LOADED")
 _daLoad:RegisterEvent("PLAYER_ENTERING_WORLD")
 _daLoad:RegisterEvent("RAID_ROSTER_UPDATE")
@@ -3076,7 +3076,7 @@ _daLoad:SetScript("OnEvent", function()
 end)
 
 -- Update icons frequently
-local updateFrame = CreateFrame("Frame")
+local updateFrame = CreateFrame("Frame", "DoiteUpdateFrame")
 updateFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 updateFrame:SetScript("OnEvent", function()
   if DA_IsHardDisabled and DA_IsHardDisabled() then return end

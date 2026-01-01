@@ -463,7 +463,7 @@ end
 
 
 -- Event/flag-driven reflow (no periodic scanning)
-local _watch = CreateFrame("Frame")
+local _watch = CreateFrame("Frame", "DoiteGroupWatch")
 
 -- Fallback candidate list/pool (only used if DoiteAuras.GetAllCandidates isn't available)
 local _fallbackList = {}

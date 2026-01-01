@@ -81,7 +81,7 @@ end
 -- === Lightweight throttle for heavy UI work (prevents lag while dragging sliders) ===
 local _DoiteEdit_PendingHeavy = false
 local _DoiteEdit_Accum = 0
-local _DoiteEdit_Throttle = CreateFrame("Frame")
+local _DoiteEdit_Throttle = CreateFrame("Frame", "DoiteEditThrottle")
 
 -- Global flag toggled while the main Edit or Main frames are being dragged
 _G["DoiteUI_Dragging"] = _G["DoiteUI_Dragging"] or false
@@ -4026,7 +4026,7 @@ end
 -- Dynamic "Aura Conditions" manager (Ability / Aura / Item)
 do
     -- Small helper to reopen the dropdown a frame later (like the item version)
-    local _ddReopenFrame = CreateFrame("Frame")
+    local _ddReopenFrame = CreateFrame("Frame", "DoiteEditReopenFrame")
     local _ddReopenRow   = nil
 
     _ddReopenFrame:Hide()
