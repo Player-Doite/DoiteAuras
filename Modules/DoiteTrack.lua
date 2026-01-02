@@ -1589,13 +1589,18 @@ end
 local _NotifyCorrectionApplied
 local _NotifyCorrectionCleared
 
-local function _AbortSession(session, reason)
+local function _AbortSession(session, reason, keepAura)
   if not session or session.aborted or session.complete then
     return
   end
   session.aborted = true
   session.abortReason = reason or "unknown"
-  _ClearAuraForSession(session)
+
+  -- Default behavior: clear runtime aura bucket for this session.
+  -- Exception: refresh-before-fade should NOT clear until a new apply is actually confirmed (resist etc).
+  if not keepAura then
+    _ClearAuraForSession(session)
+  end
 
   -- do not keep dead sessions around
   if session.id then
@@ -2772,7 +2777,17 @@ local function _EnsureOnUpdateEnabled()
                   end
                 else
                   local age = now2 - (s.startedAt or now2)
-                  if age > 1.5 then
+
+                  -- Timeout tuning:
+                  -- - correctionMode waits for AURA_CAST_ON_* or first visible aura; allow travel time cast-start sessions are already prevented (we ignore UNIT_CASTEVENT START), but projectile auras can still take a bit after cast success to appear (missile travel)
+                  local timeout = 1.5
+                  if s.correctMode and (not s.applyConfirmed) then
+                    timeout = 6.0
+                  elseif s.source == "cast" then
+                    timeout = 3.0
+                  end
+
+                  if age > timeout then
                     if s.correctMode and (not s.applyConfirmed) then
                       _AbortSession(s, "no player aura confirm")
                       _DebugCorrection("cancel: no player aura confirm (" .. tostring(s.spellId) .. ")")
@@ -3034,7 +3049,8 @@ function DoiteTrack:_OnSpellCastEvent()
 
   local sid, existing = _FindSessionFor(spellId, targetGuid)
   if existing then
-    _AbortSession(existing, "refreshed before fade")
+    -- Do NOT clear runtime aura state on a refresh attempt; the new cast might be resisted.
+    _AbortSession(existing, "refreshed before fade", true)
     if existing.willRecord then
       _NotifyTrackingCancelled(existing.spellName, "refreshed before fade; starting new recording")
     end
@@ -3106,7 +3122,7 @@ function DoiteTrack:_OnUnitCastEvent()
   local spellId = arg4
   local castDur = arg5
 
-  if evType ~= "CAST" and evType ~= "CHANNEL" and evType ~= "START" then
+  if evType ~= "CAST" and evType ~= "CHANNEL" then
     return
   end
 
@@ -3398,7 +3414,8 @@ function DoiteTrack:_OnUnitCastEvent()
 
   local sid, existing = _FindSessionFor(spellId, targetGuid)
   if existing then
-    _AbortSession(existing, "refreshed before fade")
+    -- Do NOT clear runtime aura state on a refresh attempt; the new cast might be resisted.
+    _AbortSession(existing, "refreshed before fade", true)
     if existing.willRecord then
       _NotifyTrackingCancelled(existing.spellName, "refreshed before fade; starting new recording")
     end
@@ -3472,7 +3489,14 @@ function DoiteTrack:_OnSpellDamageSelf()
   end
 
   local now = GetTime()
-  local lastCast = RecentCastBySpellId[spellId]
+
+  -- De-dupe: UNIT_CASTEVENT (CAST/CHANNEL) and SPELL_CAST_EVENT can both fire for the same cast. If UNIT_CASTEVENT already handled this spell very recently, don’t start a second session here.
+  local last = RecentCastBySpellId[spellId]
+  if last and (now - last) < 0.25 then
+    return
+  end
+
+  RecentCastBySpellId[spellId] = now
   if lastCast and (now - lastCast) < 1.0 then
     return
   end
