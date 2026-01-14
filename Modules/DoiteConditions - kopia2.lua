@@ -1441,6 +1441,9 @@ local function _EvaluateItemCoreState(data, c)
             if remSec < 0 then
               remSec = 0
             end
+            if remSec > 60 then
+              remSec = 61
+            end
           end
 
           -- If timer expired, charges are treated as expired too
