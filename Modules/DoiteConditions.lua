@@ -1304,7 +1304,8 @@ local function _EvaluateItemCoreState(data, c)
           and data.displayName == "---EQUIPPED WEAPON SLOTS---" then
 
         local needTE = false
-        if (c.textTimeRemaining == true and mode == "notcd")
+        if (mode == "notcd"
+              and (c.textTimeRemaining == true or c.remainingEnabled == true or c.enchant == true))
             or (c.textStackCounter == true)
             or (c.stacksEnabled == true) then
           needTE = true
@@ -1366,18 +1367,46 @@ local function _EvaluateItemCoreState(data, c)
 
                 local key = tostring(slotC.itemId or 0) .. ":" .. tostring(teId)
 
+                -- If enchant id changes, reset the absolute timer so we don't keep stale timing.
+                local prevTeId = slotC.tempEnchantId
+                if prevTeId ~= teId then
+                  slotC.endTime = nil
+                  slotC._msLeft = nil
+                end
                 slotC.tempEnchantId = teId
 
                 if msLeft and msLeft > 0 then
-                  local endT = now + (msLeft / 1000)
-                  slotC.endTime = endT
-                  memE[key] = endT
-                else
-                  local endT = memE[key]
-                  if endT and endT > now then
-                    slotC.endTime = endT
+                  local prevMs = slotC._msLeft
+
+                  -- IMPORTANT:
+                  -- Some clients update tempEnchantmentTimeLeftMs in coarse steps (or it can stick).
+                  -- If we overwrite endTime every refresh with (now + msLeft), the countdown freezes.
+                  if (not slotC.endTime) or (not prevMs) then
+                    slotC.endTime = now + (msLeft / 1000)
                   else
-                    slotC.endTime = nil
+                    if msLeft > (prevMs + 2000) then
+                      -- timeLeft increased noticeably => refresh/re-apply
+                      slotC.endTime = now + (msLeft / 1000)
+                    elseif msLeft < (prevMs - 10000) then
+                      -- coarse big drop => correct our endTime so expiry isn't wildly wrong
+                      slotC.endTime = now + (msLeft / 1000)
+                    end
+                    -- else: ignore (likely "stuck" msLeft) and let endTime tick naturally
+                  end
+
+                  slotC._msLeft = msLeft
+                  memE[key] = slotC.endTime
+                else
+                  slotC._msLeft = nil
+
+                  -- Only fall back to memory if we don't already have a valid running timer.
+                  if (not slotC.endTime) or (slotC.endTime <= now) then
+                    local endT = memE[key]
+                    if endT and endT > now then
+                      slotC.endTime = endT
+                    else
+                      slotC.endTime = nil
+                    end
                   end
                 end
 
@@ -1411,6 +1440,9 @@ local function _EvaluateItemCoreState(data, c)
             remSec = slotC.endTime - now
             if remSec < 0 then
               remSec = 0
+            end
+            if remSec > 60 then
+              remSec = 61
             end
           end
 
@@ -3502,10 +3534,16 @@ local function _FmtRem(remSec)
   if not remSec or remSec <= 0 then
     return nil
   end
-  if remSec >= 3600 then
-    return math.floor((remSec / 3600) * 2 + 0.5) / 2 .. "h" -- round to nearest 0.5 hour
-  elseif remSec >= 60 then
-    return math.floor((remSec / 60) * 2 + 0.5) / 2 .. "m" -- round to nearest 0.5 min
+
+  -- Unit selection MUST happen before rounding to avoid 60m <-> 1h flicker. Rule: anything above 59:00 stays in hours (prevents 3599s rounding to 60.0m).
+  local MIN = 60
+  local HOUR = 3600
+  local HOUR_CUTOVER = HOUR - MIN -- 59:00
+
+  if remSec >= HOUR_CUTOVER then
+    return (math.floor((remSec / HOUR) * 2 + 0.5) / 2) .. "h" -- nearest 0.5 hour
+  elseif remSec >= MIN then
+    return (math.floor((remSec / MIN) * 2 + 0.5) / 2) .. "m" -- nearest 0.5 min
   elseif remSec < 1.6 then
     -- only show tenths when under 1.6s left
     -- Stabilize tenths by truncating, not rounding up (matches old behavior)
@@ -4872,6 +4910,21 @@ local function CheckItemConditions(data)
   end
 
   -- --------------------------------------------------------------------
+  -- Enchant-only visibility for equipped weapon slots ("---EQUIPPED WEAPON SLOTS---")
+  -- If enabled, only show when a temporary enchant is active (time left > 0). Uses state.teRem computed in _EvaluateItemCoreState (seconds; 0 when none/expired).
+  -- --------------------------------------------------------------------
+  if c.enchant == true then
+    local dn = data.displayName or data.name
+    if dn == "---EQUIPPED WEAPON SLOTS---" then
+      if (not state.teRem) or state.teRem <= 0 then
+        local glow = c.glow and true or false
+        local grey = c.greyscale and true or false
+        return false, glow, grey
+      end
+    end
+  end
+
+  -- --------------------------------------------------------------------
   -- 2. Combat state
   -- --------------------------------------------------------------------
   local inCombatFlag = (c.inCombat == true)
@@ -5037,15 +5090,35 @@ local function CheckItemConditions(data)
   -- --------------------------------------------------------------------
   -- 9. Remaining (item cooldown time left)
   --     Editor only allows this when mode == "oncd" and not whereMissing.
+  --     Special-case: equipped weapon slots + mode=notcd => compare against temp enchant remaining.
   -- --------------------------------------------------------------------
   if show and c.remainingEnabled
       and c.remainingComp and c.remainingComp ~= ""
       and c.remainingVal ~= nil and c.remainingVal ~= "" then
 
     local threshold = tonumber(c.remainingVal)
-    if threshold and state.rem and state.rem > 0 then
-      if not _RemainingPasses(state.rem, c.remainingComp, threshold) then
-        show = false
+    if threshold then
+      -- Equipped weapon slots + notcd: use temp enchant remaining (seconds)
+      if (c.mode == "notcd")
+          and (data.displayName == "---EQUIPPED WEAPON SLOTS---")
+          and (c.inventorySlot == "MAINHAND" or c.inventorySlot == "OFFHAND" or c.inventorySlot == "RANGED") then
+
+        -- If there is NO temp enchant, ALWAYS hide (do not treat nil as 0).
+        if (not state) or (not state.teRem) or state.teRem <= 0 then
+          show = false
+        else
+          if not _RemainingPasses(state.teRem, c.remainingComp, threshold) then
+            show = false
+          end
+        end
+
+      else
+        -- Original behavior: only evaluate when actual item cooldown is > 0
+        if state.rem and state.rem > 0 then
+          if not _RemainingPasses(state.rem, c.remainingComp, threshold) then
+            show = false
+          end
+        end
       end
     end
   end
@@ -6654,17 +6727,63 @@ _textAccum = 0
 _distAccum = 0
 _timeEvalAccum = 0
 
+-- Weapon temp-enchant: start ticking ONLY when remaining <= 60s
+_teFastAccum = 0
+_teProbeAccum = 0
+_teFastActive = false
+
 -- Lift the body into a real function
 function DoiteConditions_OnUpdate(dt)
   _acc = _acc + dt
   _textAccum = _textAccum + dt
 
   -- 0.5s heartbeat for ability/item time-based logic (cooldown end needs reevaluation).
+  -- Heartbeat for ability/item time-based logic (cooldown end needs reevaluation). When a temp weapon enchant is in its last 60s, refresh more frequently so enchant-based remaining/show/hide reacts on a tighter cadence. When a temp weapon enchant is in its last 60s, refresh more frequently so enchant-based remaining/show/hide reacts on a tighter cadence.
+  -- 0.5s heartbeat for ability/item time-based logic (cooldown end needs reevaluation).
   _timeEvalAccum = _timeEvalAccum + dt
   if _timeEvalAccum >= 0.5 then
     _timeEvalAccum = 0
     if _hasAnyAbilityTimeLogic then
       dirty_ability_time = true
+    end
+  end
+
+  -- Weapon temp-enchant fast tick:
+  -- Above 60s: event-driven only (no ticking).
+  -- <=60s: tick at 0.10s to keep hide/show + remaining accurate near expiry.
+  do
+    local dc = _G.DoiteConditions
+    local te = dc and dc._daTempEnchantCache
+    local hasTE = false
+
+    if te then
+      local now = _GetTime()
+      for _, slotC in pairs(te) do
+        if slotC and slotC.endTime then
+          local rem = slotC.endTime - now
+          if rem > 0 then
+            hasTE = true
+            if rem <= 60 then
+              _teFastActive = true
+              break
+            end
+          end
+        end
+      end
+    end
+
+    if not hasTE then
+      _teFastActive = false
+    end
+
+    if _teFastActive then
+      _teFastAccum = _teFastAccum + dt
+      if _teFastAccum >= 0.10 then
+        _teFastAccum = 0
+        dirty_ability_time = true
+      end
+    else
+      _teFastAccum = 0
     end
   end
 
@@ -6678,7 +6797,7 @@ function DoiteConditions_OnUpdate(dt)
   if _textAccum >= 0.1 then
     _textAccum = 0
 
-    if _hasAnyAbilityTimeLogic or _hasAnyAuraTimeLogic then
+    if _hasAnyAbilityTimeLogic or _hasAnyAuraTimeLogic or _teFastActive then
       DoiteConditions_UpdateTimeText()
     end
   end

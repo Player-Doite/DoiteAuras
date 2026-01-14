@@ -1439,7 +1439,7 @@ local function CreateConditionsUI()
 
   -- Ability: dynamic Aura Conditions section
   local abilityAuraBaseY = row12_y
-  SetSeparator("ability", 12, "ABILITY, BUFF, DEBUFF & TALENT CONDITIONS", true, true)
+  SetSeparator("ability", 12, "EXTRA: ABILITY, BUFF, DEBUFF & TALENT CONDITIONS", true, true)
   condFrame.abilityAuraAnchor = CreateFrame("Frame", nil, _Parent())
   condFrame.abilityAuraAnchor:SetPoint("TOPLEFT", _Parent(), "TOPLEFT", 0, abilityAuraBaseY)
   condFrame.abilityAuraAnchor:SetPoint("TOPRIGHT", _Parent(), "TOPRIGHT", 0, abilityAuraBaseY)
@@ -1585,7 +1585,7 @@ local function CreateConditionsUI()
   condFrame.cond_aura_class_note:SetText("No class-specific option added for your class.")
   condFrame.cond_aura_class_note:Hide()
 
-  local sepAuraBuff = SetSeparator("aura", 13, "ABILITY, BUFF, DEBUFF & TALENT CONDITIONS", true, true)
+  local sepAuraBuff = SetSeparator("aura", 13, "EXTRA: ABILITY, BUFF, DEBUFF & TALENT CONDITIONS", true, true)
   if sepAuraBuff and srows then
     local newY = (srows[13] or 0) - 10
     sepAuraBuff:ClearAllPoints()
@@ -1621,9 +1621,11 @@ local function CreateConditionsUI()
   -- Default title; changed dynamically in UpdateConditionsUI for special items
   SetSeparator("item", 1, "WHEREABOUTS", true, true)
 
-  -- USABILITY & COOLDOWN (no "Usable")
-  condFrame.cond_item_notcd = MakeCheck("DoiteCond_Item_NotCD", "Not on cooldown", 0, row2_y)
-  condFrame.cond_item_oncd = MakeCheck("DoiteCond_Item_OnCD", "On cooldown", 150, row2_y)
+-- USABILITY & COOLDOWN (no "Usable")
+  condFrame.cond_item_notcd = MakeCheck("DoiteCond_Item_NotCD", "No cooldown", 0, row2_y)
+  condFrame.cond_item_oncd = MakeCheck("DoiteCond_Item_OnCD", "On cooldown", 105, row2_y)
+  condFrame.cond_item_enchant = MakeCheck("DoiteCond_Item_Enchant", "Enchanted", 210, row2_y)
+  condFrame.cond_item_enchant:Hide()
   SetSeparator("item", 2, "USABILITY & COOLDOWN", true, true)
 
   -- COMBAT STATE
@@ -1740,7 +1742,7 @@ local function CreateConditionsUI()
 
   -- Item: dynamic Aura Conditions section
   local itemAuraBaseY = row13_y
-  SetSeparator("item", 13, "ABILITY, BUFF, DEBUFF & TALENT CONDITIONS", true, true)
+  SetSeparator("item", 13, "EXTRA: ABILITY, BUFF, DEBUFF & TALENT CONDITIONS", true, true)
   condFrame.itemAuraAnchor = CreateFrame("Frame", nil, _Parent())
   condFrame.itemAuraAnchor:SetPoint("TOPLEFT", _Parent(), "TOPLEFT", 0, itemAuraBaseY)
   condFrame.itemAuraAnchor:SetPoint("TOPRIGHT", _Parent(), "TOPRIGHT", 0, itemAuraBaseY)
@@ -2299,7 +2301,7 @@ local function CreateConditionsUI()
       condFrame.cond_item_oncd:SetChecked(false)
       SetExclusiveItemMode("notcd")
     else
-      -- enforce at least one checked
+      -- enforce at least one checked (between notcd/oncd only)
       if not condFrame.cond_item_oncd:GetChecked() then
         this:SetChecked(true)
       end
@@ -2315,12 +2317,32 @@ local function CreateConditionsUI()
       condFrame.cond_item_notcd:SetChecked(false)
       SetExclusiveItemMode("oncd")
     else
-      -- enforce at least one checked
+      -- enforce at least one checked (between notcd/oncd only)
       if not condFrame.cond_item_notcd:GetChecked() then
         this:SetChecked(true)
       end
     end
   end)
+
+  if condFrame.cond_item_enchant then
+    condFrame.cond_item_enchant:SetScript("OnClick", function()
+      if not currentKey then
+        this:SetChecked(false)
+        return
+      end
+
+      local d = EnsureDBEntry(currentKey)
+      d.conditions = d.conditions or {}
+      d.conditions.item = d.conditions.item or {}
+
+      -- boolean flag; UI enabling/auto-clear is handled in UpdateCondFrameForKey
+      d.conditions.item.enchant = this:GetChecked() and true or false
+
+      UpdateCondFrameForKey(currentKey)
+      SafeRefresh()
+      SafeEvaluate()
+    end)
+  end
 
   -- Ability combat row 2 - toggles are now independent (not exclusive)
   condFrame.cond_ability_incombat:SetScript("OnClick", function()
@@ -2624,7 +2646,7 @@ function UpdateItemStacksForMissing()
       end
     end
 
-    -- keep DB in sync with programmatic UI changes (after we may have cleared checks)
+    -- keep DB in sync with programmatic UI changes
     if currentKey then
       local d = EnsureDBEntry(currentKey)
       d.conditions = d.conditions or {}
@@ -3075,7 +3097,7 @@ function UpdateItemStacksForMissing()
         condFrame.cond_aura_owner_tip:SetText(condFrame._aura_owner_tip_default)
       else
         condFrame.cond_aura_owner_tip:SetText(
-            "Nampower 2.40.0+ req. for these options. You have " .. tostring(verStr) .. "."
+            "Nampower 2.24.0+ req. for these options. You have " .. tostring(verStr) .. "."
         )
       end
     end
@@ -3657,6 +3679,7 @@ function UpdateItemStacksForMissing()
     local d = EnsureDBEntry(currentKey);
     d.conditions.item = d.conditions.item or {}
     d.conditions.item.textStackCounter = this:GetChecked() and true or false
+    UpdateCondFrameForKey(currentKey)
     SafeRefresh();
     SafeEvaluate()
   end)
@@ -3696,6 +3719,7 @@ function UpdateItemStacksForMissing()
     local d = EnsureDBEntry(currentKey);
     d.conditions.item = d.conditions.item or {}
     d.conditions.item.textTimeRemaining = this:GetChecked() and true or false
+    UpdateCondFrameForKey(currentKey)
     SafeRefresh();
     SafeEvaluate()
   end)
@@ -4725,6 +4749,9 @@ function UpdateItemStacksForMissing()
   condFrame.cond_item_where_missing:Hide()
   condFrame.cond_item_notcd:Hide()
   condFrame.cond_item_oncd:Hide()
+  if condFrame.cond_item_enchant then
+    condFrame.cond_item_enchant:Hide()
+  end
   condFrame.cond_item_incombat:Hide()
   condFrame.cond_item_outcombat:Hide()
   condFrame.cond_item_target_help:Hide()
@@ -6775,9 +6802,25 @@ local ic = c.item or {}
     -- USABILITY & COOLDOWN
     condFrame.cond_item_notcd:Show()
     condFrame.cond_item_oncd:Show()
+    if condFrame.cond_item_enchant then
+      if isWeaponSlots then
+        condFrame.cond_item_enchant:Show()
+      else
+        condFrame.cond_item_enchant:SetChecked(false)
+        condFrame.cond_item_enchant:Hide()
+      end
+    end
+
     _enCheck(condFrame.cond_item_notcd)
     _enCheck(condFrame.cond_item_oncd)
 
+    -- MIGRATION: old exclusive mode "enchant" -> notcd + boolean enchant=true
+    if ic.mode == "enchant" then
+      ic.mode = "notcd"
+      ic.enchant = true
+    end
+
+    -- "enchant" mode is no longer valid; weapon slots still only use notcd/oncd mode
     local mode = ic.mode or "notcd"
     if mode ~= "notcd" and mode ~= "oncd" then
       mode = "notcd"
@@ -6786,11 +6829,42 @@ local ic = c.item or {}
     condFrame.cond_item_notcd:SetChecked(mode == "notcd")
     condFrame.cond_item_oncd:SetChecked(mode == "oncd")
 
+    -- Enchanted is a boolean and only meaningful for equipped weapon slots UI
+    if condFrame.cond_item_enchant and isWeaponSlots then
+      -- allowed only if: not missing, mode==notcd, and one of the relevant item-text/stack toggles is enabled
+      local allowEnchant = (not isMissing) and (mode == "notcd") and
+          ((ic.textTimeRemaining == true) or (ic.textStackCounter == true) or (ic.stacksEnabled == true))
+
+      if allowEnchant then
+        _enCheck(condFrame.cond_item_enchant)
+        condFrame.cond_item_enchant:SetChecked(ic.enchant == true)
+      else
+        -- auto-clear and lock
+        if ic.enchant then
+          ic.enchant = nil
+        end
+        condFrame.cond_item_enchant:SetChecked(false)
+        _disCheck(condFrame.cond_item_enchant)
+      end
+    elseif condFrame.cond_item_enchant then
+      -- non-weapon slots: always hidden + cleared
+      if ic.enchant then
+        ic.enchant = nil
+      end
+      condFrame.cond_item_enchant:SetChecked(false)
+      condFrame.cond_item_enchant:Hide()
+    end
+
     if isMissing then
       condFrame.cond_item_notcd:SetChecked(false)
       condFrame.cond_item_oncd:SetChecked(false)
       _disCheck(condFrame.cond_item_notcd)
       _disCheck(condFrame.cond_item_oncd)
+
+      if condFrame.cond_item_enchant and isWeaponSlots then
+        condFrame.cond_item_enchant:SetChecked(false)
+        _disCheck(condFrame.cond_item_enchant)
+      end
     end
 
     -- COMBAT STATE
@@ -6836,7 +6910,7 @@ local ic = c.item or {}
     -- Label changes ONLY for equipped weapon slots when mode is "notcd"
     do
       local lbl = "Icon text: Remaining"
-      if isWeaponSlots and mode == "notcd" then
+      if isWeaponSlots and (mode == "notcd" or mode == "enchant") then
         lbl = "Icon text: Enchant uptime"
       end
       if condFrame.cond_item_text_time and condFrame.cond_item_text_time.text
@@ -6855,7 +6929,7 @@ local ic = c.item or {}
       condFrame.cond_item_text_time:SetChecked(false)
       _disCheck(condFrame.cond_item_text_time)
     else
-      if mode == "oncd" or (isWeaponSlots and mode == "notcd") then
+      if mode == "oncd" or (isWeaponSlots and (mode == "notcd" or mode == "enchant")) then
         _enCheck(condFrame.cond_item_text_time)
         condFrame.cond_item_text_time:SetChecked(ic.textTimeRemaining == true)
       else
@@ -6995,35 +7069,46 @@ local ic = c.item or {}
     end
 
     -- REMAINING TIME
-    condFrame.cond_item_remaining_cb:Show()
-    if mode == "oncd" and not isMissing then
-      _enCheck(condFrame.cond_item_remaining_cb)
-      local remOn = (ic.remainingEnabled == true)
-      condFrame.cond_item_remaining_cb:SetChecked(remOn)
-      if remOn then
-        condFrame.cond_item_remaining_comp:Show()
-        condFrame.cond_item_remaining_val:Show()
-        condFrame.cond_item_remaining_val_enter:Show()
-        local comp = ic.remainingComp or ""
-        UIDropDownMenu_SetSelectedValue(condFrame.cond_item_remaining_comp, comp)
-        UIDropDownMenu_SetText(comp, condFrame.cond_item_remaining_comp)
-        _GoldifyDD(condFrame.cond_item_remaining_comp)
-        condFrame.cond_item_remaining_val:SetText(tostring(ic.remainingVal or 0))
-      else
-        condFrame.cond_item_remaining_comp:Hide()
-        condFrame.cond_item_remaining_val:Hide()
-        condFrame.cond_item_remaining_val_enter:Hide()
+    do
+      local sepTitle = "REMAINING TIME"
+      if isWeaponSlots then
+        if mode == "notcd" then
+          sepTitle = "REMAINING TIME (TEMPORARY ENCHANT)"
+        elseif mode == "oncd" then
+          sepTitle = "REMAINING TIME (WEAPON WEAPON COOLDOWN)"
+        end
       end
-    else
-      if ic.remainingEnabled then
-        ic.remainingEnabled = false
-      end
-      condFrame.cond_item_remaining_cb:SetChecked(false)
-      _disCheck(condFrame.cond_item_remaining_cb)
-      condFrame.cond_item_remaining_comp:Hide()
-      condFrame.cond_item_remaining_val:Hide()
-      condFrame.cond_item_remaining_val_enter:Hide()
+      SetSeparator("item", 11, sepTitle, true, true)
     end
+    condFrame.cond_item_remaining_cb:Show()
+	if (not isMissing) and (mode == "oncd" or (isWeaponSlots and mode == "notcd")) then
+	  _enCheck(condFrame.cond_item_remaining_cb)
+	  local remOn = (ic.remainingEnabled == true)
+	  condFrame.cond_item_remaining_cb:SetChecked(remOn)
+	  if remOn then
+		condFrame.cond_item_remaining_comp:Show()
+		condFrame.cond_item_remaining_val:Show()
+		condFrame.cond_item_remaining_val_enter:Show()
+		local comp = ic.remainingComp or ""
+		UIDropDownMenu_SetSelectedValue(condFrame.cond_item_remaining_comp, comp)
+		UIDropDownMenu_SetText(comp, condFrame.cond_item_remaining_comp)
+		_GoldifyDD(condFrame.cond_item_remaining_comp)
+		condFrame.cond_item_remaining_val:SetText(tostring(ic.remainingVal or 0))
+	  else
+		condFrame.cond_item_remaining_comp:Hide()
+		condFrame.cond_item_remaining_val:Hide()
+		condFrame.cond_item_remaining_val_enter:Hide()
+	  end
+	else
+	  if ic.remainingEnabled then
+		ic.remainingEnabled = false
+	  end
+	  condFrame.cond_item_remaining_cb:SetChecked(false)
+	  _disCheck(condFrame.cond_item_remaining_cb)
+	  condFrame.cond_item_remaining_comp:Hide()
+	  condFrame.cond_item_remaining_val:Hide()
+	  condFrame.cond_item_remaining_val_enter:Hide()
+	end
 
     -- CLASS-SPECIFIC (combo points / note / weapon filter)
     local isRogueOrDruid = _IsRogueOrDruid and _IsRogueOrDruid() or false
