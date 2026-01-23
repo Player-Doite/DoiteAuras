@@ -6945,6 +6945,8 @@ eventFrame:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
 eventFrame:RegisterEvent("BAG_UPDATE")
 eventFrame:RegisterEvent("BAG_UPDATE_COOLDOWN")
 eventFrame:RegisterEvent("UNIT_INVENTORY_CHANGED")
+eventFrame:RegisterEvent("PARTY_MEMBERS_CHANGED")
+eventFrame:RegisterEvent("RAID_ROSTER_UPDATE")
 
 eventFrame:SetScript("OnEvent", function()
   if event == "PLAYER_ENTERING_WORLD" then
@@ -7085,5 +7087,9 @@ eventFrame:SetScript("OnEvent", function()
 
       dirty_ability = true
     end
+
+  elseif event == "PARTY_MEMBERS_CHANGED" or event == "RAID_ROSTER_UPDATE" then
+    -- Re-evaluate all conditions when party/raid membership changes
+    dirty_ability, dirty_aura = true, true
   end
 end)
