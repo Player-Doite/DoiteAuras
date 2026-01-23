@@ -256,7 +256,7 @@ end
 -- Main frame (layout & sizes)
 local frame = CreateFrame("Frame", "DoiteAurasFrame", UIParent)
 frame:SetWidth(355)
-frame:SetHeight(450)
+frame:SetHeight(470)
 frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
 frame:EnableMouse(true)
 frame:SetMovable(true)
@@ -1088,6 +1088,9 @@ frame:SetScript("OnShow", function()
     if DA_RebuildAbilityDropDown then
         DA_RebuildAbilityDropDown()
     end
+    if testAllBtn and _DA_UpdateTestAllButton then
+        _DA_UpdateTestAllButton()
+    end
 end)
 
 frame:SetScript("OnHide", function()
@@ -1125,6 +1128,42 @@ local listContent = CreateFrame("Frame", "DoiteAurasListContent", scrollFrame)
 listContent:SetWidth(290)
 listContent:SetHeight(252)
 scrollFrame:SetScrollChild(listContent)
+
+-- Test All button (toggle)
+local testAllBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+testAllBtn:SetWidth(80)
+testAllBtn:SetHeight(18)
+testAllBtn:SetPoint("TOPLEFT", listContainer, "BOTTOMLEFT", 0, -4)
+
+local function _DA_UpdateTestAllButton()
+    if _G["DoiteAuras_TestAll"] == true then
+        testAllBtn:SetText("Stop Test")
+    else
+        testAllBtn:SetText("Test all")
+    end
+end
+
+testAllBtn:SetScript("OnClick", function()
+    if _G["DoiteAuras_TestAll"] == true then
+        _G["DoiteAuras_TestAll"] = nil
+    else
+        _G["DoiteAuras_TestAll"] = true
+    end
+    _DA_UpdateTestAllButton()
+    if DoiteConditions_RequestEvaluate then
+        DoiteConditions_RequestEvaluate()
+    end
+    if DoiteGroup and DoiteGroup.RequestReflow then
+        DoiteGroup.RequestReflow()
+    else
+        _G["DoiteGroup_NeedReflow"] = true
+    end
+    if DoiteAuras_RefreshIcons then
+        pcall(DoiteAuras_RefreshIcons)
+    end
+end)
+
+_DA_UpdateTestAllButton()
 
 -- Guide text
 local guide = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -2255,6 +2294,15 @@ local function RefreshList()
                     hdr.sortPrio.text:SetTextColor(1, 1, 1)
                 end
 
+                hdr.fixedCheck = CreateFrame("CheckButton", nil, hdr, "UICheckButtonTemplate")
+                hdr.fixedCheck:SetWidth(14); hdr.fixedCheck:SetHeight(14)
+                hdr.fixedCheck.text = hdr:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                hdr.fixedCheck.text:SetPoint("LEFT", hdr.fixedCheck, "RIGHT", 2, 0)
+                hdr.fixedCheck.text:SetText("Fixed")
+                if hdr.fixedCheck.text.SetTextColor then
+                    hdr.fixedCheck.text:SetTextColor(1, 1, 1)
+                end
+
                 hdr.sortPrio:SetScript("OnClick", function()
                     local p = this:GetParent()
                     if not p or not p.groupName or p.groupName == "" then
@@ -2267,8 +2315,12 @@ local function RefreshList()
                     end
                     this:SetChecked(true)
                     if p.sortTime then p.sortTime:SetChecked(false) end
+                    if p.fixedCheck then p.fixedCheck:SetChecked(false) end
                     DoiteAurasDB.groupSort = DoiteAurasDB.groupSort or {}
                     DoiteAurasDB.groupSort[p.groupName] = "prio"
+                    if DoiteAurasDB.groupFixed then
+                        DoiteAurasDB.groupFixed[p.groupName] = nil
+                    end
                     _G["DoiteGroup_NeedReflow"] = true
                 end)
 
@@ -2284,9 +2336,37 @@ local function RefreshList()
                     end
                     this:SetChecked(true)
                     if p.sortPrio then p.sortPrio:SetChecked(false) end
+                    if p.fixedCheck then p.fixedCheck:SetChecked(false) end
                     DoiteAurasDB.groupSort = DoiteAurasDB.groupSort or {}
                     DoiteAurasDB.groupSort[p.groupName] = "time"
+                    if DoiteAurasDB.groupFixed then
+                        DoiteAurasDB.groupFixed[p.groupName] = nil
+                    end
                     _G["DoiteGroup_NeedReflow"] = true
+                end)
+
+                hdr.fixedCheck:SetScript("OnClick", function()
+                    local p = this:GetParent()
+                    if not p or not p.groupName or p.groupName == "" then
+                        this:SetChecked(false)
+                        return
+                    end
+                    DoiteAurasDB.groupFixed = DoiteAurasDB.groupFixed or {}
+                    if this:GetChecked() then
+                        DoiteAurasDB.groupFixed[p.groupName] = true
+                        if p.sortPrio then p.sortPrio:SetChecked(false) end
+                        if p.sortTime then p.sortTime:SetChecked(false) end
+                    else
+                        DoiteAurasDB.groupFixed[p.groupName] = nil
+                    end
+                    if DoiteGroup and DoiteGroup.RequestReflow then
+                        DoiteGroup.RequestReflow()
+                    else
+                        _G["DoiteGroup_NeedReflow"] = true
+                    end
+                    if DoiteAuras_RefreshIcons then
+                        pcall(DoiteAuras_RefreshIcons)
+                    end
                 end)
 
                 hdr.sepTex = hdr:CreateTexture(nil, "ARTWORK")
@@ -2319,6 +2399,8 @@ local function RefreshList()
             -- Group sort controls (only for group headers)
             if entry.kind == "group" and hdr.groupName and hdr.groupName ~= "" then
                 local mode = DA_GetGroupSortMode(hdr.groupName)  -- "prio" or "time"
+                DoiteAurasDB.groupFixed = DoiteAurasDB.groupFixed or {}
+                local fixed = DoiteAurasDB.groupFixed[hdr.groupName] == true
 
                 local rightAnchor = hdr
                 local rightPointX = -45
@@ -2327,20 +2409,33 @@ local function RefreshList()
                     rightPointX = -30
                 end
 
+                hdr.fixedCheck:ClearAllPoints()
+                hdr.fixedCheck:SetPoint("RIGHT", rightAnchor, "LEFT", rightPointX, 0)
+
                 hdr.sortTime:ClearAllPoints()
-                hdr.sortTime:SetPoint("RIGHT", rightAnchor, "LEFT", rightPointX, 0)
+                hdr.sortTime:SetPoint("RIGHT", hdr.fixedCheck, "LEFT", -30, 0)
 
                 hdr.sortPrio:ClearAllPoints()
                 hdr.sortPrio:SetPoint("RIGHT", hdr.sortTime, "LEFT", -30, 0)
 
-                hdr.sortPrio:SetChecked(mode == "prio")
-                hdr.sortTime:SetChecked(mode == "time")
+                hdr.fixedCheck:SetChecked(fixed)
+                if fixed then
+                    hdr.sortPrio:SetChecked(false)
+                    hdr.sortTime:SetChecked(false)
+                else
+                    hdr.sortPrio:SetChecked(mode == "prio")
+                    hdr.sortTime:SetChecked(mode == "time")
+                end
 
                 hdr.sortPrio:Show()
                 hdr.sortTime:Show()
+                hdr.fixedCheck:Show()
             else
                 hdr.sortPrio:Hide()
                 hdr.sortTime:Hide()
+                if hdr.fixedCheck then
+                    hdr.fixedCheck:Hide()
+                end
             end
 
             -- Position header
@@ -3145,6 +3240,7 @@ function DoiteAuras.GetAllCandidates()
     local editKey   = _G["DoiteEdit_CurrentKey"]
     local editFrame = _G["DoiteEdit_Frame"] or _G["DoiteEditMain"] or _G["DoiteEdit"]
     local editOpen  = (editFrame and editFrame.IsShown and editFrame:IsShown() == 1)
+    local testAll   = (_G["DoiteAuras_TestAll"] == true)
 
     local n = 0
     for key, data in pairs(DoiteAurasDB.spells or {}) do
@@ -3155,6 +3251,10 @@ function DoiteAuras.GetAllCandidates()
             local wants = false
             if f then
                 wants = (f._daShouldShow == true) or (f._daSliding == true)
+            end
+          -- While testing all: force the edited key into the pool so groups can place it
+            if testAll then
+                wants = true
             end
             -- While editing: force the edited key into the pool so groups can place it
             if editOpen and editKey == key then
