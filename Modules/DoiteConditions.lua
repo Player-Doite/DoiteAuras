@@ -184,6 +184,9 @@ local function _IsKeyUnderEdit(k)
   if not k then
     return false
   end
+  if _G["DoiteAuras_TestAll"] == true then
+    return true
+  end
   local cur = _G["DoiteEdit_CurrentKey"]
   if not cur or cur ~= k then
     return false
@@ -196,6 +199,9 @@ local function _IsKeyUnderEdit(k)
 end
 
 local function _IsAnyKeyUnderEdit()
+  if _G["DoiteAuras_TestAll"] == true then
+    return true
+  end
   local cur = _G["DoiteEdit_CurrentKey"]
   if not cur then
     return false
