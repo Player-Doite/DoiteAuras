@@ -771,6 +771,14 @@ local function InCombat()
   return UnitAffectingCombat("player") == 1
 end
 
+local function InParty()
+  return (GetNumPartyMembers() or 0) > 0
+end
+
+local function InRaid()
+  return (GetNumRaidMembers() or 0) > 0
+end
+
 -- Power percent (0..100)
 local function GetPowerPercent()
   local max = UnitManaMax("player")
@@ -4675,6 +4683,23 @@ local function CheckAbilityConditions(data)
     end
   end
 
+  -- === Group state (party / raid) ===
+  local inPartyFlag = (c.inParty == true)
+  local inRaidFlag = (c.inRaid == true)
+
+  if inPartyFlag or inRaidFlag then
+    local groupOk = false
+    if inPartyFlag and InParty() then
+      groupOk = true
+    end
+    if inRaidFlag and InRaid() then
+      groupOk = true
+    end
+    if not groupOk then
+      show = false
+    end
+  end
+
   -- Cache target facts once per evaluation
   local tf = _DA_GetTargetFacts()
 
@@ -4933,6 +4958,23 @@ local function CheckItemConditions(data)
       show = false
     end
     if outCombatFlag and InCombat() then
+      show = false
+    end
+  end
+
+  -- === Group state (party / raid) ===
+  local inPartyFlag = (c.inParty == true)
+  local inRaidFlag = (c.inRaid == true)
+
+  if inPartyFlag or inRaidFlag then
+    local groupOk = false
+    if inPartyFlag and InParty() then
+      groupOk = true
+    end
+    if inRaidFlag and InRaid() then
+      groupOk = true
+    end
+    if not groupOk then
       show = false
     end
   end
@@ -5321,6 +5363,23 @@ local function CheckAuraConditions(data)
       show = false
     end
     if outCombatFlag and InCombat() then
+      show = false
+    end
+  end
+
+  -- === Group state (party / raid) ===
+  local inPartyFlag = (c.inParty == true)
+  local inRaidFlag = (c.inRaid == true)
+
+  if inPartyFlag or inRaidFlag then
+    local groupOk = false
+    if inPartyFlag and InParty() then
+      groupOk = true
+    end
+    if inRaidFlag and InRaid() then
+      groupOk = true
+    end
+    if not groupOk then
       show = false
     end
   end
@@ -6886,6 +6945,8 @@ eventFrame:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
 eventFrame:RegisterEvent("BAG_UPDATE")
 eventFrame:RegisterEvent("BAG_UPDATE_COOLDOWN")
 eventFrame:RegisterEvent("UNIT_INVENTORY_CHANGED")
+eventFrame:RegisterEvent("PARTY_MEMBERS_CHANGED")
+eventFrame:RegisterEvent("RAID_ROSTER_UPDATE")
 
 eventFrame:SetScript("OnEvent", function()
   if event == "PLAYER_ENTERING_WORLD" then
@@ -7026,5 +7087,9 @@ eventFrame:SetScript("OnEvent", function()
 
       dirty_ability = true
     end
+
+  elseif event == "PARTY_MEMBERS_CHANGED" or event == "RAID_ROSTER_UPDATE" then
+    -- Re-evaluate all conditions when party/raid membership changes
+    dirty_ability, dirty_aura = true, true
   end
 end)
