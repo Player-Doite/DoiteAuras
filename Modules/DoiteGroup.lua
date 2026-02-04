@@ -147,7 +147,7 @@ local function ComputeGroupLayout(entries, groupName)
   local growth = L.growth or "Horizontal Right"
   local limit = num(L.numAuras, 5)
   local settings = (DoiteAurasDB and DoiteAurasDB.settings)
-  local spacing = (settings and settings.spacing) or 8
+  local spacing = num(L.spacing, (settings and settings.spacing) or 8)
   local pad = baseSize + spacing
 
   -- 2) Build the pool of items that are BOTH known and WANT to be shown (conditions OR sliding) - reuse & shrink table without realloc

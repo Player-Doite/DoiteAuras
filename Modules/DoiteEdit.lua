@@ -8522,6 +8522,12 @@ function UpdateCondFrameForKey(key)
       if condFrame.numAurasDD then
         condFrame.numAurasDD:Hide()
       end
+      if condFrame.spacingLabel then
+        condFrame.spacingLabel:Hide()
+      end
+      if condFrame.spacingEdit then
+        condFrame.spacingEdit:Hide()
+      end
     else
       condFrame.leaderCB:Show()
       local leaders = BuildGroupLeaders()
@@ -8543,6 +8549,16 @@ function UpdateCondFrameForKey(key)
           UIDropDownMenu_SetSelectedValue(condFrame.numAurasDD, data.numAuras or 5)
           UIDropDownMenu_SetText(tostring(data.numAuras or 5), condFrame.numAurasDD)
         end
+        if condFrame.spacingLabel and condFrame.spacingEdit then
+          condFrame.spacingLabel:Show()
+          condFrame.spacingEdit:Show()
+          local s = data.spacing
+          if not s then
+            local settings = (DoiteAurasDB and DoiteAurasDB.settings)
+            s = (settings and settings.spacing) or 8
+          end
+          condFrame.spacingEdit:SetText(tostring(s))
+        end
       else
         if leaderKey == key then
           condFrame.leaderCB:SetChecked(true)
@@ -8560,6 +8576,16 @@ function UpdateCondFrameForKey(key)
             UIDropDownMenu_SetSelectedValue(condFrame.numAurasDD, data.numAuras or 5)
             UIDropDownMenu_SetText(tostring(data.numAuras or 5), condFrame.numAurasDD)
           end
+          if condFrame.spacingLabel and condFrame.spacingEdit then
+            condFrame.spacingLabel:Show()
+            condFrame.spacingEdit:Show()
+            local s = data.spacing
+            if not s then
+              local settings = (DoiteAurasDB and DoiteAurasDB.settings)
+              s = (settings and settings.spacing) or 8
+            end
+            condFrame.spacingEdit:SetText(tostring(s))
+          end
         else
           condFrame.leaderCB:SetChecked(false)
           condFrame.leaderCB:Enable()
@@ -8571,6 +8597,12 @@ function UpdateCondFrameForKey(key)
           end
           if condFrame.numAurasDD then
             condFrame.numAurasDD:Hide()
+          end
+          if condFrame.spacingLabel then
+            condFrame.spacingLabel:Hide()
+          end
+          if condFrame.spacingEdit then
+            condFrame.spacingEdit:Hide()
           end
         end
       end
@@ -8777,6 +8809,49 @@ function DoiteConditions_Show(key)
     end
     condFrame.numAurasDD:Hide()
 
+    -- Spacing Label + EditBox
+    condFrame.spacingLabel = condFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    condFrame.spacingLabel:SetPoint("TOPLEFT", condFrame.growthDD, "BOTTOMLEFT", 5, -8) -- Align below growth dropdown
+    condFrame.spacingLabel:SetText("Spacing")
+    condFrame.spacingLabel:Hide()
+
+    condFrame.spacingEdit = CreateFrame("EditBox", "DoiteConditions_SpacingEdit", condFrame, "InputBoxTemplate")
+    condFrame.spacingEdit:SetWidth(40)
+    condFrame.spacingEdit:SetHeight(20)
+    condFrame.spacingEdit:SetPoint("LEFT", condFrame.spacingLabel, "RIGHT", 10, 0)
+    condFrame.spacingEdit:SetAutoFocus(false)
+    condFrame.spacingEdit:SetFontObject("GameFontNormalSmall")
+    condFrame.spacingEdit:Hide()
+
+    condFrame.spacingEdit:SetScript("OnEnterPressed", function()
+      this:ClearFocus()
+      if not currentKey then
+        return
+      end
+      -- Default to 8 (or whatever default we want) if nil/invalid
+      local val = tonumber(this:GetText())
+      local d = EnsureDBEntry(currentKey)
+      d.spacing = val -- allow nil to clear/reset? or store the number
+      if not val then
+        d.spacing = nil
+      end
+      DoiteGroup.RequestReflow()
+    end)
+
+    condFrame.spacingEdit:SetScript("OnEscapePressed", function()
+      this:ClearFocus()
+      if not currentKey then
+        return
+      end
+      local d = EnsureDBEntry(currentKey)
+      local s = d.spacing
+      if not s then
+        local settings = (DoiteAurasDB and DoiteAurasDB.settings)
+        s = (settings and settings.spacing) or 8
+      end
+      this:SetText(tostring(s))
+    end)
+
     -- leaderCB click behavior
     condFrame.leaderCB:SetScript("OnClick", function(self)
       local cb = self or (condFrame and condFrame.leaderCB)
@@ -8817,6 +8892,17 @@ function DoiteConditions_Show(key)
           InitNumAurasDropdown(condFrame.numAurasDD, data)
           UIDropDownMenu_SetSelectedValue(condFrame.numAurasDD, data.numAuras or 5)
           UIDropDownMenu_SetText(tostring(data.numAuras or 5), condFrame.numAurasDD)
+        end
+
+        if condFrame.spacingLabel and condFrame.spacingEdit then
+          condFrame.spacingLabel:Show()
+          condFrame.spacingEdit:Show()
+          local s = data.spacing
+          if not s then
+            local settings = (DoiteAurasDB and DoiteAurasDB.settings)
+            s = (settings and settings.spacing) or 8
+          end
+          condFrame.spacingEdit:SetText(tostring(s))
         end
       end
 
