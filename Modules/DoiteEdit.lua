@@ -1656,19 +1656,19 @@ local function CreateConditionsUI()
   -- Default title; changed dynamically in UpdateConditionsUI for special items
   SetSeparator("item", 1, "WHEREABOUTS", true, true)
 
--- USABILITY & COOLDOWN (no "Usable")
-  condFrame.cond_item_notcd = MakeCheck("DoiteCond_Item_NotCD", "No cooldown", 0, row2_y)
-  condFrame.cond_item_oncd = MakeCheck("DoiteCond_Item_OnCD", "On cooldown", 105, row2_y)
-  condFrame.cond_item_enchant = MakeCheck("DoiteCond_Item_Enchant", "Enchanted", 210, row2_y)
-  condFrame.cond_item_enchant:Hide()
-  SetSeparator("item", 2, "USABILITY & COOLDOWN", true, true)
-
   -- COMBAT STATE
-  condFrame.cond_item_incombat = MakeCheck("DoiteCond_Item_InCombat", "In combat", 0, row3_y)
-  condFrame.cond_item_outcombat = MakeCheck("DoiteCond_Item_OutCombat", "Out of combat", 80, row3_y)
-  condFrame.cond_item_inparty = MakeCheck("DoiteCond_Item_InParty", "In party", 0, row3_y + 25)
-  condFrame.cond_item_inraid = MakeCheck("DoiteCond_Item_InRaid", "In raid", 70, row3_y + 25)
-  SetSeparator("item", 3, "COMBAT & GROUP STATE", true, true)
+  condFrame.cond_item_incombat = MakeCheck("DoiteCond_Item_InCombat", "In combat", 0, row2_y)
+  condFrame.cond_item_outcombat = MakeCheck("DoiteCond_Item_OutCombat", "Out of combat", 80, row2_y)
+  condFrame.cond_item_inparty = MakeCheck("DoiteCond_Item_InParty", "In party", 0, row2b_y)
+  condFrame.cond_item_inraid = MakeCheck("DoiteCond_Item_InRaid", "In raid", 70, row2b_y)
+  SetSeparator("item", 2, "COMBAT & GROUP STATE", true, true)
+   
+  -- USABILITY & COOLDOWN (no "Usable")
+  condFrame.cond_item_notcd = MakeCheck("DoiteCond_Item_NotCD", "No cooldown", 0, row3_y)
+  condFrame.cond_item_oncd = MakeCheck("DoiteCond_Item_OnCD", "On cooldown", 105, row3_y)
+  condFrame.cond_item_enchant = MakeCheck("DoiteCond_Item_Enchant", "Enchanted", 210, row3_y)
+  condFrame.cond_item_enchant:Hide()
+  SetSeparator("item", 3, "USABILITY & COOLDOWN", true, true)
 
   -- TARGET CONDITIONS
   condFrame.cond_item_target_help = MakeCheck("DoiteCond_Item_TargetHelp", "Target (help)", 0, row4_y)

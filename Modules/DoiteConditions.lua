@@ -772,7 +772,7 @@ local function InCombat()
 end
 
 local function InParty()
-  return (GetNumPartyMembers() or 0) > 0
+  return (GetNumPartyMembers() or 0) > 0 and (GetNumRaidMembers() or 0) == 0
 end
 
 local function InRaid()
