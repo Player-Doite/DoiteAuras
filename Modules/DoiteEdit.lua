@@ -910,14 +910,39 @@ local function SetCombatFlag(typeTable, which, enabled)
   SafeEvaluate()
 end
 
--- independent group flag toggles (inParty / inRaid)
-local function SetGroupFlag(typeTable, which, enabled)
+-- Grouping dropdown mode:
+local function _DeriveGroupingMode(t)
+  if not t then
+    return nil
+  end
+  if t.grouping ~= nil then
+    return t.grouping
+  end
+  -- legacy fallback (best effort)
+  if t.notInGroup == true then
+    return "nogroup"
+  end
+  local p = (t.inParty == true)
+  local r = (t.inRaid == true)
+  if p and r then
+    return "partyraid"
+  elseif p then
+    return "party"
+  elseif r then
+    return "raid"
+  end
+  return nil
+end
+
+local function SetGroupMode(typeTable, mode)
   if not currentKey then
     return
   end
+
   local d = EnsureDBEntry(currentKey)
   d.conditions = d.conditions or {}
   d.conditions[typeTable] = d.conditions[typeTable] or {}
+  local t = d.conditions[typeTable]
 
   -- hard separation: never allow the opposite table to exist
   if typeTable == "ability" then
@@ -931,11 +956,38 @@ local function SetGroupFlag(typeTable, which, enabled)
     d.conditions.aura = nil
   end
 
-  if which == "party" then
-    d.conditions[typeTable].inParty = enabled and true or false
-  elseif which == "raid" then
-    d.conditions[typeTable].inRaid = enabled and true or false
+  -- store canonical mode
+  if mode == nil then
+    t.grouping = nil
+  else
+    t.grouping = mode
   end
+
+  -- keep legacy fields mirrored (best effort compatibility)
+  t.notInGroup = nil
+  if mode == "nogroup" then
+    t.notInGroup = true
+    t.inParty = nil
+    t.inRaid = nil
+  elseif mode == "party" then
+    t.inParty = true
+    t.inRaid = nil
+  elseif mode == "raid" then
+    t.inParty = nil
+    t.inRaid = true
+  elseif mode == "partyraid" then
+    t.inParty = true
+    t.inRaid = true
+  elseif mode == "any" then
+    t.inParty = nil
+    t.inRaid = nil
+  else
+    t.grouping = nil
+    t.inParty = nil
+    t.inRaid = nil
+    t.notInGroup = nil
+  end
+
   UpdateCondFrameForKey(currentKey)
   SafeRefresh()
   SafeEvaluate()
@@ -1370,8 +1422,42 @@ local function CreateConditionsUI()
 
   condFrame.cond_ability_incombat = MakeCheck("DoiteCond_Ability_InCombat", "In combat", 0, row2_y)
   condFrame.cond_ability_outcombat = MakeCheck("DoiteCond_Ability_OutCombat", "Out of combat", 80, row2_y)
-  condFrame.cond_ability_inparty = MakeCheck("DoiteCond_Ability_InParty", "In party", 0, row2b_y)
-  condFrame.cond_ability_inraid = MakeCheck("DoiteCond_Ability_InRaid", "In raid", 70, row2b_y)
+
+  -- Grouping dropdown (replaces In party / In raid checkboxes)
+  do
+    local parent = _Parent()
+    condFrame.cond_ability_groupingDD = CreateFrame("Frame", "DoiteCond_Ability_GroupingDD", parent, "UIDropDownMenuTemplate")
+    condFrame.cond_ability_groupingDD:SetPoint("TOPLEFT", parent, "TOPLEFT", -15, row2b_y + 3)
+    if UIDropDownMenu_SetWidth then
+      pcall(UIDropDownMenu_SetWidth, 100, condFrame.cond_ability_groupingDD)
+    end
+
+    ClearDropdown(condFrame.cond_ability_groupingDD)
+    UIDropDownMenu_Initialize(condFrame.cond_ability_groupingDD, function(frame, level, menuList)
+      local dd = condFrame.cond_ability_groupingDD
+      local function _Add(text, value)
+        local info = UIDropDownMenu_CreateInfo()
+        info.text = text
+        info.value = value
+        info.func = function(button)
+          local v = (button and button.value) or value
+          if v == "__default" then
+            SetGroupMode("ability", nil)
+          else
+            SetGroupMode("ability", v)
+          end
+        end
+        UIDropDownMenu_AddButton(info)
+      end
+
+      _Add("Any", "any")
+      _Add("Not in group", "nogroup")
+      _Add("In party", "party")
+      _Add("In raid", "raid")
+      _Add("In party or raid", "partyraid")
+    end)
+  end
+
   SetSeparator("ability", 2, "COMBAT & GROUP STATE", true, true)
 
   condFrame.cond_ability_target_help = MakeCheck("DoiteCond_Ability_TargetHelp", "Target (help)", 0, row3_y)
@@ -1492,8 +1578,42 @@ local function CreateConditionsUI()
 
   condFrame.cond_aura_incombat = MakeCheck("DoiteCond_Aura_InCombat", "In combat", 0, row2_y)
   condFrame.cond_aura_outcombat = MakeCheck("DoiteCond_Aura_OutCombat", "Out of combat", 80, row2_y)
-  condFrame.cond_aura_inparty = MakeCheck("DoiteCond_Aura_InParty", "In party", 0, row2b_y)
-  condFrame.cond_aura_inraid = MakeCheck("DoiteCond_Aura_InRaid", "In raid", 70, row2b_y)
+
+  -- Grouping dropdown (replaces In party / In raid checkboxes)
+  do
+    local parent = _Parent()
+    condFrame.cond_aura_groupingDD = CreateFrame("Frame", "DoiteCond_Aura_GroupingDD", parent, "UIDropDownMenuTemplate")
+    condFrame.cond_aura_groupingDD:SetPoint("TOPLEFT", parent, "TOPLEFT", -15, row2b_y + 3)
+    if UIDropDownMenu_SetWidth then
+      pcall(UIDropDownMenu_SetWidth, 100, condFrame.cond_aura_groupingDD)
+    end
+
+    ClearDropdown(condFrame.cond_aura_groupingDD)
+    UIDropDownMenu_Initialize(condFrame.cond_aura_groupingDD, function(frame, level, menuList)
+      local dd = condFrame.cond_aura_groupingDD
+      local function _Add(text, value)
+        local info = UIDropDownMenu_CreateInfo()
+        info.text = text
+        info.value = value
+        info.func = function(button)
+          local v = (button and button.value) or value
+          if v == "__default" then
+            SetGroupMode("aura", nil)
+          else
+            SetGroupMode("aura", v)
+          end
+        end
+        UIDropDownMenu_AddButton(info)
+      end
+
+      _Add("Any", "any")
+      _Add("Not in group", "nogroup")
+      _Add("In party", "party")
+      _Add("In raid", "raid")
+      _Add("In party or raid", "partyraid")
+    end)
+  end
+
   SetSeparator("aura", 2, "COMBAT & GROUP STATE", true, true)
 
   condFrame.cond_aura_target_help = MakeCheck("DoiteCond_Aura_TargetHelp", "Target (help)", 0, row3_y)
@@ -1659,8 +1779,42 @@ local function CreateConditionsUI()
   -- COMBAT STATE
   condFrame.cond_item_incombat = MakeCheck("DoiteCond_Item_InCombat", "In combat", 0, row2_y)
   condFrame.cond_item_outcombat = MakeCheck("DoiteCond_Item_OutCombat", "Out of combat", 80, row2_y)
-  condFrame.cond_item_inparty = MakeCheck("DoiteCond_Item_InParty", "In party", 0, row2b_y)
-  condFrame.cond_item_inraid = MakeCheck("DoiteCond_Item_InRaid", "In raid", 70, row2b_y)
+
+  -- Grouping dropdown (replaces In party / In raid checkboxes)
+  do
+    local parent = _Parent()
+    condFrame.cond_item_groupingDD = CreateFrame("Frame", "DoiteCond_Item_GroupingDD", parent, "UIDropDownMenuTemplate")
+    condFrame.cond_item_groupingDD:SetPoint("TOPLEFT", parent, "TOPLEFT", -15, row2b_y + 5)
+    if UIDropDownMenu_SetWidth then
+      pcall(UIDropDownMenu_SetWidth, 100, condFrame.cond_item_groupingDD)
+    end
+
+    ClearDropdown(condFrame.cond_item_groupingDD)
+    UIDropDownMenu_Initialize(condFrame.cond_item_groupingDD, function(frame, level, menuList)
+      local dd = condFrame.cond_item_groupingDD
+      local function _Add(text, value)
+        local info = UIDropDownMenu_CreateInfo()
+        info.text = text
+        info.value = value
+        info.func = function(button)
+          local v = (button and button.value) or value
+          if v == "__default" then
+            SetGroupMode("item", nil)
+          else
+            SetGroupMode("item", v)
+          end
+        end
+        UIDropDownMenu_AddButton(info)
+      end
+
+      _Add("Any", "any")
+      _Add("Not in group", "nogroup")
+      _Add("In party", "party")
+      _Add("In raid", "raid")
+      _Add("In party or raid", "partyraid")
+    end)
+  end
+
   SetSeparator("item", 2, "COMBAT & GROUP STATE", true, true)
    
   -- USABILITY & COOLDOWN (no "Usable")
@@ -2286,7 +2440,7 @@ local function CreateConditionsUI()
   ClearDropdown(condFrame.cond_aura_formDD)
 
   condFrame.cond_item_formDD = CreateFrame("Frame", "DoiteCond_Item_FormDD", _Parent(), "UIDropDownMenuTemplate")
-  condFrame.cond_item_formDD:SetPoint("TOPLEFT", _Parent(), "TOPLEFT", 165, row3_y + 3)
+  condFrame.cond_item_formDD:SetPoint("TOPLEFT", _Parent(), "TOPLEFT", 165, row2_y + 3)
   if UIDropDownMenu_SetWidth then
     pcall(UIDropDownMenu_SetWidth, 90, condFrame.cond_item_formDD)
   end
@@ -2409,22 +2563,7 @@ local function CreateConditionsUI()
 
     SetCombatFlag("ability", "out", this:GetChecked())
   end)
-
-  condFrame.cond_ability_inparty:SetScript("OnClick", function()
-    if not currentKey then
-      this:SetChecked(false)
-      return
-    end
-    SetGroupFlag("ability", "party", this:GetChecked())
-  end)
-
-  condFrame.cond_ability_inraid:SetScript("OnClick", function()
-    if not currentKey then
-      this:SetChecked(false)
-      return
-    end
-    SetGroupFlag("ability", "raid", this:GetChecked())
-  end)
+  
 
   -- Item combat row (independent, at least one)
   condFrame.cond_item_incombat:SetScript("OnClick", function()
@@ -2449,22 +2588,6 @@ local function CreateConditionsUI()
       return
     end
     SetCombatFlag("item", "out", this:GetChecked())
-  end)
-
-  condFrame.cond_item_inparty:SetScript("OnClick", function()
-    if not currentKey then
-      this:SetChecked(false)
-      return
-    end
-    SetGroupFlag("item", "party", this:GetChecked())
-  end)
-
-  condFrame.cond_item_inraid:SetScript("OnClick", function()
-    if not currentKey then
-      this:SetChecked(false)
-      return
-    end
-    SetGroupFlag("item", "raid", this:GetChecked())
   end)
 
   -- Ability target row (multi-select) + target status row
@@ -3010,22 +3133,6 @@ function UpdateItemStacksForMissing()
     end
 
     SetCombatFlag("aura", "out", this:GetChecked())
-  end)
-
-  condFrame.cond_aura_inparty:SetScript("OnClick", function()
-    if not currentKey then
-      this:SetChecked(false)
-      return
-    end
-    SetGroupFlag("aura", "party", this:GetChecked())
-  end)
-
-  condFrame.cond_aura_inraid:SetScript("OnClick", function()
-    if not currentKey then
-      this:SetChecked(false)
-      return
-    end
-    SetGroupFlag("aura", "raid", this:GetChecked())
   end)
 
   -- Aura target row (Self is exclusive; Help/Harm can combine; at least one must be checked)
@@ -6100,8 +6207,9 @@ local function UpdateConditionsUI(data)
     condFrame.cond_ability_oncd:Show()
     condFrame.cond_ability_incombat:Show()
     condFrame.cond_ability_outcombat:Show()
-    condFrame.cond_ability_inparty:Show()
-    condFrame.cond_ability_inraid:Show()
+    if condFrame.cond_ability_groupingDD then
+      condFrame.cond_ability_groupingDD:Show()
+    end
     condFrame.cond_ability_target_help:Show()
     condFrame.cond_ability_target_harm:Show()
     condFrame.cond_ability_target_self:Show()
@@ -6135,8 +6243,32 @@ local function UpdateConditionsUI(data)
     end
     condFrame.cond_ability_incombat:SetChecked(inC)
     condFrame.cond_ability_outcombat:SetChecked(outC)
-    condFrame.cond_ability_inparty:SetChecked((c.ability and c.ability.inParty) == true)
-    condFrame.cond_ability_inraid:SetChecked((c.ability and c.ability.inRaid) == true)
+
+    if condFrame.cond_ability_groupingDD then
+      local gm = _DeriveGroupingMode(c.ability)
+      local txt
+      if gm == "any" then
+        txt = "Any"
+      elseif gm == "nogroup" then
+        txt = "Not in group"
+      elseif gm == "party" then
+        txt = "In party"
+      elseif gm == "raid" then
+        txt = "In raid"
+      elseif gm == "partyraid" then
+        txt = "In party or raid"
+      else
+        txt = "Grouping"
+      end
+
+      if gm == nil then
+        if UIDropDownMenu_SetSelectedValue then pcall(UIDropDownMenu_SetSelectedValue, condFrame.cond_ability_groupingDD, "__default") end
+      else
+        if UIDropDownMenu_SetSelectedValue then pcall(UIDropDownMenu_SetSelectedValue, condFrame.cond_ability_groupingDD, gm) end
+      end
+      if UIDropDownMenu_SetText then pcall(UIDropDownMenu_SetText, txt, condFrame.cond_ability_groupingDD) end
+      if _GoldifyDD then _GoldifyDD(condFrame.cond_ability_groupingDD) end
+    end
 
     -- multi-select booleans
     local ah = (c.ability and c.ability.targetHelp) == true
@@ -6440,8 +6572,9 @@ local function UpdateConditionsUI(data)
     condFrame.cond_aura_missing:Hide()
     condFrame.cond_aura_incombat:Hide()
     condFrame.cond_aura_outcombat:Hide()
-    condFrame.cond_aura_inparty:Hide()
-    condFrame.cond_aura_inraid:Hide()
+    if condFrame.cond_aura_groupingDD then
+      condFrame.cond_aura_groupingDD:Hide()
+    end
     condFrame.cond_aura_target_help:Hide()
     condFrame.cond_aura_target_harm:Hide()
     condFrame.cond_aura_onself:Hide()
@@ -6557,11 +6690,8 @@ local function UpdateConditionsUI(data)
     if condFrame.cond_item_outcombat then
       condFrame.cond_item_outcombat:Hide()
     end
-    if condFrame.cond_item_inparty then
-      condFrame.cond_item_inparty:Hide()
-    end
-    if condFrame.cond_item_inraid then
-      condFrame.cond_item_inraid:Hide()
+    if condFrame.cond_item_groupingDD then
+      condFrame.cond_item_groupingDD:Hide()
     end
     if condFrame.cond_item_target_help then
       condFrame.cond_item_target_help:Hide()
@@ -6709,18 +6839,33 @@ local ic = c.item or {}
       if not cb then
         return
       end
-      cb:Enable()
+
+      -- CheckButton/EditBox have :Enable(); UIDropDownMenuTemplate does NOT.
+      if cb.Enable then
+        cb:Enable()
+      elseif UIDropDownMenu_EnableDropDown then
+        -- treat as dropdown
+        pcall(UIDropDownMenu_EnableDropDown, cb)
+      end
+
       if cb.text and cb.text.SetTextColor then
         cb.text:SetTextColor(1, 0.82, 0)
       end
     end
+
     local function _disCheck(cb)
       if not cb then
         return
       end
-      cb:Disable()
+
+      if cb.Disable then
+        cb:Disable()
+      elseif UIDropDownMenu_DisableDropDown then
+        pcall(UIDropDownMenu_DisableDropDown, cb)
+      end
+
       if cb.text and cb.text.SetTextColor then
-        cb.text:SetTextColor(0.6, 0.6, 0.6)
+        cb.text:SetTextColor(0.5, 0.5, 0.5)
       end
     end
 
@@ -6967,8 +7112,9 @@ local ic = c.item or {}
     -- COMBAT STATE
     condFrame.cond_item_incombat:Show()
     condFrame.cond_item_outcombat:Show()
-    condFrame.cond_item_inparty:Show()
-    condFrame.cond_item_inraid:Show()
+    if condFrame.cond_item_groupingDD then
+      condFrame.cond_item_groupingDD:Show()
+    end
 
     local inC, outC
     if ic.inCombat ~= nil or ic.outCombat ~= nil then
@@ -6979,13 +7125,40 @@ local ic = c.item or {}
     end
     condFrame.cond_item_incombat:SetChecked(inC)
     condFrame.cond_item_outcombat:SetChecked(outC)
-    condFrame.cond_item_inparty:SetChecked(ic.inParty == true)
-    condFrame.cond_item_inraid:SetChecked(ic.inRaid == true)
+
+    if condFrame.cond_item_groupingDD then
+      local gm = _DeriveGroupingMode(ic)
+      local txt
+      if gm == "any" then
+        txt = "Any"
+      elseif gm == "nogroup" then
+        txt = "Not in group"
+      elseif gm == "party" then
+        txt = "In party"
+      elseif gm == "raid" then
+        txt = "In raid"
+      elseif gm == "partyraid" then
+        txt = "In party or raid"
+      else
+        txt = "Group state"
+      end
+
+      if gm ~= nil then
+        if UIDropDownMenu_SetSelectedValue then
+          pcall(UIDropDownMenu_SetSelectedValue, condFrame.cond_item_groupingDD, gm)
+        end
+      else
+      end
+
+      if UIDropDownMenu_SetText then
+        pcall(UIDropDownMenu_SetText, txt, condFrame.cond_item_groupingDD)
+      end
+      if _GoldifyDD then _GoldifyDD(condFrame.cond_item_groupingDD) end
+    end
 
     _enCheck(condFrame.cond_item_incombat)
     _enCheck(condFrame.cond_item_outcombat)
-    _enCheck(condFrame.cond_item_inparty)
-    _enCheck(condFrame.cond_item_inraid)
+    _enCheck(condFrame.cond_item_groupingDD)
 
     -- TARGET CONDITIONS
     condFrame.cond_item_target_help:Show()
@@ -7321,8 +7494,9 @@ local ic = c.item or {}
     condFrame.cond_ability_oncd:Hide()
     condFrame.cond_ability_incombat:Hide()
     condFrame.cond_ability_outcombat:Hide()
-    condFrame.cond_ability_inparty:Hide()
-    condFrame.cond_ability_inraid:Hide()
+    if condFrame.cond_ability_groupingDD then
+      condFrame.cond_ability_groupingDD:Hide()
+    end
     condFrame.cond_ability_target_help:Hide()
     condFrame.cond_ability_target_harm:Hide()
     condFrame.cond_ability_target_self:Hide()
@@ -7371,8 +7545,9 @@ local ic = c.item or {}
     condFrame.cond_aura_missing:Hide()
     condFrame.cond_aura_incombat:Hide()
     condFrame.cond_aura_outcombat:Hide()
-    condFrame.cond_aura_inparty:Hide()
-    condFrame.cond_aura_inraid:Hide()
+    if condFrame.cond_aura_groupingDD then
+      condFrame.cond_aura_groupingDD:Hide()
+    end
     condFrame.cond_aura_target_help:Hide()
     condFrame.cond_aura_target_harm:Hide()
     condFrame.cond_aura_onself:Hide()
@@ -7520,10 +7695,33 @@ local ic = c.item or {}
     end
     condFrame.cond_aura_incombat:SetChecked(aIn)
     condFrame.cond_aura_outcombat:SetChecked(aOut)
-    condFrame.cond_aura_inparty:Show()
-    condFrame.cond_aura_inraid:Show()
-    condFrame.cond_aura_inparty:SetChecked((c.aura and c.aura.inParty) == true)
-    condFrame.cond_aura_inraid:SetChecked((c.aura and c.aura.inRaid) == true)
+
+    if condFrame.cond_aura_groupingDD then
+      condFrame.cond_aura_groupingDD:Show()
+      local gm = _DeriveGroupingMode(c.aura)
+      local txt
+      if gm == "any" then
+        txt = "Any"
+      elseif gm == "nogroup" then
+        txt = "Not in group"
+      elseif gm == "party" then
+        txt = "In party"
+      elseif gm == "raid" then
+        txt = "In raid"
+      elseif gm == "partyraid" then
+        txt = "In party or raid"
+      else
+        txt = "Group state"
+      end
+
+      if gm == nil then
+        if UIDropDownMenu_SetSelectedValue then pcall(UIDropDownMenu_SetSelectedValue, condFrame.cond_aura_groupingDD, "__default") end
+      else
+        if UIDropDownMenu_SetSelectedValue then pcall(UIDropDownMenu_SetSelectedValue, condFrame.cond_aura_groupingDD, gm) end
+      end
+      if UIDropDownMenu_SetText then pcall(UIDropDownMenu_SetText, txt, condFrame.cond_aura_groupingDD) end
+      if _GoldifyDD then _GoldifyDD(condFrame.cond_aura_groupingDD) end
+    end
 
     -- target read
     local th = (c.aura and c.aura.targetHelp) and true or false
@@ -8019,8 +8217,9 @@ local ic = c.item or {}
     condFrame.cond_ability_oncd:Hide()
     condFrame.cond_ability_incombat:Hide()
     condFrame.cond_ability_outcombat:Hide()
-    condFrame.cond_ability_inparty:Hide()
-    condFrame.cond_ability_inraid:Hide()
+    if condFrame.cond_ability_groupingDD then
+      condFrame.cond_ability_groupingDD:Hide()
+    end
     condFrame.cond_ability_target_help:Hide()
     condFrame.cond_ability_target_harm:Hide()
     condFrame.cond_ability_target_self:Hide()
@@ -8109,11 +8308,8 @@ local ic = c.item or {}
     if condFrame.cond_item_outcombat then
       condFrame.cond_item_outcombat:Hide()
     end
-    if condFrame.cond_item_inparty then
-      condFrame.cond_item_inparty:Hide()
-    end
-    if condFrame.cond_item_inraid then
-      condFrame.cond_item_inraid:Hide()
+    if condFrame.cond_item_groupingDD then
+      condFrame.cond_item_groupingDD:Hide()
     end
     if condFrame.cond_item_target_help then
       condFrame.cond_item_target_help:Hide()

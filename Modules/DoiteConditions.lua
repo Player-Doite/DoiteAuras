@@ -771,12 +771,17 @@ local function InCombat()
   return UnitAffectingCombat("player") == 1
 end
 
-local function InParty()
-  return (GetNumPartyMembers() or 0) > 0 and (GetNumRaidMembers() or 0) == 0
-end
-
 local function InRaid()
   return (GetNumRaidMembers() or 0) > 0
+end
+
+local function InPartyOnly()
+  -- party, but not raid
+  return (GetNumPartyMembers() or 0) > 0 and not InRaid()
+end
+
+local function InGroup()
+  return InRaid() or (GetNumPartyMembers() or 0) > 0
 end
 
 -- Power percent (0..100)
@@ -4683,18 +4688,29 @@ local function CheckAbilityConditions(data)
     end
   end
 
-  -- === Group state (party / raid) ===
-  local inPartyFlag = (c.inParty == true)
-  local inRaidFlag = (c.inRaid == true)
+  -- === Grouping mode (c.grouping) ===
+  local grouping = c.grouping
 
-  if inPartyFlag or inRaidFlag then
-    local groupOk = false
-    if inPartyFlag and InParty() then
-      groupOk = true
+  if grouping ~= nil and grouping ~= "any" then
+    local groupOk = true
+
+    if grouping == "nogroup" then
+      groupOk = not InGroup()
+
+    elseif grouping == "party" then
+      groupOk = InPartyOnly()
+
+    elseif grouping == "raid" then
+      groupOk = InRaid()
+
+    elseif grouping == "partyraid" then
+      groupOk = InGroup()
+
+    else
+      -- unknown value: safest is "fail closed"
+      groupOk = false
     end
-    if inRaidFlag and InRaid() then
-      groupOk = true
-    end
+
     if not groupOk then
       show = false
     end
@@ -4962,18 +4978,29 @@ local function CheckItemConditions(data)
     end
   end
 
-  -- === Group state (party / raid) ===
-  local inPartyFlag = (c.inParty == true)
-  local inRaidFlag = (c.inRaid == true)
+  -- === Grouping mode (c.grouping) ===
+  local grouping = c.grouping
 
-  if inPartyFlag or inRaidFlag then
-    local groupOk = false
-    if inPartyFlag and InParty() then
-      groupOk = true
+  if grouping ~= nil and grouping ~= "any" then
+    local groupOk = true
+
+    if grouping == "nogroup" then
+      groupOk = not InGroup()
+
+    elseif grouping == "party" then
+      groupOk = InPartyOnly()
+
+    elseif grouping == "raid" then
+      groupOk = InRaid()
+
+    elseif grouping == "partyraid" then
+      groupOk = InGroup()
+
+    else
+      -- unknown value: safest is "fail closed"
+      groupOk = false
     end
-    if inRaidFlag and InRaid() then
-      groupOk = true
-    end
+
     if not groupOk then
       show = false
     end
@@ -5367,18 +5394,29 @@ local function CheckAuraConditions(data)
     end
   end
 
-  -- === Group state (party / raid) ===
-  local inPartyFlag = (c.inParty == true)
-  local inRaidFlag = (c.inRaid == true)
+  -- === Grouping mode (c.grouping) ===
+  local grouping = c.grouping
 
-  if inPartyFlag or inRaidFlag then
-    local groupOk = false
-    if inPartyFlag and InParty() then
-      groupOk = true
+  if grouping ~= nil and grouping ~= "any" then
+    local groupOk = true
+
+    if grouping == "nogroup" then
+      groupOk = not InGroup()
+
+    elseif grouping == "party" then
+      groupOk = InPartyOnly()
+
+    elseif grouping == "raid" then
+      groupOk = InRaid()
+
+    elseif grouping == "partyraid" then
+      groupOk = InGroup()
+
+    else
+      -- unknown value: safest is "fail closed"
+      groupOk = false
     end
-    if inRaidFlag and InRaid() then
-      groupOk = true
-    end
+
     if not groupOk then
       show = false
     end
