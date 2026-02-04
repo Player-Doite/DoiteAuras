@@ -96,7 +96,148 @@ local _DoiteEdit_Throttle = CreateFrame("Frame", "DoiteEditThrottle")
 _G["DoiteUI_Dragging"] = _G["DoiteUI_Dragging"] or false
 
 ---------------------------------------------------------------
--- (Grid removed by request)
+-- Grid Overlay for icon positioning (Re-implemented)
+---------------------------------------------------------------
+local _DoiteGridFrame = nil
+local _DoiteGridLines = {}
+
+-- Create the grid overlay frame
+local function _CreateGridFrame()
+  if _DoiteGridFrame then
+    return _DoiteGridFrame
+  end
+
+  local grid = CreateFrame("Frame", "DoiteGridOverlay", UIParent)
+  grid:SetAllPoints(UIParent)
+  grid:SetFrameStrata("BACKGROUND") -- Behind icons (MEDIUM)
+  grid:SetFrameLevel(1)
+  grid:EnableMouse(false)  -- Don't capture clicks
+  
+  -- Dark background overlay for contrast
+  local bg = grid:CreateTexture(nil, "BACKGROUND")
+  bg:SetAllPoints(grid)
+  bg:SetTexture(0, 0, 0, 0.7)
+  
+  grid:Hide()
+
+  -- Draw grid lines (CENTER based)
+  local function DrawGrid()
+    -- Clear existing lines
+    for _, line in ipairs(_DoiteGridLines) do
+      line:Hide()
+    end
+
+    local gridSize = 20
+    -- Use oversized dimensions to guarantee full screen coverage regardless of scale
+    local w, h = UIParent:GetWidth() * 2, UIParent:GetHeight() * 2
+    local limitW, limitH = (UIParent:GetWidth() / 2) * 1.5, (UIParent:GetHeight() / 2) * 1.5
+    local lineIdx = 0
+
+    -- Helper to get/create line
+    local function GetLine()
+        lineIdx = lineIdx + 1
+        local line = _DoiteGridLines[lineIdx]
+        if not line then
+            line = grid:CreateTexture(nil, "OVERLAY")
+            _DoiteGridLines[lineIdx] = line
+        end
+        return line
+    end
+
+    -- 1. Center Crosshair (Prominent, Fixed at 0,0)
+    local v = GetLine()
+    v:SetTexture(1, 0, 0, 0.5) -- Red Vertical
+    v:SetWidth(2)
+    v:SetHeight(h)
+    v:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    v:Show()
+
+    local hz = GetLine()
+    hz:SetTexture(1, 0, 0, 0.5) -- Red Horizontal
+    hz:SetHeight(2)
+    hz:SetWidth(w)
+    hz:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    hz:Show()
+
+    -- 2. Grid Lines (Subtle, growing from center)
+    -- Vertical lines right (+)
+    local x = gridSize
+    while x < limitW do
+      local l = GetLine()
+      l:SetTexture(1, 1, 1, 0.15)
+      l:SetWidth(1)
+      l:SetHeight(h)
+      l:SetPoint("CENTER", UIParent, "CENTER", x, 0)
+      l:Show()
+      x = x + gridSize
+    end
+    -- Vertical lines left (-)
+    x = -gridSize
+    while x > -limitW do
+      local l = GetLine()
+      l:SetTexture(1, 1, 1, 0.15)
+      l:SetWidth(1)
+      l:SetHeight(h)
+      l:SetPoint("CENTER", UIParent, "CENTER", x, 0)
+      l:Show()
+      x = x - gridSize
+    end
+
+    -- Horizontal lines up (+)
+    local y = gridSize
+    while y < limitH do
+      local l = GetLine()
+      l:SetTexture(1, 1, 1, 0.15)
+      l:SetWidth(w)
+      l:SetHeight(1)
+      l:SetPoint("CENTER", UIParent, "CENTER", 0, y)
+      l:Show()
+      y = y + gridSize
+    end
+    -- Horizontal lines down (-)
+    y = -gridSize
+    while y > -limitH do
+      local l = GetLine()
+      l:SetTexture(1, 1, 1, 0.15)
+      l:SetWidth(w)
+      l:SetHeight(1)
+      l:SetPoint("CENTER", UIParent, "CENTER", 0, y)
+      l:Show()
+      y = y - gridSize
+    end
+
+    -- Center Label
+    if not grid.label then
+      grid.label = grid:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+      grid.label:SetPoint("TOP", UIParent, "CENTER", 0, -20)
+      grid.label:SetTextColor(1, 1, 0)
+      grid.label:SetText("CENTER (0,0)")
+    end
+  end
+
+  grid.DrawGrid = DrawGrid
+  _DoiteGridFrame = grid
+  return grid
+end
+
+-- Toggle grid visibility
+function DoiteEdit_ToggleGrid()
+  local grid = _CreateGridFrame()
+  if grid:IsShown() then
+    grid:Hide()
+  else
+    grid.DrawGrid()
+    grid:Show()
+  end
+  return grid:IsShown()
+end
+_G["DoiteEdit_ToggleGrid"] = DoiteEdit_ToggleGrid
+
+-- Check if grid is shown
+function DoiteEdit_IsGridShown()
+  return _DoiteGridFrame and _DoiteGridFrame:IsShown()
+end
+_G["DoiteEdit_IsGridShown"] = DoiteEdit_IsGridShown
 
 
 
@@ -8557,6 +8698,11 @@ function DoiteConditions_Show(key)
       _G["DoiteEdit_CurrentKey"] = nil
       lastAnnouncedKey = nil
 
+      -- Auto-hide Grid if shown
+      if _G["DoiteGridOverlay"] and _G["DoiteGridOverlay"]:IsShown() then
+        _G["DoiteGridOverlay"]:Hide()
+      end
+
       -- kick a repaint so the formerly-forced icon can hide if conditions say so
       if DoiteConditions_RequestEvaluate then
         DoiteConditions_RequestEvaluate()
@@ -8589,6 +8735,24 @@ function DoiteConditions_Show(key)
     condFrame.header = condFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     condFrame.header:SetPoint("TOP", condFrame, "TOP", 0, -15)
     condFrame.header:SetText("Edit:")
+
+    -- Show Grid button (Top Right)
+    local gridBtn = CreateFrame("Button", "DoiteConditions_GridBtn", condFrame, "UIPanelButtonTemplate")
+    gridBtn:SetWidth(70)  -- Smaller
+    gridBtn:SetHeight(20)
+    gridBtn:SetPoint("TOPRIGHT", condFrame, "TOPRIGHT", -35, -14) -- Pushed down
+    gridBtn:SetText("Show Grid")
+    gridBtn:SetScript("OnClick", function()
+        DoiteEdit_ToggleGrid()
+        if DoiteEdit_IsGridShown() then
+            gridBtn:SetText("Hide Grid")
+        else
+            gridBtn:SetText("Show Grid")
+        end
+    end)
+    -- Ensure distinct Draw Layer to not hide under standard dialog art
+    gridBtn:SetFrameLevel(condFrame:GetFrameLevel() + 5)
+    condFrame.gridBtn = gridBtn
 
     condFrame.groupTitle = condFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     condFrame.groupTitle:SetPoint("TOPLEFT", condFrame, "TOPLEFT", 20, -40)
@@ -8961,6 +9125,14 @@ function DoiteConditions_Show(key)
     -- Keep slider ranges in sync with current resolution/UI scale every time the panel shows
     condFrame:SetScript("OnShow", function(self)
       _DA_ApplySliderRanges()
+
+      -- Show Grid by default when editor opens
+      if not DoiteEdit_IsGridShown() then
+        DoiteEdit_ToggleGrid()
+      end
+      if condFrame.gridBtn then
+        condFrame.gridBtn:SetText("Hide Grid")
+      end
     end)
 
     -- Initially hidden position section
@@ -9001,6 +9173,14 @@ function DoiteConditions_Show(key)
         end
       end)
     end
+  end
+
+  -- Ensure Grid is shown by default when editing starts
+  if not DoiteEdit_IsGridShown() then
+    DoiteEdit_ToggleGrid()
+  end
+  if condFrame.gridBtn then
+    condFrame.gridBtn:SetText("Hide Grid")
   end
 
   condFrame:Show()
