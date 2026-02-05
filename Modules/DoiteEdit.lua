@@ -9084,7 +9084,7 @@ function DoiteConditions_Show(key)
   if not condFrame then
     condFrame = CreateFrame("Frame", "DoiteConditionsFrame", UIParent)
     condFrame:SetWidth(355)
-    condFrame:SetHeight(450)
+    condFrame:SetHeight(470)
     if DoiteAurasFrame and DoiteAurasFrame:GetName() then
       condFrame:SetPoint("TOPLEFT", DoiteAurasFrame, "TOPRIGHT", 5, 0)
     else
@@ -9143,24 +9143,6 @@ function DoiteConditions_Show(key)
     condFrame.header:SetPoint("TOP", condFrame, "TOP", 0, -15)
     condFrame.header:SetText("Edit:")
 
-    -- Show Grid button (Top Right)
-    local gridBtn = CreateFrame("Button", "DoiteConditions_GridBtn", condFrame, "UIPanelButtonTemplate")
-    gridBtn:SetWidth(70)  -- Smaller
-    gridBtn:SetHeight(20)
-    gridBtn:SetPoint("TOPRIGHT", condFrame, "TOPRIGHT", -35, -14) -- Pushed down
-    gridBtn:SetText("Show Grid")
-    gridBtn:SetScript("OnClick", function()
-        DoiteEdit_ToggleGrid()
-        if DoiteEdit_IsGridShown() then
-            gridBtn:SetText("Hide Grid")
-        else
-            gridBtn:SetText("Show Grid")
-        end
-    end)
-    -- Ensure distinct Draw Layer to not hide under standard dialog art
-    gridBtn:SetFrameLevel(condFrame:GetFrameLevel() + 5)
-    condFrame.gridBtn = gridBtn
-
     condFrame.groupTitle = condFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     condFrame.groupTitle:SetPoint("TOPLEFT", condFrame, "TOPLEFT", 20, -40)
     condFrame.groupTitle:SetText("|cff6FA8DCGROUP & LEADER|r")
@@ -9215,7 +9197,7 @@ function DoiteConditions_Show(key)
 
     -- Spacing Label + Slider + EditBox
     condFrame.spacingLabel = condFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    condFrame.spacingLabel:SetPoint("TOPLEFT", condFrame, "TOPLEFT", 20, -128)
+    condFrame.spacingLabel:SetPoint("BOTTOMLEFT", condFrame.growthDD, "BOTTOMLEFT", 18, -15)
     condFrame.spacingLabel:SetText("Spacing")
     condFrame.spacingLabel:Hide()
 
@@ -9334,13 +9316,13 @@ function DoiteConditions_Show(key)
     end)
 
     condFrame.groupTitle2 = condFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    condFrame.groupTitle2:SetPoint("TOPLEFT", condFrame, "TOPLEFT", 20, -165)
+    condFrame.groupTitle2:SetPoint("TOPLEFT", condFrame, "TOPLEFT", 20, -155)
     condFrame.groupTitle2:SetText("|cff6FA8DCCONDITIONS & RULES|r")
 
     local sep2 = condFrame:CreateTexture(nil, "ARTWORK")
     sep2:SetHeight(1)
-    sep2:SetPoint("TOPLEFT", condFrame, "TOPLEFT", 16, -180)
-    sep2:SetPoint("TOPRIGHT", condFrame, "TOPRIGHT", -16, -180)
+    sep2:SetPoint("TOPLEFT", condFrame, "TOPLEFT", 16, -170)
+    sep2:SetPoint("TOPRIGHT", condFrame, "TOPRIGHT", -16, -170)
     sep2:SetTexture(1, 1, 1)
     if sep2.SetVertexColor then
       sep2:SetVertexColor(1, 1, 1, 0.25)
@@ -9350,7 +9332,7 @@ function DoiteConditions_Show(key)
 
     if not condFrame.condListContainer then
       local cW = condFrame:GetWidth() - 43
-      local cH = 170
+      local cH = 190
 
       local listContainer = CreateFrame("Frame", nil, condFrame)
       listContainer:SetWidth(cW)
@@ -9395,17 +9377,36 @@ function DoiteConditions_Show(key)
     CreateConditionsUI()
 
     condFrame.groupTitle3 = condFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    condFrame.groupTitle3:SetPoint("TOPLEFT", condFrame, "TOPLEFT", 20, -355)
+    condFrame.groupTitle3:SetPoint("TOPLEFT", condFrame, "TOPLEFT", 20, -375)
     condFrame.groupTitle3:SetText("|cff6FA8DCPOSITION & SIZE|r")
 
     condFrame.sep3 = condFrame:CreateTexture(nil, "ARTWORK")
     condFrame.sep3:SetHeight(1)
-    condFrame.sep3:SetPoint("TOPLEFT", condFrame, "TOPLEFT", 16, -370)
-    condFrame.sep3:SetPoint("TOPRIGHT", condFrame, "TOPRIGHT", -16, -370)
+    condFrame.sep3:SetPoint("TOPLEFT", condFrame, "TOPLEFT", 16, -390)
+    condFrame.sep3:SetPoint("TOPRIGHT", condFrame, "TOPRIGHT", -16, -390)
     condFrame.sep3:SetTexture(1, 1, 1)
     if condFrame.sep3.SetVertexColor then
       condFrame.sep3:SetVertexColor(1, 1, 1, 0.25)
     end
+	
+	-- Show Grid button
+    local gridBtn = CreateFrame("Button", "DoiteConditions_GridBtn", condFrame, "UIPanelButtonTemplate")
+    gridBtn:SetWidth(80)
+    gridBtn:SetHeight(20)
+	gridBtn:ClearAllPoints()
+    gridBtn:SetPoint("LEFT", condFrame.groupTitle3, "RIGHT", 140, 3)
+    gridBtn:SetText("Show Grid")
+    gridBtn:SetScript("OnClick", function()
+        DoiteEdit_ToggleGrid()
+        if DoiteEdit_IsGridShown() then
+            gridBtn:SetText("Hide Grid")
+        else
+            gridBtn:SetText("Show Grid")
+        end
+    end)
+    -- Ensure distinct Draw Layer to not hide under standard dialog art
+    gridBtn:SetFrameLevel(condFrame:GetFrameLevel() + 5)
+    condFrame.gridBtn = gridBtn
 
     -- Sliders helper (makes a slider + small EditBox beneath it)
     local function MakeSlider(name, text, x, y, width, minVal, maxVal, step)
@@ -9561,7 +9562,7 @@ function DoiteConditions_Show(key)
     end
 
     local baseX = 20
-    local baseY = -390
+    local baseY = -410
     local gap = 8
 
     do
