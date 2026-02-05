@@ -1085,14 +1085,39 @@ local function SetCombatFlag(typeTable, which, enabled)
   SafeEvaluate()
 end
 
--- independent group flag toggles (inParty / inRaid)
-local function SetGroupFlag(typeTable, which, enabled)
+-- Grouping dropdown mode:
+local function _DeriveGroupingMode(t)
+  if not t then
+    return nil
+  end
+  if t.grouping ~= nil then
+    return t.grouping
+  end
+  -- legacy fallback (best effort)
+  if t.notInGroup == true then
+    return "nogroup"
+  end
+  local p = (t.inParty == true)
+  local r = (t.inRaid == true)
+  if p and r then
+    return "partyraid"
+  elseif p then
+    return "party"
+  elseif r then
+    return "raid"
+  end
+  return nil
+end
+
+local function SetGroupMode(typeTable, mode)
   if not currentKey then
     return
   end
+
   local d = EnsureDBEntry(currentKey)
   d.conditions = d.conditions or {}
   d.conditions[typeTable] = d.conditions[typeTable] or {}
+  local t = d.conditions[typeTable]
 
   -- hard separation: never allow the opposite table to exist
   if typeTable == "ability" then
@@ -1106,11 +1131,38 @@ local function SetGroupFlag(typeTable, which, enabled)
     d.conditions.aura = nil
   end
 
-  if which == "party" then
-    d.conditions[typeTable].inParty = enabled and true or false
-  elseif which == "raid" then
-    d.conditions[typeTable].inRaid = enabled and true or false
+  -- store canonical mode
+  if mode == nil then
+    t.grouping = nil
+  else
+    t.grouping = mode
   end
+
+  -- keep legacy fields mirrored (best effort compatibility)
+  t.notInGroup = nil
+  if mode == "nogroup" then
+    t.notInGroup = true
+    t.inParty = nil
+    t.inRaid = nil
+  elseif mode == "party" then
+    t.inParty = true
+    t.inRaid = nil
+  elseif mode == "raid" then
+    t.inParty = nil
+    t.inRaid = true
+  elseif mode == "partyraid" then
+    t.inParty = true
+    t.inRaid = true
+  elseif mode == "any" then
+    t.inParty = nil
+    t.inRaid = nil
+  else
+    t.grouping = nil
+    t.inParty = nil
+    t.inRaid = nil
+    t.notInGroup = nil
+  end
+
   UpdateCondFrameForKey(currentKey)
   SafeRefresh()
   SafeEvaluate()
@@ -1254,6 +1306,18 @@ local function AuraCond_TitleCase(str)
     return true
   end
 
+  local function DotAwareLowerRest(rest)
+    if not rest or rest == "" then
+      return ""
+    end
+    rest = string.lower(rest)
+    -- Uppercase any letter directly after a dot
+    rest = string.gsub(rest, "%.(%a)", function(a)
+      return "." .. string.upper(a)
+    end)
+    return rest
+  end
+
   local result, first = "", true
   local word
   for word in string.gfind(str, "%S+") do
@@ -1273,15 +1337,15 @@ local function AuraCond_TitleCase(str)
     else
       -- 2) Normal title-case rules
       if first then
-        result = result .. leading .. string.upper(c) .. string.lower(rest) .. " "
+        result = result .. leading .. string.upper(c) .. DotAwareLowerRest(rest) .. " "
         first = false
       else
         if startsParen then
-          result = result .. leading .. string.upper(c) .. string.lower(rest) .. " "
+          result = result .. leading .. string.upper(c) .. DotAwareLowerRest(rest) .. " "
         elseif exceptions[lowerCore] then
           result = result .. lowerCore .. " "
         else
-          result = result .. leading .. string.upper(c) .. string.lower(rest) .. " "
+          result = result .. leading .. string.upper(c) .. DotAwareLowerRest(rest) .. " "
         end
       end
     end
@@ -1545,8 +1609,42 @@ local function CreateConditionsUI()
 
   condFrame.cond_ability_incombat = MakeCheck("DoiteCond_Ability_InCombat", "In combat", 0, row2_y)
   condFrame.cond_ability_outcombat = MakeCheck("DoiteCond_Ability_OutCombat", "Out of combat", 80, row2_y)
-  condFrame.cond_ability_inparty = MakeCheck("DoiteCond_Ability_InParty", "In party", 0, row2b_y)
-  condFrame.cond_ability_inraid = MakeCheck("DoiteCond_Ability_InRaid", "In raid", 70, row2b_y)
+
+  -- Grouping dropdown (replaces In party / In raid checkboxes)
+  do
+    local parent = _Parent()
+    condFrame.cond_ability_groupingDD = CreateFrame("Frame", "DoiteCond_Ability_GroupingDD", parent, "UIDropDownMenuTemplate")
+    condFrame.cond_ability_groupingDD:SetPoint("TOPLEFT", parent, "TOPLEFT", -15, row2b_y + 5)
+    if UIDropDownMenu_SetWidth then
+      pcall(UIDropDownMenu_SetWidth, 100, condFrame.cond_ability_groupingDD)
+    end
+
+    ClearDropdown(condFrame.cond_ability_groupingDD)
+    UIDropDownMenu_Initialize(condFrame.cond_ability_groupingDD, function(frame, level, menuList)
+      local dd = condFrame.cond_ability_groupingDD
+      local function _Add(text, value)
+        local info = UIDropDownMenu_CreateInfo()
+        info.text = text
+        info.value = value
+        info.func = function(button)
+          local v = (button and button.value) or value
+          if v == "__default" then
+            SetGroupMode("ability", nil)
+          else
+            SetGroupMode("ability", v)
+          end
+        end
+        UIDropDownMenu_AddButton(info)
+      end
+
+      _Add("Any", "any")
+      _Add("Not in group", "nogroup")
+      _Add("In party", "party")
+      _Add("In raid", "raid")
+      _Add("In party or raid", "partyraid")
+    end)
+  end
+
   SetSeparator("ability", 2, "COMBAT & GROUP STATE", true, true)
 
   condFrame.cond_ability_target_help = MakeCheck("DoiteCond_Ability_TargetHelp", "Target (help)", 0, row3_y)
@@ -1667,8 +1765,42 @@ local function CreateConditionsUI()
 
   condFrame.cond_aura_incombat = MakeCheck("DoiteCond_Aura_InCombat", "In combat", 0, row2_y)
   condFrame.cond_aura_outcombat = MakeCheck("DoiteCond_Aura_OutCombat", "Out of combat", 80, row2_y)
-  condFrame.cond_aura_inparty = MakeCheck("DoiteCond_Aura_InParty", "In party", 0, row2b_y)
-  condFrame.cond_aura_inraid = MakeCheck("DoiteCond_Aura_InRaid", "In raid", 70, row2b_y)
+
+  -- Grouping dropdown (replaces In party / In raid checkboxes)
+  do
+    local parent = _Parent()
+    condFrame.cond_aura_groupingDD = CreateFrame("Frame", "DoiteCond_Aura_GroupingDD", parent, "UIDropDownMenuTemplate")
+    condFrame.cond_aura_groupingDD:SetPoint("TOPLEFT", parent, "TOPLEFT", -15, row2b_y + 5)
+    if UIDropDownMenu_SetWidth then
+      pcall(UIDropDownMenu_SetWidth, 100, condFrame.cond_aura_groupingDD)
+    end
+
+    ClearDropdown(condFrame.cond_aura_groupingDD)
+    UIDropDownMenu_Initialize(condFrame.cond_aura_groupingDD, function(frame, level, menuList)
+      local dd = condFrame.cond_aura_groupingDD
+      local function _Add(text, value)
+        local info = UIDropDownMenu_CreateInfo()
+        info.text = text
+        info.value = value
+        info.func = function(button)
+          local v = (button and button.value) or value
+          if v == "__default" then
+            SetGroupMode("aura", nil)
+          else
+            SetGroupMode("aura", v)
+          end
+        end
+        UIDropDownMenu_AddButton(info)
+      end
+
+      _Add("Any", "any")
+      _Add("Not in group", "nogroup")
+      _Add("In party", "party")
+      _Add("In raid", "raid")
+      _Add("In party or raid", "partyraid")
+    end)
+  end
+
   SetSeparator("aura", 2, "COMBAT & GROUP STATE", true, true)
 
   condFrame.cond_aura_target_help = MakeCheck("DoiteCond_Aura_TargetHelp", "Target (help)", 0, row3_y)
@@ -1831,114 +1963,164 @@ local function CreateConditionsUI()
   -- Default title; changed dynamically in UpdateConditionsUI for special items
   SetSeparator("item", 1, "WHEREABOUTS", true, true)
 
--- USABILITY & COOLDOWN (no "Usable")
-  condFrame.cond_item_notcd = MakeCheck("DoiteCond_Item_NotCD", "No cooldown", 0, row2_y)
-  condFrame.cond_item_oncd = MakeCheck("DoiteCond_Item_OnCD", "On cooldown", 105, row2_y)
-  condFrame.cond_item_enchant = MakeCheck("DoiteCond_Item_Enchant", "Enchanted", 210, row2_y)
-  condFrame.cond_item_enchant:Hide()
-  SetSeparator("item", 2, "USABILITY & COOLDOWN", true, true)
-
   -- COMBAT STATE
-  condFrame.cond_item_incombat = MakeCheck("DoiteCond_Item_InCombat", "In combat", 0, row3_y)
-  condFrame.cond_item_outcombat = MakeCheck("DoiteCond_Item_OutCombat", "Out of combat", 80, row3_y)
-  condFrame.cond_item_inparty = MakeCheck("DoiteCond_Item_InParty", "In party", 0, row3_y + 25)
-  condFrame.cond_item_inraid = MakeCheck("DoiteCond_Item_InRaid", "In raid", 70, row3_y + 25)
-  SetSeparator("item", 3, "COMBAT & GROUP STATE", true, true)
+  condFrame.cond_item_incombat = MakeCheck("DoiteCond_Item_InCombat", "In combat", 0, row2_y)
+  condFrame.cond_item_outcombat = MakeCheck("DoiteCond_Item_OutCombat", "Out of combat", 80, row2_y)
+
+  -- Grouping dropdown (replaces In party / In raid checkboxes)
+  do
+    local parent = _Parent()
+    condFrame.cond_item_groupingDD = CreateFrame("Frame", "DoiteCond_Item_GroupingDD", parent, "UIDropDownMenuTemplate")
+    condFrame.cond_item_groupingDD:SetPoint("TOPLEFT", parent, "TOPLEFT", -15, row2b_y + 5)
+    if UIDropDownMenu_SetWidth then
+      pcall(UIDropDownMenu_SetWidth, 100, condFrame.cond_item_groupingDD)
+    end
+
+    ClearDropdown(condFrame.cond_item_groupingDD)
+    UIDropDownMenu_Initialize(condFrame.cond_item_groupingDD, function(frame, level, menuList)
+      local dd = condFrame.cond_item_groupingDD
+      local function _Add(text, value)
+        local info = UIDropDownMenu_CreateInfo()
+        info.text = text
+        info.value = value
+        info.func = function(button)
+          local v = (button and button.value) or value
+          if v == "__default" then
+            SetGroupMode("item", nil)
+          else
+            SetGroupMode("item", v)
+          end
+        end
+        UIDropDownMenu_AddButton(info)
+      end
+
+      _Add("Any", "any")
+      _Add("Not in group", "nogroup")
+      _Add("In party", "party")
+      _Add("In raid", "raid")
+      _Add("In party or raid", "partyraid")
+    end)
+  end
+
+  SetSeparator("item", 2, "COMBAT & GROUP STATE", true, true)
+   
+  -- USABILITY & COOLDOWN (no "Usable")
+  condFrame.cond_item_notcd = MakeCheck("DoiteCond_Item_NotCD", "No cooldown", 0, row3_y)
+  condFrame.cond_item_oncd = MakeCheck("DoiteCond_Item_OnCD", "On cooldown", 120, row3_y)
+  SetSeparator("item", 3, "USABILITY & COOLDOWN", true, true)
+  
+  -- ENCHANTED STATE (Only enabled for "---EQUIPPED WEAPON SLOTS---" when mode == "notcd")
+  do
+    local parent = _Parent()
+    condFrame.cond_item_enchant = CreateFrame("Frame", "DoiteCond_Item_Enchant", parent, "UIDropDownMenuTemplate")
+    condFrame.cond_item_enchant:SetPoint("TOPLEFT", parent, "TOPLEFT", -15, row4_y + 3)
+    if UIDropDownMenu_SetWidth then
+      pcall(UIDropDownMenu_SetWidth, 120, condFrame.cond_item_enchant)
+    end
+    condFrame.cond_item_enchant:Hide()
+  end
+  condFrame.cond_item_text_enchant = MakeCheck("DoiteCond_Item_TextEnchant", "Icon text: Enchant uptime remaining", 150, row4_y)
+  if condFrame.cond_item_text_enchant and condFrame.cond_item_text_enchant.text and condFrame.cond_item_text_enchant.text.SetWidth then
+    condFrame.cond_item_text_enchant.text:SetWidth(90)
+  end
+  condFrame.cond_item_text_enchant:Hide()
+  SetSeparator("item", 4, "TEMPORARY WEAPON ENCHANT", true, true)
+
 
   -- TARGET CONDITIONS
-  condFrame.cond_item_target_help = MakeCheck("DoiteCond_Item_TargetHelp", "Target (help)", 0, row4_y)
-  condFrame.cond_item_target_harm = MakeCheck("DoiteCond_Item_TargetHarm", "Target (harm)", 95, row4_y)
-  condFrame.cond_item_target_self = MakeCheck("DoiteCond_Item_TargetSelf", "Target (self)", 200, row4_y)
-  SetSeparator("item", 4, "TARGET CONDITIONS", true, true)
+  condFrame.cond_item_target_help = MakeCheck("DoiteCond_Item_TargetHelp", "Target (help)", 0, row5_y)
+  condFrame.cond_item_target_harm = MakeCheck("DoiteCond_Item_TargetHarm", "Target (harm)", 95, row5_y)
+  condFrame.cond_item_target_self = MakeCheck("DoiteCond_Item_TargetSelf", "Target (self)", 200, row5_y)
+  SetSeparator("item", 5, "TARGET CONDITIONS", true, true)
 
   -- TARGET STATUS (Item) – use row5_y so it sits near Visual Effects row for items
-  condFrame.cond_item_target_alive = MakeCheck("DoiteCond_Item_TargetAlive", "Alive", 0, row5_y)
-  condFrame.cond_item_target_dead = MakeCheck("DoiteCond_Item_TargetDead", "Dead", 70, row5_y)
-  SetSeparator("item", 5, "TARGET STATUS", true, true)
+  condFrame.cond_item_target_alive = MakeCheck("DoiteCond_Item_TargetAlive", "Alive", 0, row6_y)
+  condFrame.cond_item_target_dead = MakeCheck("DoiteCond_Item_TargetDead", "Dead", 70, row6_y)
+  SetSeparator("item", 6, "TARGET STATUS", true, true)
 
   -- VISUAL EFFECTS
-  condFrame.cond_item_glow = MakeCheck("DoiteCond_Item_Glow", "Glow", 0, row6_y)
-  condFrame.cond_item_greyscale = MakeCheck("DoiteCond_Item_Greyscale", "Grey", 70, row6_y)
-  condFrame.cond_item_text_time = MakeCheck("DoiteCond_Item_TextTime", "Icon text: Remaining", 140, row6_y)
-  SetSeparator("item", 6, "VISUAL EFFECTS", true, true)
+  condFrame.cond_item_glow = MakeCheck("DoiteCond_Item_Glow", "Glow", 0, row7_y)
+  condFrame.cond_item_greyscale = MakeCheck("DoiteCond_Item_Greyscale", "Grey", 70, row7_y)
+  condFrame.cond_item_text_time = MakeCheck("DoiteCond_Item_TextTime", "Icon text: Time remaining", 140, row7_y)
+  SetSeparator("item", 7, "VISUAL EFFECTS", true, true)
 
   -- ITEM ROW: TARGET DISTANCE & TYPE
-  SetSeparator("item", 7, "TARGET DISTANCE & TYPE", true, true)
+  SetSeparator("item", 8, "TARGET DISTANCE & TYPE", true, true)
 
   condFrame.cond_item_distanceDD = CreateFrame("Frame", "DoiteCond_Item_DistanceDD", _Parent(), "UIDropDownMenuTemplate")
-  condFrame.cond_item_distanceDD:SetPoint("TOPLEFT", _Parent(), "TOPLEFT", -15, row7_y + 3)
+  condFrame.cond_item_distanceDD:SetPoint("TOPLEFT", _Parent(), "TOPLEFT", -15, row8_y + 3)
   if UIDropDownMenu_SetWidth then
     pcall(UIDropDownMenu_SetWidth, 100, condFrame.cond_item_distanceDD)
   end
 
   condFrame.cond_item_unitTypeDD = CreateFrame("Frame", "DoiteCond_Item_UnitTypeDD", _Parent(), "UIDropDownMenuTemplate")
-  condFrame.cond_item_unitTypeDD:SetPoint("TOPLEFT", _Parent(), "TOPLEFT", 120, row7_y + 3)
+  condFrame.cond_item_unitTypeDD:SetPoint("TOPLEFT", _Parent(), "TOPLEFT", 120, row8_y + 3)
   if UIDropDownMenu_SetWidth then
     pcall(UIDropDownMenu_SetWidth, 100, condFrame.cond_item_unitTypeDD)
   end
 
   -- Quantity (Item)
-  condFrame.cond_item_text_stack = MakeCheck("DoiteCond_Item_TextStack", "Icon text", 0, row8_y)
-  condFrame.cond_item_stacks_cb = MakeCheck("DoiteCond_Item_StacksCB", "Quantity", 75, row8_y)
-  condFrame.cond_item_stacks_comp = MakeComparatorDD("DoiteCond_Item_StacksComp", 130, row8_y + 3, 50)
-  condFrame.cond_item_stacks_val = MakeSmallEdit("DoiteCond_Item_StacksVal", 225, row8_y - 2, 40)
+  condFrame.cond_item_text_stack = MakeCheck("DoiteCond_Item_TextStack", "Icon text", 0, row9_y)
+  condFrame.cond_item_stacks_cb = MakeCheck("DoiteCond_Item_StacksCB", "Quantity", 75, row9_y)
+  condFrame.cond_item_stacks_comp = MakeComparatorDD("DoiteCond_Item_StacksComp", 130, row9_y + 3, 50)
+  condFrame.cond_item_stacks_val = MakeSmallEdit("DoiteCond_Item_StacksVal", 225, row9_y - 2, 40)
   condFrame.cond_item_stacks_val_enter = _Parent():CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
   condFrame.cond_item_stacks_val_enter:SetPoint("LEFT", condFrame.cond_item_stacks_val, "RIGHT", 4, 0)
   condFrame.cond_item_stacks_val_enter:SetText("(#)")
   condFrame.cond_item_stacks_val_enter:Hide()
-  SetSeparator("item", 8, "QUANTITY", true, true)
+  SetSeparator("item", 9, "QUANTITY", true, true)
 
   -- RESOURCE (Power)
-  condFrame.cond_item_power = MakeCheck("DoiteCond_Item_PowerCB", "Power", 0, row9_y)
-  condFrame.cond_item_power_comp = MakeComparatorDD("DoiteCond_Item_PowerComp", 65, row9_y + 3, 50)
-  condFrame.cond_item_power_val = MakeSmallEdit("DoiteCond_Item_PowerVal", 160, row9_y - 2, 40)
+  condFrame.cond_item_power = MakeCheck("DoiteCond_Item_PowerCB", "Power", 0, row10_y)
+  condFrame.cond_item_power_comp = MakeComparatorDD("DoiteCond_Item_PowerComp", 65, row10_y + 3, 50)
+  condFrame.cond_item_power_val = MakeSmallEdit("DoiteCond_Item_PowerVal", 160, row10_y - 2, 40)
   condFrame.cond_item_power_val_enter = _Parent():CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
   condFrame.cond_item_power_val_enter:SetPoint("LEFT", condFrame.cond_item_power_val, "RIGHT", 4, 0)
   condFrame.cond_item_power_val_enter:SetText("(%)")
   condFrame.cond_item_power_comp:Hide()
   condFrame.cond_item_power_val:Hide()
   condFrame.cond_item_power_val_enter:Hide()
-  SetSeparator("item", 9, "RESOURCE", true, true)
+  SetSeparator("item", 10, "RESOURCE", true, true)
 
 
   -- HEALTH CONDITION
-  condFrame.cond_item_hp_my = MakeCheck("DoiteCond_Item_HP_My", "My HP", 0, row10_y)
-  condFrame.cond_item_hp_tgt = MakeCheck("DoiteCond_Item_HP_Tgt", "Target HP", 65, row10_y)
-  condFrame.cond_item_hp_comp = MakeComparatorDD("DoiteCond_Item_HP_Comp", 130, row10_y + 3, 50)
-  condFrame.cond_item_hp_val = MakeSmallEdit("DoiteCond_Item_HP_Val", 225, row10_y - 2, 40)
+  condFrame.cond_item_hp_my = MakeCheck("DoiteCond_Item_HP_My", "My HP", 0, row11_y)
+  condFrame.cond_item_hp_tgt = MakeCheck("DoiteCond_Item_HP_Tgt", "Target HP", 65, row11_y)
+  condFrame.cond_item_hp_comp = MakeComparatorDD("DoiteCond_Item_HP_Comp", 130, row11_y + 3, 50)
+  condFrame.cond_item_hp_val = MakeSmallEdit("DoiteCond_Item_HP_Val", 225, row11_y - 2, 40)
   condFrame.cond_item_hp_val_enter = _Parent():CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
   condFrame.cond_item_hp_val_enter:SetPoint("LEFT", condFrame.cond_item_hp_val, "RIGHT", 4, 0)
   condFrame.cond_item_hp_val_enter:SetText("(%)")
   condFrame.cond_item_hp_comp:Hide()
   condFrame.cond_item_hp_val:Hide()
   condFrame.cond_item_hp_val_enter:Hide()
-  SetSeparator("item", 10, "HEALTH CONDITION", true, true)
+  SetSeparator("item", 11, "HEALTH CONDITION", true, true)
 
   -- REMAINING TIME (no slider)
-  condFrame.cond_item_remaining_cb = MakeCheck("DoiteCond_Item_RemCB", "Remaining", 0, row11_y)
-  condFrame.cond_item_remaining_comp = MakeComparatorDD("DoiteCond_Item_RemComp", 80, row11_y + 3, 50)
-  condFrame.cond_item_remaining_val = MakeSmallEdit("DoiteCond_Item_RemVal", 175, row11_y - 2, 40)
+  condFrame.cond_item_remaining_cb = MakeCheck("DoiteCond_Item_RemCB", "Remaining", 0, row12_y)
+  condFrame.cond_item_remaining_comp = MakeComparatorDD("DoiteCond_Item_RemComp", 80, row12_y + 3, 50)
+  condFrame.cond_item_remaining_val = MakeSmallEdit("DoiteCond_Item_RemVal", 175, row12_y - 2, 40)
   condFrame.cond_item_remaining_val_enter = _Parent():CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
   condFrame.cond_item_remaining_val_enter:SetPoint("LEFT", condFrame.cond_item_remaining_val, "RIGHT", 4, 0)
   condFrame.cond_item_remaining_val_enter:SetText("(sec.)")
   condFrame.cond_item_remaining_comp:Hide()
   condFrame.cond_item_remaining_val:Hide()
   condFrame.cond_item_remaining_val_enter:Hide()
-  SetSeparator("item", 11, "REMAINING TIME", true, true)
+  SetSeparator("item", 12, "REMAINING TIME", true, true)
 
   -- CLASS-SPECIFIC (Combo points)
-  condFrame.cond_item_cp_cb = MakeCheck("DoiteCond_Item_CP_CB", "Combo points", 0, row12_y)
-  condFrame.cond_item_cp_comp = MakeComparatorDD("DoiteCond_Item_CP_Comp", 85, row12_y + 3, 50)
-  condFrame.cond_item_cp_val = MakeSmallEdit("DoiteCond_Item_CP_Val", 180, row12_y - 2, 40)
+  condFrame.cond_item_cp_cb = MakeCheck("DoiteCond_Item_CP_CB", "Combo points", 0, row13_y)
+  condFrame.cond_item_cp_comp = MakeComparatorDD("DoiteCond_Item_CP_Comp", 85, row13_y + 3, 50)
+  condFrame.cond_item_cp_val = MakeSmallEdit("DoiteCond_Item_CP_Val", 180, row13_y - 2, 40)
   condFrame.cond_item_cp_val_enter = _Parent():CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
   condFrame.cond_item_cp_val_enter:SetPoint("LEFT", condFrame.cond_item_cp_val, "RIGHT", 4, 0)
   condFrame.cond_item_cp_val_enter:SetText("(#)")
   condFrame.cond_item_cp_val_enter:Hide()
-  SetSeparator("item", 12, "CLASS-SPECIFIC", true, true)
+  SetSeparator("item", 13, "CLASS-SPECIFIC", true, true)
 
   -- Item: class-specific weapon / fighting-style dropdown (Shaman / Warrior / Paladin)
   condFrame.cond_item_weaponDD = CreateFrame("Frame", "DoiteCond_Item_WeaponDD", _Parent(), "UIDropDownMenuTemplate")
-  condFrame.cond_item_weaponDD:SetPoint("TOPLEFT", _Parent(), "TOPLEFT", -15, row12_y + 3)
+  condFrame.cond_item_weaponDD:SetPoint("TOPLEFT", _Parent(), "TOPLEFT", -15, row13_y + 3)
   if UIDropDownMenu_SetWidth then
     pcall(UIDropDownMenu_SetWidth, 90, condFrame.cond_item_weaponDD)
   end
@@ -1947,14 +2129,14 @@ local function CreateConditionsUI()
 
   -- Item: class-specific note for classes without combo points
   condFrame.cond_item_class_note = _Parent():CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-  condFrame.cond_item_class_note:SetPoint("TOPLEFT", _Parent(), "TOPLEFT", 0, row12_y)
+  condFrame.cond_item_class_note:SetPoint("TOPLEFT", _Parent(), "TOPLEFT", 0, row13_y)
   condFrame.cond_item_class_note:SetTextColor(1, 0.82, 0)
   condFrame.cond_item_class_note:SetText("No class-specific option added for your class.")
   condFrame.cond_item_class_note:Hide()
 
   -- Item: dynamic Aura Conditions section
-  local itemAuraBaseY = row13_y
-  SetSeparator("item", 13, "EXTRA: ABILITY, BUFF, DEBUFF & TALENT CONDITIONS", true, true)
+  local itemAuraBaseY = row14_y
+  SetSeparator("item", 14, "EXTRA: ABILITY, BUFF, DEBUFF & TALENT CONDITIONS", true, true)
   condFrame.itemAuraAnchor = CreateFrame("Frame", nil, _Parent())
   condFrame.itemAuraAnchor:SetPoint("TOPLEFT", _Parent(), "TOPLEFT", 0, itemAuraBaseY)
   condFrame.itemAuraAnchor:SetPoint("TOPRIGHT", _Parent(), "TOPRIGHT", 0, itemAuraBaseY)
@@ -2461,7 +2643,7 @@ local function CreateConditionsUI()
   ClearDropdown(condFrame.cond_aura_formDD)
 
   condFrame.cond_item_formDD = CreateFrame("Frame", "DoiteCond_Item_FormDD", _Parent(), "UIDropDownMenuTemplate")
-  condFrame.cond_item_formDD:SetPoint("TOPLEFT", _Parent(), "TOPLEFT", 165, row3_y + 3)
+  condFrame.cond_item_formDD:SetPoint("TOPLEFT", _Parent(), "TOPLEFT", 165, row2_y + 3)
   if UIDropDownMenu_SetWidth then
     pcall(UIDropDownMenu_SetWidth, 90, condFrame.cond_item_formDD)
   end
@@ -2536,8 +2718,78 @@ local function CreateConditionsUI()
     end
   end)
 
+  -- Item: Enchanted state dropdown
   if condFrame.cond_item_enchant then
-    condFrame.cond_item_enchant:SetScript("OnClick", function()
+    ClearDropdown(condFrame.cond_item_enchant)
+
+    UIDropDownMenu_Initialize(condFrame.cond_item_enchant, function(frame, level, menuList)
+      local function _Add(text, value)
+        local info = UIDropDownMenu_CreateInfo()
+        info.text = text
+        info.value = value
+        info.func = function(button)
+          if not currentKey then
+            return
+          end
+
+          local d = EnsureDBEntry(currentKey)
+          d.conditions = d.conditions or {}
+          d.conditions.item = d.conditions.item or {}
+          local ic = d.conditions.item
+
+          local v = (button and button.value) or value
+
+          if v == "true" then
+            ic.enchant = true
+          elseif v == "false" then
+            ic.enchant = false
+          else
+            -- "any" or anything else
+            ic.enchant = nil
+          end
+
+          -- Update dropdown UI immediately so selection is visible even before refresh repaints
+          if condFrame and condFrame.cond_item_enchant then
+            local dd = condFrame.cond_item_enchant
+            local txt = "Enchanted state"
+            local sel = nil
+
+            if ic.enchant == true then
+              txt = "Enchanted"
+              sel = "true"
+            elseif ic.enchant == false then
+              txt = "Not enchanted"
+              sel = "false"
+            else
+              txt = "Enchanted state"
+              sel = nil
+            end
+
+            if UIDropDownMenu_SetSelectedValue then
+              pcall(UIDropDownMenu_SetSelectedValue, dd, sel)
+            end
+            if UIDropDownMenu_SetText then
+              pcall(UIDropDownMenu_SetText, txt, dd)
+            end
+          end
+
+          UpdateCondFrameForKey(currentKey)
+          SafeRefresh()
+          SafeEvaluate()
+        end
+
+        UIDropDownMenu_AddButton(info)
+      end
+
+      _Add("Any", "any")
+      _Add("Enchanted", "true")
+      _Add("Not enchanted", "false")
+    end)
+  end
+
+  -- Item: Icon text: Enchant uptime remaining
+  if condFrame.cond_item_text_enchant then
+    condFrame.cond_item_text_enchant:SetScript("OnClick", function()
       if not currentKey then
         this:SetChecked(false)
         return
@@ -2546,9 +2798,13 @@ local function CreateConditionsUI()
       local d = EnsureDBEntry(currentKey)
       d.conditions = d.conditions or {}
       d.conditions.item = d.conditions.item or {}
+      local ic = d.conditions.item
 
-      -- boolean flag; UI enabling/auto-clear is handled in UpdateCondFrameForKey
-      d.conditions.item.enchant = this:GetChecked() and true or false
+      if this:GetChecked() then
+        ic.textTimeRemaining = true
+      else
+        ic.textTimeRemaining = nil
+      end
 
       UpdateCondFrameForKey(currentKey)
       SafeRefresh()
@@ -2584,22 +2840,7 @@ local function CreateConditionsUI()
 
     SetCombatFlag("ability", "out", this:GetChecked())
   end)
-
-  condFrame.cond_ability_inparty:SetScript("OnClick", function()
-    if not currentKey then
-      this:SetChecked(false)
-      return
-    end
-    SetGroupFlag("ability", "party", this:GetChecked())
-  end)
-
-  condFrame.cond_ability_inraid:SetScript("OnClick", function()
-    if not currentKey then
-      this:SetChecked(false)
-      return
-    end
-    SetGroupFlag("ability", "raid", this:GetChecked())
-  end)
+  
 
   -- Item combat row (independent, at least one)
   condFrame.cond_item_incombat:SetScript("OnClick", function()
@@ -2624,22 +2865,6 @@ local function CreateConditionsUI()
       return
     end
     SetCombatFlag("item", "out", this:GetChecked())
-  end)
-
-  condFrame.cond_item_inparty:SetScript("OnClick", function()
-    if not currentKey then
-      this:SetChecked(false)
-      return
-    end
-    SetGroupFlag("item", "party", this:GetChecked())
-  end)
-
-  condFrame.cond_item_inraid:SetScript("OnClick", function()
-    if not currentKey then
-      this:SetChecked(false)
-      return
-    end
-    SetGroupFlag("item", "raid", this:GetChecked())
   end)
 
   -- Ability target row (multi-select) + target status row
@@ -3185,22 +3410,6 @@ function UpdateItemStacksForMissing()
     end
 
     SetCombatFlag("aura", "out", this:GetChecked())
-  end)
-
-  condFrame.cond_aura_inparty:SetScript("OnClick", function()
-    if not currentKey then
-      this:SetChecked(false)
-      return
-    end
-    SetGroupFlag("aura", "party", this:GetChecked())
-  end)
-
-  condFrame.cond_aura_inraid:SetScript("OnClick", function()
-    if not currentKey then
-      this:SetChecked(false)
-      return
-    end
-    SetGroupFlag("aura", "raid", this:GetChecked())
   end)
 
   -- Aura target row (Self is exclusive; Help/Harm can combine; at least one must be checked)
@@ -5012,6 +5221,9 @@ function UpdateItemStacksForMissing()
   if condFrame.cond_item_enchant then
     condFrame.cond_item_enchant:Hide()
   end
+  if condFrame.cond_item_text_enchant then
+    condFrame.cond_item_text_enchant:Hide()
+  end
   condFrame.cond_item_incombat:Hide()
   condFrame.cond_item_outcombat:Hide()
   condFrame.cond_item_target_help:Hide()
@@ -5819,7 +6031,7 @@ do
       return
     end
 
-    -- Remember if this entry carried parentheses; only then allow a logic reset (your "NOT affecting parentheses" rule).
+    -- Remember if this entry carried parentheses; only then allow a logic reset ("NOT affecting parentheses" rule).
     local deletedEntry = list[idx]
     local hadParens = deletedEntry and (deletedEntry.parenOpen or deletedEntry.parenClose)
 
@@ -6275,8 +6487,9 @@ local function UpdateConditionsUI(data)
     condFrame.cond_ability_oncd:Show()
     condFrame.cond_ability_incombat:Show()
     condFrame.cond_ability_outcombat:Show()
-    condFrame.cond_ability_inparty:Show()
-    condFrame.cond_ability_inraid:Show()
+    if condFrame.cond_ability_groupingDD then
+      condFrame.cond_ability_groupingDD:Show()
+    end
     condFrame.cond_ability_target_help:Show()
     condFrame.cond_ability_target_harm:Show()
     condFrame.cond_ability_target_self:Show()
@@ -6310,8 +6523,32 @@ local function UpdateConditionsUI(data)
     end
     condFrame.cond_ability_incombat:SetChecked(inC)
     condFrame.cond_ability_outcombat:SetChecked(outC)
-    condFrame.cond_ability_inparty:SetChecked((c.ability and c.ability.inParty) == true)
-    condFrame.cond_ability_inraid:SetChecked((c.ability and c.ability.inRaid) == true)
+
+    if condFrame.cond_ability_groupingDD then
+      local gm = _DeriveGroupingMode(c.ability)
+      local txt
+      if gm == "any" then
+        txt = "Any"
+      elseif gm == "nogroup" then
+        txt = "Not in group"
+      elseif gm == "party" then
+        txt = "In party"
+      elseif gm == "raid" then
+        txt = "In raid"
+      elseif gm == "partyraid" then
+        txt = "In party or raid"
+      else
+        txt = "Group state"
+      end
+
+      if gm == nil then
+        if UIDropDownMenu_SetSelectedValue then pcall(UIDropDownMenu_SetSelectedValue, condFrame.cond_ability_groupingDD, "__default") end
+      else
+        if UIDropDownMenu_SetSelectedValue then pcall(UIDropDownMenu_SetSelectedValue, condFrame.cond_ability_groupingDD, gm) end
+      end
+      if UIDropDownMenu_SetText then pcall(UIDropDownMenu_SetText, txt, condFrame.cond_ability_groupingDD) end
+      if _GoldifyDD then _GoldifyDD(condFrame.cond_ability_groupingDD) end
+    end
 
     -- multi-select booleans
     local ah = (c.ability and c.ability.targetHelp) == true
@@ -6615,8 +6852,9 @@ local function UpdateConditionsUI(data)
     condFrame.cond_aura_missing:Hide()
     condFrame.cond_aura_incombat:Hide()
     condFrame.cond_aura_outcombat:Hide()
-    condFrame.cond_aura_inparty:Hide()
-    condFrame.cond_aura_inraid:Hide()
+    if condFrame.cond_aura_groupingDD then
+      condFrame.cond_aura_groupingDD:Hide()
+    end
     condFrame.cond_aura_target_help:Hide()
     condFrame.cond_aura_target_harm:Hide()
     condFrame.cond_aura_onself:Hide()
@@ -6732,11 +6970,8 @@ local function UpdateConditionsUI(data)
     if condFrame.cond_item_outcombat then
       condFrame.cond_item_outcombat:Hide()
     end
-    if condFrame.cond_item_inparty then
-      condFrame.cond_item_inparty:Hide()
-    end
-    if condFrame.cond_item_inraid then
-      condFrame.cond_item_inraid:Hide()
+    if condFrame.cond_item_groupingDD then
+      condFrame.cond_item_groupingDD:Hide()
     end
     if condFrame.cond_item_target_help then
       condFrame.cond_item_target_help:Hide()
@@ -6755,6 +6990,12 @@ local function UpdateConditionsUI(data)
     end
     if condFrame.cond_item_text_time then
       condFrame.cond_item_text_time:Hide()
+    end
+    if condFrame.cond_item_enchant then
+      condFrame.cond_item_enchant:Hide()
+    end
+    if condFrame.cond_item_text_enchant then
+      condFrame.cond_item_text_enchant:Hide()
     end
     if condFrame.cond_item_power then
       condFrame.cond_item_power:Hide()
@@ -6884,18 +7125,33 @@ local ic = c.item or {}
       if not cb then
         return
       end
-      cb:Enable()
+
+      -- CheckButton/EditBox have :Enable(); UIDropDownMenuTemplate does NOT.
+      if cb.Enable then
+        cb:Enable()
+      elseif UIDropDownMenu_EnableDropDown then
+        -- treat as dropdown
+        pcall(UIDropDownMenu_EnableDropDown, cb)
+      end
+
       if cb.text and cb.text.SetTextColor then
         cb.text:SetTextColor(1, 0.82, 0)
       end
     end
+
     local function _disCheck(cb)
       if not cb then
         return
       end
-      cb:Disable()
+
+      if cb.Disable then
+        cb:Disable()
+      elseif UIDropDownMenu_DisableDropDown then
+        pcall(UIDropDownMenu_DisableDropDown, cb)
+      end
+
       if cb.text and cb.text.SetTextColor then
-        cb.text:SetTextColor(0.6, 0.6, 0.6)
+        cb.text:SetTextColor(0.5, 0.5, 0.5)
       end
     end
 
@@ -6904,20 +7160,28 @@ local ic = c.item or {}
 	local isTrinketSlots = (dispName == "---EQUIPPED TRINKET SLOTS---")
 	local isWeaponSlots = (dispName == "---EQUIPPED WEAPON SLOTS---")
 
-	-- Swap "Quantity" -> "Stacks" only for the synthetic weapon-slot entry (no DB entries)
+	-- Swap "Quantity" -> "Stacks" only for weapon-slot synthetic entry WHEN mode=="notcd".
 	condFrame._item_qty_cb_default = condFrame._item_qty_cb_default or "Quantity"
 	condFrame._item_qty_sep_default = condFrame._item_qty_sep_default or "QUANTITY"
 
-	if isWeaponSlots then
+	-- mode is needed HERE (this block runs before the later mode-local)
+	local _qtyMode = ic.mode or "notcd"
+	if _qtyMode ~= "notcd" and _qtyMode ~= "oncd" then
+	  _qtyMode = "notcd"
+	end
+
+	local useStacks = (isWeaponSlots and (_qtyMode == "notcd")) and true or false
+
+	if useStacks then
 	  if condFrame.cond_item_stacks_cb and condFrame.cond_item_stacks_cb.text and condFrame.cond_item_stacks_cb.text.SetText then
 		condFrame.cond_item_stacks_cb.text:SetText("Stacks")
 	  end
-	  SetSeparator("item", 8, "TEMPORARY ENCHANTMENT STACKS", true, true)
+	  SetSeparator("item", 9, "STACKS (TEMPORARY WEAPON ENCHANT)", true, true)
 	else
 	  if condFrame.cond_item_stacks_cb and condFrame.cond_item_stacks_cb.text and condFrame.cond_item_stacks_cb.text.SetText then
 		condFrame.cond_item_stacks_cb.text:SetText(condFrame._item_qty_cb_default)
 	  end
-	  SetSeparator("item", 8, condFrame._item_qty_sep_default, true, true)
+	  SetSeparator("item", 9, condFrame._item_qty_sep_default, true, true)
 	end
 
 	local isMissing = false
@@ -7074,25 +7338,11 @@ local ic = c.item or {}
     -- USABILITY & COOLDOWN
     condFrame.cond_item_notcd:Show()
     condFrame.cond_item_oncd:Show()
-    if condFrame.cond_item_enchant then
-      if isWeaponSlots then
-        condFrame.cond_item_enchant:Show()
-      else
-        condFrame.cond_item_enchant:SetChecked(false)
-        condFrame.cond_item_enchant:Hide()
-      end
-    end
 
     _enCheck(condFrame.cond_item_notcd)
     _enCheck(condFrame.cond_item_oncd)
 
-    -- MIGRATION: old exclusive mode "enchant" -> notcd + boolean enchant=true
-    if ic.mode == "enchant" then
-      ic.mode = "notcd"
-      ic.enchant = true
-    end
-
-    -- "enchant" mode is no longer valid; weapon slots still only use notcd/oncd mode
+    -- mode (must be defined BEFORE any mode-based UI logic)
     local mode = ic.mode or "notcd"
     if mode ~= "notcd" and mode ~= "oncd" then
       mode = "notcd"
@@ -7101,30 +7351,77 @@ local ic = c.item or {}
     condFrame.cond_item_notcd:SetChecked(mode == "notcd")
     condFrame.cond_item_oncd:SetChecked(mode == "oncd")
 
-    -- Enchanted is a boolean and only meaningful for equipped weapon slots UI
-    if condFrame.cond_item_enchant and isWeaponSlots then
-      -- allowed only if: not missing, mode==notcd, and one of the relevant item-text/stack toggles is enabled
-      local allowEnchant = (not isMissing) and (mode == "notcd") and
-          ((ic.textTimeRemaining == true) or (ic.textStackCounter == true) or (ic.stacksEnabled == true))
+    -- Enchanted state dropdown: Enabled ONLY for weapon slots + notcd + not missing. Disabled elsewhere, and clears ic.enchant when disabled.
+    if condFrame.cond_item_enchant then
+      condFrame.cond_item_enchant:Show()
 
+      local allowEnchant = (not isMissing) and isWeaponSlots and (mode == "notcd")
       if allowEnchant then
         _enCheck(condFrame.cond_item_enchant)
-        condFrame.cond_item_enchant:SetChecked(ic.enchant == true)
+
+        local txt = "Enchanted state"
+        if ic.enchant == true then
+          txt = "Enchanted"
+          if UIDropDownMenu_SetSelectedValue then
+            pcall(UIDropDownMenu_SetSelectedValue, condFrame.cond_item_enchant, "true")
+          end
+        elseif ic.enchant == false then
+          txt = "Not enchanted"
+          if UIDropDownMenu_SetSelectedValue then
+            pcall(UIDropDownMenu_SetSelectedValue, condFrame.cond_item_enchant, "false")
+          end
+        else
+		-- nil => placeholder; clear selected value to avoid stale selection
+          if UIDropDownMenu_SetSelectedValue then
+            pcall(UIDropDownMenu_SetSelectedValue, condFrame.cond_item_enchant, nil)
+          end
+        end
+
+        if UIDropDownMenu_SetText then
+          pcall(UIDropDownMenu_SetText, txt, condFrame.cond_item_enchant)
+        end
+        if _GoldifyDD then
+          _GoldifyDD(condFrame.cond_item_enchant)
+        end
       else
-        -- auto-clear and lock
-        if ic.enchant then
+        -- Not allowed (including mode=="oncd" or non-weapon-slot items)
+        if ic.enchant ~= nil then
           ic.enchant = nil
         end
-        condFrame.cond_item_enchant:SetChecked(false)
+
         _disCheck(condFrame.cond_item_enchant)
+        if UIDropDownMenu_SetText then
+          pcall(UIDropDownMenu_SetText, "Enchanted state", condFrame.cond_item_enchant)
+        end
+        if _GreyifyDD then
+          _GreyifyDD(condFrame.cond_item_enchant)
+        end
       end
-    elseif condFrame.cond_item_enchant then
-      -- non-weapon slots: always hidden + cleared
-      if ic.enchant then
-        ic.enchant = nil
+    end
+
+    -- Icon text: Enchant uptime remaining. Enabled ONLY for weapon slots + notcd + not missing, AND only when enchanted-state is not explicitly "Not enchanted". If "Not enchanted" is selected, force OFF + disable + clear DB entry (cannot show uptime if not enchanted).
+    if condFrame.cond_item_text_enchant then
+      condFrame.cond_item_text_enchant:Show()
+
+      local allowEnchantText = (not isMissing) and isWeaponSlots and (mode == "notcd")
+
+      -- extra rule: "Not enchanted" disables this checkbox and clears its DB entry
+      if allowEnchantText and (ic.enchant == false) then
+        if ic.textTimeRemaining ~= nil then
+          ic.textTimeRemaining = nil
+        end
+        condFrame.cond_item_text_enchant:SetChecked(false)
+        _disCheck(condFrame.cond_item_text_enchant)
+
+      elseif allowEnchantText then
+        _enCheck(condFrame.cond_item_text_enchant)
+        condFrame.cond_item_text_enchant:SetChecked(ic.textTimeRemaining == true)
+
+      else
+        -- opposite mode / non-weapon items: forced OFF + disabled (but do NOT clear DB)
+        condFrame.cond_item_text_enchant:SetChecked(false)
+        _disCheck(condFrame.cond_item_text_enchant)
       end
-      condFrame.cond_item_enchant:SetChecked(false)
-      condFrame.cond_item_enchant:Hide()
     end
 
     if isMissing then
@@ -7133,17 +7430,31 @@ local ic = c.item or {}
       _disCheck(condFrame.cond_item_notcd)
       _disCheck(condFrame.cond_item_oncd)
 
-      if condFrame.cond_item_enchant and isWeaponSlots then
-        condFrame.cond_item_enchant:SetChecked(false)
+      if condFrame.cond_item_enchant then
+        if ic.enchant ~= nil then
+          ic.enchant = nil
+        end
         _disCheck(condFrame.cond_item_enchant)
+        if UIDropDownMenu_SetText then
+          pcall(UIDropDownMenu_SetText, "Enchanted state", condFrame.cond_item_enchant)
+        end
+        if _GreyifyDD then
+          _GreyifyDD(condFrame.cond_item_enchant)
+        end
+      end
+
+      if condFrame.cond_item_text_enchant then
+        condFrame.cond_item_text_enchant:SetChecked(false)
+        _disCheck(condFrame.cond_item_text_enchant)
       end
     end
 
     -- COMBAT STATE
     condFrame.cond_item_incombat:Show()
     condFrame.cond_item_outcombat:Show()
-    condFrame.cond_item_inparty:Show()
-    condFrame.cond_item_inraid:Show()
+    if condFrame.cond_item_groupingDD then
+      condFrame.cond_item_groupingDD:Show()
+    end
 
     local inC, outC
     if ic.inCombat ~= nil or ic.outCombat ~= nil then
@@ -7154,13 +7465,40 @@ local ic = c.item or {}
     end
     condFrame.cond_item_incombat:SetChecked(inC)
     condFrame.cond_item_outcombat:SetChecked(outC)
-    condFrame.cond_item_inparty:SetChecked(ic.inParty == true)
-    condFrame.cond_item_inraid:SetChecked(ic.inRaid == true)
+
+    if condFrame.cond_item_groupingDD then
+      local gm = _DeriveGroupingMode(ic)
+      local txt
+      if gm == "any" then
+        txt = "Any"
+      elseif gm == "nogroup" then
+        txt = "Not in group"
+      elseif gm == "party" then
+        txt = "In party"
+      elseif gm == "raid" then
+        txt = "In raid"
+      elseif gm == "partyraid" then
+        txt = "In party or raid"
+      else
+        txt = "Group state"
+      end
+
+      if gm ~= nil then
+        if UIDropDownMenu_SetSelectedValue then
+          pcall(UIDropDownMenu_SetSelectedValue, condFrame.cond_item_groupingDD, gm)
+        end
+      else
+      end
+
+      if UIDropDownMenu_SetText then
+        pcall(UIDropDownMenu_SetText, txt, condFrame.cond_item_groupingDD)
+      end
+      if _GoldifyDD then _GoldifyDD(condFrame.cond_item_groupingDD) end
+    end
 
     _enCheck(condFrame.cond_item_incombat)
     _enCheck(condFrame.cond_item_outcombat)
-    _enCheck(condFrame.cond_item_inparty)
-    _enCheck(condFrame.cond_item_inraid)
+    _enCheck(condFrame.cond_item_groupingDD)
 
     -- TARGET CONDITIONS
     condFrame.cond_item_target_help:Show()
@@ -7187,40 +7525,34 @@ local ic = c.item or {}
     condFrame.cond_item_glow:SetChecked(ic.glow == true)
     condFrame.cond_item_greyscale:SetChecked(ic.greyscale == true)
 
-    -- Label changes ONLY for equipped weapon slots when mode is "notcd"
+    -- Keep item text-time label constant
     do
-      local lbl = "Icon text: Remaining"
-      if isWeaponSlots and (mode == "notcd" or mode == "enchant") then
-        lbl = "Icon text: Enchant uptime"
-      end
+      local lbl = "Icon text: Time remaining"
       if condFrame.cond_item_text_time and condFrame.cond_item_text_time.text
           and condFrame.cond_item_text_time.text.SetText then
         condFrame.cond_item_text_time.text:SetText(lbl)
       end
     end
 
-    -- Default/original behavior:
-    --  - Non-weapon items: only usable on "oncd"
-    --  - Weapon slots: usable on "oncd" (Remaining) AND on "notcd" (Enchant time)
-    if isMissing then
-      if ic.textTimeRemaining then
-        ic.textTimeRemaining = false
-      end
-      condFrame.cond_item_text_time:SetChecked(false)
-      _disCheck(condFrame.cond_item_text_time)
-    else
-      if mode == "oncd" or (isWeaponSlots and (mode == "notcd" or mode == "enchant")) then
+    -- Icon text: Time remaining (shared DB key: ic.textTimeRemaining)
+
+    do
+      local allowTime = (not isMissing) and (mode == "oncd")
+
+      if allowTime then
         _enCheck(condFrame.cond_item_text_time)
         condFrame.cond_item_text_time:SetChecked(ic.textTimeRemaining == true)
       else
-        if ic.textTimeRemaining then
-          ic.textTimeRemaining = false
-        end
         condFrame.cond_item_text_time:SetChecked(false)
         _disCheck(condFrame.cond_item_text_time)
+
+        if not (isWeaponSlots and (mode == "notcd")) then
+          if ic.textTimeRemaining ~= nil then
+            ic.textTimeRemaining = nil
+          end
+        end
       end
     end
-
 
     -- ITEM STACKS row (Item stacks + text stack counter)
     do
@@ -7353,12 +7685,12 @@ local ic = c.item or {}
       local sepTitle = "REMAINING TIME"
       if isWeaponSlots then
         if mode == "notcd" then
-          sepTitle = "REMAINING TIME (TEMPORARY ENCHANT)"
+          sepTitle = "REMAINING TIME (TEMPORARY WEAPON ENCHANT)"
         elseif mode == "oncd" then
-          sepTitle = "REMAINING TIME (WEAPON WEAPON COOLDOWN)"
+          sepTitle = "REMAINING TIME"
         end
       end
-      SetSeparator("item", 11, sepTitle, true, true)
+      SetSeparator("item", 12, sepTitle, true, true)
     end
     condFrame.cond_item_remaining_cb:Show()
 	if (not isMissing) and (mode == "oncd" or (isWeaponSlots and mode == "notcd")) then
@@ -7496,8 +7828,9 @@ local ic = c.item or {}
     condFrame.cond_ability_oncd:Hide()
     condFrame.cond_ability_incombat:Hide()
     condFrame.cond_ability_outcombat:Hide()
-    condFrame.cond_ability_inparty:Hide()
-    condFrame.cond_ability_inraid:Hide()
+    if condFrame.cond_ability_groupingDD then
+      condFrame.cond_ability_groupingDD:Hide()
+    end
     condFrame.cond_ability_target_help:Hide()
     condFrame.cond_ability_target_harm:Hide()
     condFrame.cond_ability_target_self:Hide()
@@ -7546,8 +7879,9 @@ local ic = c.item or {}
     condFrame.cond_aura_missing:Hide()
     condFrame.cond_aura_incombat:Hide()
     condFrame.cond_aura_outcombat:Hide()
-    condFrame.cond_aura_inparty:Hide()
-    condFrame.cond_aura_inraid:Hide()
+    if condFrame.cond_aura_groupingDD then
+      condFrame.cond_aura_groupingDD:Hide()
+    end
     condFrame.cond_aura_target_help:Hide()
     condFrame.cond_aura_target_harm:Hide()
     condFrame.cond_aura_onself:Hide()
@@ -7695,10 +8029,33 @@ local ic = c.item or {}
     end
     condFrame.cond_aura_incombat:SetChecked(aIn)
     condFrame.cond_aura_outcombat:SetChecked(aOut)
-    condFrame.cond_aura_inparty:Show()
-    condFrame.cond_aura_inraid:Show()
-    condFrame.cond_aura_inparty:SetChecked((c.aura and c.aura.inParty) == true)
-    condFrame.cond_aura_inraid:SetChecked((c.aura and c.aura.inRaid) == true)
+
+    if condFrame.cond_aura_groupingDD then
+      condFrame.cond_aura_groupingDD:Show()
+      local gm = _DeriveGroupingMode(c.aura)
+      local txt
+      if gm == "any" then
+        txt = "Any"
+      elseif gm == "nogroup" then
+        txt = "Not in group"
+      elseif gm == "party" then
+        txt = "In party"
+      elseif gm == "raid" then
+        txt = "In raid"
+      elseif gm == "partyraid" then
+        txt = "In party or raid"
+      else
+        txt = "Group state"
+      end
+
+      if gm == nil then
+        if UIDropDownMenu_SetSelectedValue then pcall(UIDropDownMenu_SetSelectedValue, condFrame.cond_aura_groupingDD, "__default") end
+      else
+        if UIDropDownMenu_SetSelectedValue then pcall(UIDropDownMenu_SetSelectedValue, condFrame.cond_aura_groupingDD, gm) end
+      end
+      if UIDropDownMenu_SetText then pcall(UIDropDownMenu_SetText, txt, condFrame.cond_aura_groupingDD) end
+      if _GoldifyDD then _GoldifyDD(condFrame.cond_aura_groupingDD) end
+    end
 
     -- target read
     local th = (c.aura and c.aura.targetHelp) and true or false
@@ -8194,8 +8551,9 @@ local ic = c.item or {}
     condFrame.cond_ability_oncd:Hide()
     condFrame.cond_ability_incombat:Hide()
     condFrame.cond_ability_outcombat:Hide()
-    condFrame.cond_ability_inparty:Hide()
-    condFrame.cond_ability_inraid:Hide()
+    if condFrame.cond_ability_groupingDD then
+      condFrame.cond_ability_groupingDD:Hide()
+    end
     condFrame.cond_ability_target_help:Hide()
     condFrame.cond_ability_target_harm:Hide()
     condFrame.cond_ability_target_self:Hide()
@@ -8284,11 +8642,8 @@ local ic = c.item or {}
     if condFrame.cond_item_outcombat then
       condFrame.cond_item_outcombat:Hide()
     end
-    if condFrame.cond_item_inparty then
-      condFrame.cond_item_inparty:Hide()
-    end
-    if condFrame.cond_item_inraid then
-      condFrame.cond_item_inraid:Hide()
+    if condFrame.cond_item_groupingDD then
+      condFrame.cond_item_groupingDD:Hide()
     end
     if condFrame.cond_item_target_help then
       condFrame.cond_item_target_help:Hide()
@@ -8307,6 +8662,12 @@ local ic = c.item or {}
     end
     if condFrame.cond_item_text_time then
       condFrame.cond_item_text_time:Hide()
+    end
+    if condFrame.cond_item_enchant then
+      condFrame.cond_item_enchant:Hide()
+    end
+    if condFrame.cond_item_text_enchant then
+      condFrame.cond_item_text_enchant:Hide()
     end
     if condFrame.cond_item_power then
       condFrame.cond_item_power:Hide()
@@ -8519,6 +8880,15 @@ function UpdateCondFrameForKey(key)
       if condFrame.numAurasDD then
         condFrame.numAurasDD:Hide()
       end
+      if condFrame.spacingLabel then
+        condFrame.spacingLabel:Hide()
+      end
+      if condFrame.spacingEdit then
+        condFrame.spacingEdit:Hide()
+      end
+      if condFrame.spacingSlider then
+        condFrame.spacingSlider:Hide()
+      end
     else
       condFrame.leaderCB:Show()
       local leaders = BuildGroupLeaders()
@@ -8540,6 +8910,20 @@ function UpdateCondFrameForKey(key)
           UIDropDownMenu_SetSelectedValue(condFrame.numAurasDD, data.numAuras or 5)
           UIDropDownMenu_SetText(tostring(data.numAuras or 5), condFrame.numAurasDD)
         end
+        if condFrame.spacingLabel and condFrame.spacingEdit then
+          condFrame.spacingLabel:Show()
+          condFrame.spacingEdit:Show()
+          local s = data.spacing
+          if not s then
+            local settings = (DoiteAurasDB and DoiteAurasDB.settings)
+            s = (settings and settings.spacing) or 8
+          end
+          condFrame.spacingEdit:SetText(tostring(s))
+          if condFrame.spacingSlider then
+             condFrame.spacingSlider:Show()
+             condFrame.spacingSlider:SetValue(s)
+          end
+        end
       else
         if leaderKey == key then
           condFrame.leaderCB:SetChecked(true)
@@ -8557,6 +8941,20 @@ function UpdateCondFrameForKey(key)
             UIDropDownMenu_SetSelectedValue(condFrame.numAurasDD, data.numAuras or 5)
             UIDropDownMenu_SetText(tostring(data.numAuras or 5), condFrame.numAurasDD)
           end
+          if condFrame.spacingLabel and condFrame.spacingEdit then
+            condFrame.spacingLabel:Show()
+            condFrame.spacingEdit:Show()
+            local s = data.spacing
+            if not s then
+              local settings = (DoiteAurasDB and DoiteAurasDB.settings)
+              s = (settings and settings.spacing) or 8
+            end
+            condFrame.spacingEdit:SetText(tostring(s))
+            if condFrame.spacingSlider then
+               condFrame.spacingSlider:Show()
+               condFrame.spacingSlider:SetValue(s)
+            end
+          end
         else
           condFrame.leaderCB:SetChecked(false)
           condFrame.leaderCB:Enable()
@@ -8568,6 +8966,15 @@ function UpdateCondFrameForKey(key)
           end
           if condFrame.numAurasDD then
             condFrame.numAurasDD:Hide()
+          end
+          if condFrame.spacingLabel then
+            condFrame.spacingLabel:Hide()
+          end
+          if condFrame.spacingEdit then
+            condFrame.spacingEdit:Hide()
+          end
+          if condFrame.spacingSlider then
+            condFrame.spacingSlider:Hide()
           end
         end
       end
@@ -8806,6 +9213,67 @@ function DoiteConditions_Show(key)
     end
     condFrame.numAurasDD:Hide()
 
+    -- Spacing Label + Slider + EditBox
+    condFrame.spacingLabel = condFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    condFrame.spacingLabel:SetPoint("TOPLEFT", condFrame, "TOPLEFT", 20, -128)
+    condFrame.spacingLabel:SetText("Spacing")
+    condFrame.spacingLabel:Hide()
+
+    condFrame.spacingSlider = CreateFrame("Slider", "DoiteConditions_SpacingSlider", condFrame, "OptionsSliderTemplate")
+    condFrame.spacingSlider:SetWidth(100)
+    condFrame.spacingSlider:SetHeight(16)
+    condFrame.spacingSlider:SetPoint("LEFT", condFrame.spacingLabel, "RIGHT", 10, 0)
+    condFrame.spacingSlider:SetMinMaxValues(0, 100)
+    condFrame.spacingSlider:SetValueStep(1)
+    condFrame.spacingSlider:Hide()
+
+    _G[condFrame.spacingSlider:GetName() .. 'Low']:SetText("0")
+    _G[condFrame.spacingSlider:GetName() .. 'High']:SetText("100")
+    _G[condFrame.spacingSlider:GetName() .. 'Text']:SetText("")
+
+    condFrame.spacingEdit = CreateFrame("EditBox", "DoiteConditions_SpacingEdit", condFrame, "InputBoxTemplate")
+    condFrame.spacingEdit:SetWidth(30)
+    condFrame.spacingEdit:SetHeight(18)
+    condFrame.spacingEdit:SetPoint("LEFT", condFrame.spacingSlider, "RIGHT", 10, 0)
+    condFrame.spacingEdit:SetAutoFocus(false)
+    condFrame.spacingEdit:SetFontObject("GameFontNormalSmall")
+    condFrame.spacingEdit:SetMaxLetters(3)
+    condFrame.spacingEdit:Hide()
+
+    -- Functions to handle updates
+    local function UpdateSpacing(val)
+      if not currentKey then return end
+      local d = EnsureDBEntry(currentKey)
+      d.spacing = val
+      if not val then d.spacing = nil end
+      DoiteGroup.RequestReflow()
+    end
+
+    condFrame.spacingSlider:SetScript("OnValueChanged", function()
+      local val = math.floor(this:GetValue() + 0.5)
+      if condFrame.spacingEdit then
+         condFrame.spacingEdit:SetText(tostring(val))
+      end
+      UpdateSpacing(val)
+    end)
+
+    condFrame.spacingEdit:SetScript("OnEnterPressed", function()
+      this:ClearFocus()
+      local val = tonumber(this:GetText()) or 0
+      if val < 0 then val = 0 end
+      if val > 100 then val = 100 end
+      
+      condFrame.spacingSlider:SetValue(val)
+      UpdateSpacing(val)
+      this:SetText(tostring(val))
+    end)
+
+    condFrame.spacingEdit:SetScript("OnEscapePressed", function()
+      this:ClearFocus()
+      local val = math.floor(condFrame.spacingSlider:GetValue() + 0.5)
+      this:SetText(tostring(val))
+    end)
+
     -- leaderCB click behavior
     condFrame.leaderCB:SetScript("OnClick", function(self)
       local cb = self or (condFrame and condFrame.leaderCB)
@@ -8847,6 +9315,17 @@ function DoiteConditions_Show(key)
           UIDropDownMenu_SetSelectedValue(condFrame.numAurasDD, data.numAuras or 5)
           UIDropDownMenu_SetText(tostring(data.numAuras or 5), condFrame.numAurasDD)
         end
+
+        if condFrame.spacingLabel and condFrame.spacingEdit then
+          condFrame.spacingLabel:Show()
+          condFrame.spacingEdit:Show()
+          local s = data.spacing
+          if not s then
+            local settings = (DoiteAurasDB and DoiteAurasDB.settings)
+            s = (settings and settings.spacing) or 8
+          end
+          condFrame.spacingEdit:SetText(tostring(s))
+        end
       end
 
       SafeRefresh()
@@ -8855,13 +9334,13 @@ function DoiteConditions_Show(key)
     end)
 
     condFrame.groupTitle2 = condFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    condFrame.groupTitle2:SetPoint("TOPLEFT", condFrame, "TOPLEFT", 20, -125)
+    condFrame.groupTitle2:SetPoint("TOPLEFT", condFrame, "TOPLEFT", 20, -165)
     condFrame.groupTitle2:SetText("|cff6FA8DCCONDITIONS & RULES|r")
 
     local sep2 = condFrame:CreateTexture(nil, "ARTWORK")
     sep2:SetHeight(1)
-    sep2:SetPoint("TOPLEFT", condFrame, "TOPLEFT", 16, -140)
-    sep2:SetPoint("TOPRIGHT", condFrame, "TOPRIGHT", -16, -140)
+    sep2:SetPoint("TOPLEFT", condFrame, "TOPLEFT", 16, -180)
+    sep2:SetPoint("TOPRIGHT", condFrame, "TOPRIGHT", -16, -180)
     sep2:SetTexture(1, 1, 1)
     if sep2.SetVertexColor then
       sep2:SetVertexColor(1, 1, 1, 0.25)
@@ -8871,12 +9350,12 @@ function DoiteConditions_Show(key)
 
     if not condFrame.condListContainer then
       local cW = condFrame:GetWidth() - 43
-      local cH = 210
+      local cH = 170
 
       local listContainer = CreateFrame("Frame", nil, condFrame)
       listContainer:SetWidth(cW)
       listContainer:SetHeight(cH)
-      listContainer:SetPoint("TOPLEFT", condFrame, "TOPLEFT", 14, -143)
+      listContainer:SetPoint("TOPLEFT", condFrame, "TOPLEFT", 14, -173)
       listContainer:SetBackdrop({
         bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",

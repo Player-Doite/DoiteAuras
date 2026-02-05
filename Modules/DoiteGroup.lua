@@ -58,6 +58,79 @@ local function GetGroupSortMode(groupName)
   return "prio"
 end
 
+-- Resolve fixed layout mode for a group (false by default)
+local function GetGroupFixedMode(groupName, leaderData)
+  if groupName and DoiteAurasDB and DoiteAurasDB.groupFixed and DoiteAurasDB.groupFixed[groupName] then
+    return true
+  end
+  if leaderData and leaderData.groupFixed == true then
+    return true
+  end
+  return false
+end
+
+local function _ClearMap(t)
+  if not t then
+    return
+  end
+  for k in pairs(t) do
+    t[k] = nil
+  end
+end
+
+local function _ComputeOffset(baseX, baseY, growth, pad, steps)
+  local x = baseX
+  local y = baseY
+  if steps and steps > 0 then
+    if growth == "Horizontal Right" then
+      x = x + (pad * steps)
+    elseif growth == "Horizontal Left" then
+      x = x - (pad * steps)
+    elseif growth == "Vertical Up" then
+      y = y + (pad * steps)
+    elseif growth == "Vertical Down" then
+      y = y - (pad * steps)
+    else
+      x = x + (pad * steps)
+    end
+  end
+  return x, y
+end
+
+local function _ApplyPlacement(entry, x, y, size)
+  if not entry then
+    return
+  end
+
+  local pos = entry._computedPos
+  if not pos then
+    pos = {}
+    entry._computedPos = pos
+  end
+  pos.x = x
+  pos.y = y
+  pos.size = size
+
+  local f = _GetIconFrame(entry.key)
+  if f then
+    f._daBlockedByGroup = false
+    -- Do not re-anchor while the slider owns the frame this tick
+    if not f._daSliding then
+      if f._daGroupX ~= x or f._daGroupY ~= y then
+        f._daGroupX = x
+        f._daGroupY = y
+        f:ClearAllPoints()
+        f:SetPoint("CENTER", UIParent, "CENTER", x, y)
+      end
+    end
+    if f._daGroupSize ~= size then
+      f._daGroupSize = size
+      f:SetWidth(size)
+      f:SetHeight(size)
+    end
+  end
+end
+
 -- Current key being edited
 local function editingKey()
   return _G["DoiteEdit_CurrentKey"]
@@ -146,11 +219,26 @@ local function ComputeGroupLayout(entries, groupName)
   local baseSize = num(L.iconSize, 36)
   local growth = L.growth or "Horizontal Right"
   local limit = num(L.numAuras, 5)
+  local fixed = GetGroupFixedMode(groupName, L)
   local settings = (DoiteAurasDB and DoiteAurasDB.settings)
-  local spacing = (settings and settings.spacing) or 8
+  local spacing = num(L.spacing, (settings and settings.spacing) or 8)
   local pad = baseSize + spacing
 
-  -- 2) Build the pool of items that are BOTH known and WANT to be shown (conditions OR sliding) - reuse & shrink table without realloc
+  -- 2) Build pools: known (for fixed slots) and visible-known (for actual placement)
+  local fixedKnown
+  if fixed then
+    fixedKnown = DoiteGroup._tmpAllKnown
+    if not fixedKnown then
+      fixedKnown = {}
+      DoiteGroup._tmpAllKnown = fixedKnown
+    else
+      for i = table.getn(fixedKnown), 1, -1 do
+        fixedKnown[i] = nil
+      end
+    end
+  end
+
+  -- Build the pool of items that are BOTH known and WANT to be shown (conditions OR sliding) - reuse & shrink table without realloc
   local visibleKnown = DoiteGroup._tmpVisibleKnown
   if not visibleKnown then
     visibleKnown = {}
@@ -163,15 +251,21 @@ local function ComputeGroupLayout(entries, groupName)
 
   local editKey = editingKey()
   local vn = 0
+  local an = 0
   local i, n = 1, table.getn(entries)
   while i <= n do
     local e = entries[i]
     if e and isKnown(e) then
+      if fixed and fixedKnown then
+        an = an + 1
+        fixedKnown[an] = e
+      end
       local f = _GetIconFrame(e.key)
-      -- Use frame flags; fall back to 'show'; finally fall back to "currently visible" to avoid races
+      -- Use frame flags; fall back to 'show' from candidates.
+      -- Only use IsShown() fallback if frame flags haven't been initialized yet (avoids blocking collapse).
       local wants = (f and (f._daShouldShow == true or f._daSliding == true))
           or (e.show == true)
-          or (f and f:IsShown())
+          or (f and f._daShouldShow == nil and f._daSliding == nil and f:IsShown())
 
       -- While editing, always include the edited member in the layout pool
       if editKey and e.key == editKey then
@@ -209,10 +303,13 @@ local function ComputeGroupLayout(entries, groupName)
     groupSortCache[groupName] = sortMode
   end
 
+  local sortList = fixed and fixedKnown or visibleKnown
+
   -- Precompute cheap sort keys once per entry (avoids frame lookups/tostring churn inside comparator)
   local j = 1
-  while j <= vn do
-    local e = visibleKnown[j]
+  local sn = fixed and an or vn
+  while j <= sn do
+    local e = sortList[j]
     local k = e.key
     if not e._dgKeyStr then
       if type(k) == "string" then
@@ -240,9 +337,9 @@ local function ComputeGroupLayout(entries, groupName)
   -- 3) Order by saved priority or remaining time, depending on sort mode
   _DG.editKey = editKey
   if sortMode == "time" then
-    table.sort(visibleKnown, _cmpTime)
+    table.sort(sortList, _cmpTime)
   else
-    table.sort(visibleKnown, _cmpPrio)
+    table.sort(sortList, _cmpPrio)
   end
 
   -- 4) Assign up to numAuras slots, starting from leader’s baseXY
@@ -258,24 +355,21 @@ local function ComputeGroupLayout(entries, groupName)
     end
   end
 
-  local curX, curY = baseX, baseY
   local actualPlaced = limit
   if vn < actualPlaced then
     actualPlaced = vn
   end
 
-  local p = 1
-  while p <= actualPlaced do
-    local e = visibleKnown[p]
-
-    local pos = e._computedPos
-    if not pos then
-      pos = {}
-      e._computedPos = pos
+  if fixed then
+    -- Assign stable slot indices based on the full known list (no map).
+    local s = 1
+    while s <= an do
+      local e = fixedKnown[s]
+      if e then
+        e._daFixedSlot = s
+      end
+      s = s + 1
     end
-    pos.x = curX
-    pos.y = curY
-    pos.size = baseSize
 
     local f = _GetIconFrame(e.key)
     if f then
@@ -293,26 +387,37 @@ local function ComputeGroupLayout(entries, groupName)
         f._daGroupSize = baseSize
         f:SetWidth(baseSize)
         f:SetHeight(baseSize)
+    local p = 0
+    local v = 1
+    while v <= vn do
+      local e = visibleKnown[v]
+      local slot = e and e._daFixedSlot
+      if slot and slot <= limit then
+        local curX, curY = _ComputeOffset(baseX, baseY, growth, pad, slot - 1)
+        _ApplyPlacement(e, curX, curY, baseSize)
+
+        p = p + 1
+        placed[p] = e
       end
+      v = v + 1
     end
+    actualPlaced = p
+  else
+    local curX, curY = baseX, baseY
+    local p = 1
+    while p <= actualPlaced do
+      local e = visibleKnown[p]
 
-    placed[p] = e
+      _ApplyPlacement(e, curX, curY, baseSize)
 
-    if p < actualPlaced then
-      if growth == "Horizontal Right" then
-        curX = curX + pad
-      elseif growth == "Horizontal Left" then
-        curX = curX - pad
-      elseif growth == "Vertical Up" then
-        curY = curY + pad
-      elseif growth == "Vertical Down" then
-        curY = curY - pad
-      else
-        curX = curX + pad
+      placed[p] = e
+
+      if p < actualPlaced then
+        curX, curY = _ComputeOffset(baseX, baseY, growth, pad, p)
       end
-    end
 
-    p = p + 1
+      p = p + 1
+    end
   end
 
   -- 5) Everything else must not occupy a position (hide if currently shown)
@@ -622,6 +727,20 @@ function DoiteGroup.RequestReflow()
   end
   DoiteGroup._reflowQueued = 1
   _watch:SetScript("OnUpdate", _RunReflowOnce)
+end
+
+-- Public API: invalidate cached sort mode for a group (call when sort mode changes)
+function DoiteGroup.InvalidateSortCache(groupName)
+  if DoiteGroup._sortCache then
+    if groupName then
+      DoiteGroup._sortCache[groupName] = nil
+    else
+      -- Clear entire cache if no group specified
+      for k in pairs(DoiteGroup._sortCache) do
+        DoiteGroup._sortCache[k] = nil
+      end
+    end
+  end
 end
 
 -- Internal helpers called by ApplyGroupLayout (Patch 1/2)

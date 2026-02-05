@@ -1612,6 +1612,8 @@ local function DE_CreateImportFrame()
     if DoiteAuras_RefreshIcons then
       pcall(DoiteAuras_RefreshIcons)
     end
+    -- Clear sort cache so imported sort modes take effect
+    DoiteGroup.InvalidateSortCache()
 
     if chat then
       chat:AddMessage("|cff6FA8DCDoiteAuras:|r " .. msg)
