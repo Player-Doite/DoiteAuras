@@ -2027,7 +2027,10 @@ local function CreateConditionsUI()
    
   -- USABILITY & COOLDOWN (no "Usable")
   condFrame.cond_item_notcd = MakeCheck("DoiteCond_Item_NotCD", "No cooldown", 0, row3_y)
-  condFrame.cond_item_oncd = MakeCheck("DoiteCond_Item_OnCD", "On cooldown", 120, row3_y)
+  condFrame.cond_item_oncd = MakeCheck("DoiteCond_Item_OnCD", "On cooldown", 100, row3_y)
+  -- New Clickable option
+  condFrame.cond_item_clickable = MakeCheck("DoiteCond_Item_Clickable", "Use item", 200, row3_y)
+  
   SetSeparator("item", 3, "USABILITY & COOLDOWN", true, true)
   
   -- ENCHANTED STATE (Only enabled for "---EQUIPPED WEAPON SLOTS---" when mode == "notcd")
@@ -2745,6 +2748,22 @@ local function CreateConditionsUI()
         this:SetChecked(true)
       end
     end
+  end)
+  
+  condFrame.cond_item_clickable:SetScript("OnClick", function()
+    if not currentKey then
+      this:SetChecked(false)
+      return
+    end
+    -- Direct save to DB
+    local d = EnsureDBEntry(currentKey)
+    d.conditions = d.conditions or {}
+    d.conditions.item = d.conditions.item or {}
+    local ic = d.conditions.item
+    
+    ic.clickable = this:GetChecked() and true or nil
+    SafeRefresh()
+    SafeEvaluate()
   end)
 
   -- Item: Enchanted state dropdown
@@ -7804,6 +7823,9 @@ local function UpdateConditionsUI(data)
     if condFrame.cond_item_weaponDD then
       condFrame.cond_item_weaponDD:Hide()
     end
+    if condFrame.cond_item_clickable then
+      condFrame.cond_item_clickable:Hide()
+    end
     -- Hide TARGET STATUS for aura & item when editing an ability
     if condFrame.cond_aura_target_alive then
       condFrame.cond_aura_target_alive:Hide()
@@ -8072,6 +8094,13 @@ local ic = c.item or {}
 
     _enCheck(condFrame.cond_item_notcd)
     _enCheck(condFrame.cond_item_oncd)
+    
+    -- CLICKABLE
+    if condFrame.cond_item_clickable then
+      condFrame.cond_item_clickable:Show()
+      _enCheck(condFrame.cond_item_clickable)
+      condFrame.cond_item_clickable:SetChecked(ic.clickable == true)
+    end
 
     -- mode (must be defined BEFORE any mode-based UI logic)
     local mode = ic.mode or "notcd"
@@ -9490,6 +9519,9 @@ local ic = c.item or {}
     if condFrame.cond_item_weaponDD then
       condFrame.cond_item_weaponDD:Hide()
     end
+    if condFrame.cond_item_clickable then
+      condFrame.cond_item_clickable:Hide()
+    end
     -- hide Item stacks row when not editing an item
     if condFrame.cond_item_stacks_cb then
       condFrame.cond_item_stacks_cb:Hide()
@@ -9847,6 +9879,9 @@ function DoiteConditions_Show(key)
       -- kick a repaint so the formerly-forced icon can hide if conditions say so
       if DoiteConditions_RequestEvaluate then
         DoiteConditions_RequestEvaluate()
+      end
+      if DoiteAuras_RefreshIcons then
+        DoiteAuras_RefreshIcons()
       end
     end)
 
