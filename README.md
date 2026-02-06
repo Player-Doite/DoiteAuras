@@ -4,7 +4,6 @@ Looking for WeakAuras in Vanilla WoW? DoiteAuras is a lightweight, condition-bas
 > [!IMPORTANT]
 >
 > **Vanilla 1.12 API is very limited. Therefore, this addon requires you to have the following mods to extend the API:**
-> - [SuperWoW](https://github.com/balakethelock/SuperWoW) installed.
 > - [Nampower](https://gitea.com/avitasia/nampower) installed.
 > - [UnitXP_SP3](https://codeberg.org/konaka/UnitXP_SP3) installed.
 
