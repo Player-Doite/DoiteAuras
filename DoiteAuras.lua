@@ -1735,12 +1735,52 @@ local function FindPlayerDebuff(name)
     return false,nil
 end
 
+-- Helper: Use item by name scanning bags/inventory (1.12 compat)
+local function DA_UseItemByName(itemName)
+    if not itemName or itemName == "" then return end
+    
+    -- Check bags 0-4
+    for bag = 0, 4 do
+        local slots = GetContainerNumSlots(bag)
+        if slots and slots > 0 then
+            for slot = 1, slots do
+                local link = GetContainerItemLink(bag, slot)
+                if link then
+                    local _, _, name = string.find(link, "%[(.+)%]")
+                    if name then
+                        if name == itemName then
+                            UseContainerItem(bag, slot)
+                            return true
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- Check equipped inventory (e.g. trinkets)
+    -- Slots 0-19 covers all equipment
+    for slot = 0, 19 do
+        local link = GetInventoryItemLink("player", slot)
+        if link then
+            local _, _, name = string.find(link, "%[(.+)%]")
+            if name and name == itemName then
+                if DEFAULT_CHAT_FRAME then DEFAULT_CHAT_FRAME:AddMessage(" -> FOUND in Inventory Slot " .. slot .. ". Using it.") end
+                UseInventoryItem(slot)
+                return true
+            end
+        end
+    end
+    
+    if DEFAULT_CHAT_FRAME then DEFAULT_CHAT_FRAME:AddMessage("DoiteAuras: Item [" .. itemName .. "] NOT FOUND in bags or inventory.") end
+end
+
 -- Create or update icon *structure only* (no positioning or texture changes here)
 local function CreateOrUpdateIcon(key, layer)
     local globalName = "DoiteIcon_" .. key
     local f = _G[globalName]
     if not f then
-        f = CreateFrame("Frame", globalName, UIParent)
+        f = CreateFrame("Button", globalName, UIParent)
         f:SetFrameStrata("MEDIUM")
         -- default size; actual sizing applied in RefreshIcons
         f:SetWidth(36)
@@ -1748,6 +1788,7 @@ local function CreateOrUpdateIcon(key, layer)
         f:EnableMouse(false)  -- Will be enabled when editing this icon
         f:SetMovable(true)    -- Allow movement when dragged
         f:RegisterForDrag("LeftButton")
+        f:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 
         -- icon texture (created once)
         f.icon = f:CreateTexture(nil, "BACKGROUND")
@@ -1895,6 +1936,24 @@ local function CreateOrUpdateIcon(key, layer)
 end
 
 -- Refresh icons (group-aware)
+-- Lightweight initialization of defaults (simplified from DoiteEdit EnsureDBEntry)
+-- Ensures that critical data structures (like conditions tables) exist on startup
+local function EnsureDefaults(key)
+    if not DoiteAurasDB.spells[key] then return end
+    local d = DoiteAurasDB.spells[key]
+    
+    -- Structure must exist
+    if not d.conditions then d.conditions = {} end
+    
+    if d.type == "Item" then
+        if not d.conditions.item then d.conditions.item = {} end
+        -- Note: We don't force 'clickable' to true here, we respect the saved value (or nil).
+        -- We just ensure the TABLE exists so checks like 'd.conditions.item.clickable' don't crash or fail logic.
+    elseif d.type == "Ability" then
+        if not d.conditions.ability then d.conditions.ability = {} end
+    end
+end
+
 local function RefreshIcons()
     if DA_IsHardDisabled() then
         -- Make sure all existing icon frames stay hidden
@@ -1984,6 +2043,10 @@ local function RefreshIcons()
     -- Step 1: collect lightweight icon state (no extra combat logic – DoiteConditions owns that)
     for i = 1, total do
         local key  = keyList[i]
+        
+        -- Ensure defaults exist so condition checks don't fail on nil tables
+        EnsureDefaults(key)
+        
         local data = DoiteAurasDB.spells[key]
         local typ  = data and data.type or "Ability"
 
@@ -2272,6 +2335,35 @@ local function RefreshIcons()
                              and (not blockedByGroup)
                              and (not blockedByBucket)
 
+        -- Fix: Clickable Item Logic (1.12 Script)
+        -- MOVED OUTSIDE of visibility check to ensure handlers are attached even if the icon is initially hidden (e.g. startup race).
+        -- Visibility is dynamic (DoiteConditions), but the handler must be ready when it shows.
+        
+        local ic = data and data.conditions and data.conditions.item
+        -- Only allow clicking if configured, NOT greyed out, and NOT in edit mode
+        -- STRICTLY restrict to Items only
+        local isClickable = (data and data.type == "Item" and ic and ic.clickable and (not f._daDragging) and (not _G["DoiteEdit_CurrentKey"]))
+
+        if isClickable then
+             f:EnableMouse(true)
+             f:SetScript("OnClick", function()
+                 if arg1 == "LeftButton" or arg1 == "RightButton" then
+                    -- Fallback to 'key' if name is missing (fixes nil error)
+                    local n = (data.displayName or data.name) or key
+                    if n and n ~= "" then
+                         DA_UseItemByName(n)
+                    end
+                 end
+             end)
+        elseif data and data.type == "Item" then
+             -- If not clickable (or editing), ensure mouse is disabled (unless editing logic enabled it)
+             -- We check type=="Item" to avoid messing with abilities/auras which might have their own logic (though they usually don't click).
+             if not _G["DoiteEdit_CurrentKey"] then
+                 f:EnableMouse(false)
+                 f:SetScript("OnClick", nil)
+             end
+        end
+
         if shouldBeVisible then
             f:Show()
         else
@@ -2295,6 +2387,11 @@ local function RefreshIcons()
     end
 
     _G["DoiteAuras_RefreshInProgress"] = false
+    
+    -- Ensure conditions are evaluated immediately so "grey" state is correct on startup
+    if DoiteConditions and DoiteConditions.EvaluateAll then
+        DoiteConditions:EvaluateAll()
+    end
 end
 
 -- Refresh list (group-aware, but still uses .order as the only truth)
