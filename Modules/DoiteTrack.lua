@@ -94,7 +94,7 @@ local function _GetUnitGuidSafe(unit)
   if not unit or not UnitExists then
     return nil
   end
-  -- SuperWoW: UnitExists(unit) returns existsFlag, guid
+  -- UnitExists(unit) returns existsFlag, guid
   local exists, guid = UnitExists(unit)
   if exists and guid and guid ~= "" then
     return guid
@@ -361,7 +361,7 @@ function DoiteTrack:RebuildWatchList()
 end
 
 ---------------------------------------------------------------
--- Aura presence queries (SuperWoW auraId tables via GetUnitField)
+-- Aura presence queries (auraId tables via GetUnitField)
 ---------------------------------------------------------------
 local function _GetUnitAuraTable(unit, isDebuff)
   if not GetUnitField then

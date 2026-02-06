@@ -23,27 +23,52 @@ local function DA_Cache()
 end
 
 ---------------------------------------------------------------
--- SuperWoW / Nampower / UnitXP SP3 requirement helper
+-- Nampower / UnitXP SP3 requirement helper
+-- Requires UnitXP & a specific Nampower version
 ---------------------------------------------------------------
+local _NP_REQ_MAJOR, _NP_REQ_MINOR, _NP_REQ_PATCH = 2, 25, 0 -- Change when needed
+
+local function _NP_GetVersion()
+  if type(GetNampowerVersion) == "function" then
+    local a, b, c = GetNampowerVersion()
+    return (tonumber(a) or 0), (tonumber(b) or 0), (tonumber(c) or 0), true
+  end
+  return 0, 0, 0, false
+end
+
+local function _NP_VersionString(maj, min, pat, hasFn)
+  if not hasFn then
+    return "unknown"
+  end
+  return tostring(maj) .. "." .. tostring(min) .. "." .. tostring(pat)
+end
+
+-- returns: ok(bool), verStr(string)
+local function _NP_AtLeast(reqMaj, reqMin, reqPat)
+  local maj, min, pat, hasFn = _NP_GetVersion()
+  local verStr = _NP_VersionString(maj, min, pat, hasFn)
+
+  if not hasFn then
+    return false, verStr
+  end
+
+  if maj > reqMaj then return true, verStr end
+  if maj < reqMaj then return false, verStr end
+
+  if min > reqMin then return true, verStr end
+  if min < reqMin then return false, verStr end
+
+  if pat >= reqPat then return true, verStr end
+  return false, verStr
+end
+
 local function DA_GetMissingRequiredMods()
   local missing = {}
 
-  -- SuperWoW: SUPERWOW_VERSION must be a non-empty string
-  local hasSuper = (type(SUPERWOW_VERSION) == "string" and SUPERWOW_VERSION ~= "")
-  if not hasSuper then
-    table.insert(missing, "SuperWoW")
-  end
-
-  -- Nampower: GetNampowerVersion() must exist and return numbers
-  local hasNampower = false
-  if type(GetNampowerVersion) == "function" then
-    local ok, maj = pcall(GetNampowerVersion)
-    if ok and type(maj) == "number" then
-      hasNampower = true
-    end
-  end
-  if not hasNampower then
-    table.insert(missing, "Nampower")
+  -- Nampower: must be >= 2.25.0
+  local npOK, npVerStr = _NP_AtLeast(_NP_REQ_MAJOR, _NP_REQ_MINOR, _NP_REQ_PATCH)
+  if not npOK then
+    table.insert(missing, "Nampower 2.25.0+ (you have " .. tostring(npVerStr) .. ")")
   end
 
   -- UnitXP SP3: pcall(UnitXP, "nop", "nop") must succeed
@@ -3051,7 +3076,9 @@ local function DA_CreateMinimapButton()
     if DA_IsHardDisabled and DA_IsHardDisabled() then
       local cf = (DEFAULT_CHAT_FRAME or ChatFrame1)
       if cf then
-        cf:AddMessage("|cff6FA8DCDoiteAuras:|r Disabled because required mods are missing (SuperWoW, Nampower, UnitXP SP3).")
+        local missing = DA_GetMissingRequiredMods()
+		local list = table.concat(missing, ", ")
+		cf:AddMessage("|cff6FA8DCDoiteAuras:|r Disabled because required mods are missing (" .. list .. ").")
       end
       return
     end
@@ -3141,7 +3168,9 @@ SlashCmdList["DOITEAURAS"] = function(msg)
   if DA_IsHardDisabled() then
     local cf = (DEFAULT_CHAT_FRAME or ChatFrame1)
     if cf then
-      cf:AddMessage("|cff6FA8DCDoiteAuras:|r Disabled because required mods are missing (SuperWoW, Nampower, UnitXP SP3).")
+      local missing = DA_GetMissingRequiredMods()
+	  local list = table.concat(missing, ", ")
+	  cf:AddMessage("|cff6FA8DCDoiteAuras:|r Disabled because required mods are missing (" .. list .. ").")
     end
     return
   end
@@ -3206,19 +3235,32 @@ end
 local _daVerNotifiedOnce = false
 local _daVerLastEcho = 0
 
--- /daversionwho: ask others to report their version
+-- /daversionwho: ask others to report their version (silent: only requester prints)
 SLASH_DAVERSIONWHO1 = "/daversionwho"
 SlashCmdList["DAVERSIONWHO"] = function()
   local cf = (DEFAULT_CHAT_FRAME or ChatFrame1)
-  if cf then cf:AddMessage("|cff6FA8DCDoiteAuras:|r version WHO sent. Listening for replies...") end
-  local sent = false
-  if UnitInRaid and UnitInRaid("player") then
-    SendAddonMessage(DA_PREFIX, "DA_WHO", "RAID");  sent = true
-  elseif GetNumPartyMembers and GetNumPartyMembers() > 0 then
-    SendAddonMessage(DA_PREFIX, "DA_WHO", "PARTY"); sent = true
-  elseif IsInGuild and IsInGuild() then
-    SendAddonMessage(DA_PREFIX, "DA_WHO", "GUILD"); sent = true
+  local me = (UnitName and UnitName("player")) or nil
+
+  if cf then
+    cf:AddMessage("|cff6FA8DCDoiteAuras:|r version WHO sent. Listening for replies...")
   end
+
+  local sent = false
+  if me and me ~= "" then
+    local rid = tostring(((GetTime and GetTime()) or 0)) -- request id to avoid collisions
+
+    -- store locally so ONLY this client prints matching replies
+    _G["DoiteAuras_WhoRid"] = rid
+
+    if UnitInRaid and UnitInRaid("player") then
+      SendAddonMessage(DA_PREFIX, "DA_WHO:" .. me .. ":" .. rid, "RAID");  sent = true
+    elseif GetNumPartyMembers and GetNumPartyMembers() > 0 then
+      SendAddonMessage(DA_PREFIX, "DA_WHO:" .. me .. ":" .. rid, "PARTY"); sent = true
+    elseif IsInGuild and IsInGuild() then
+      SendAddonMessage(DA_PREFIX, "DA_WHO:" .. me .. ":" .. rid, "GUILD"); sent = true
+    end
+  end
+
   if not sent and cf then
     cf:AddMessage("|cff6FA8DCDoiteAuras:|r No channels available (raid/party/guild).")
   end
@@ -3248,28 +3290,43 @@ _daVer:SetScript("OnEvent", function()
   local mine = tostring(DA_GetVersion_Safe())
   local cf   = (DEFAULT_CHAT_FRAME or ChatFrame1)
 
-  if text == "DA_WHO" then
-    if channel and SendAddonMessage then
-      SendAddonMessage(DA_PREFIX, "DA_ME:" .. mine, channel)
+  -- WHO request: "DA_WHO:<requesterName>:<rid>"
+  if string.sub(text, 1, 7) == "DA_WHO:" then
+    local payload = string.sub(text, 8) or ""
+    local _, _, requester, rid = string.find(payload, "^([^:]+)%:(.+)$")
+
+    if requester and requester ~= "" and rid and rid ~= "" and channel and SendAddonMessage then
+      -- reply on SAME channel (RAID/PARTY/GUILD). Everyone replies, but only requester will print.
+      SendAddonMessage(DA_PREFIX, "DA_ME:" .. requester .. ":" .. rid .. ":" .. mine, channel)
     end
     return
   end
 
+  -- WHO reply: "DA_ME:<requesterName>:<rid>:<version>"
   if string.sub(text, 1, 6) == "DA_ME:" then
-    local other = string.sub(text, 7)
-    -- show who has what (existing behavior)
-    if cf then
-      cf:AddMessage(string.format("|cff6FA8DCDoiteAuras:|r %s has %s (you: %s)", tostring(sender or "?"), tostring(other or "?"), tostring(mine)))
+    local payload = string.sub(text, 7) or ""
+    local _, _, requester, rid, other = string.find(payload, "^([^:]+)%:([^:]+)%:(.*)$")
+
+    local meName = (UnitName and UnitName("player")) or ""
+    local myRid  = _G["DoiteAuras_WhoRid"]
+
+    -- Only the requester that initiated THIS rid prints.
+    if requester and requester == meName and rid and myRid and rid == myRid then
+      if cf then
+        cf:AddMessage(string.format("|cff6FA8DCDoiteAuras:|r %s has %s (you: %s)", tostring(sender or "?"), tostring(other or "?"), tostring(mine)))
+      end
+
+      -- notify once if theirs is newer than mine (requester-only)
+      if (not _daVerNotifiedOnce) and DA_IsNewer(other, mine) then
+        _daVerNotifiedOnce = true
+        DA_RunLater(8, function()
+          if cf then
+            cf:AddMessage(string.format("|cff6FA8DCDoiteAuras:|r A newer version is available (yours: %s, latest seen: %s). Consider updating.", tostring(mine), tostring(other)))
+          end
+        end)
+      end
     end
-    -- notify once if theirs is newer than mine
-    if (not _daVerNotifiedOnce) and DA_IsNewer(other, mine) then
-      _daVerNotifiedOnce = true
-      DA_RunLater(8, function()
-        if cf then
-          cf:AddMessage(string.format("|cff6FA8DCDoiteAuras:|r A newer version is available (yours: %s, latest seen: %s). Consider updating.", tostring(mine), tostring(other)))
-        end
-      end)
-    end
+
     return
   end
 
@@ -3321,7 +3378,7 @@ _daLoad:SetScript("OnEvent", function()
       else
         -- One or more missing → modern client requirement message
         local list = table.concat(missing, ", ")
-        cf:AddMessage("|cff6FA8DCDoiteAuras:|r This addon requires SuperWoW, Nampower and UnitXP SP3 mods to modernize the 1.12 client. You are missing " .. list .. ".")
+        cf:AddMessage("|cff6FA8DCDoiteAuras:|r This addon requires Nampower 2.25.0+ and UnitXP SP3. Missing: " .. list .. ".")
         -- BLOCKER: after printing the message, hard-disable the addon
         _G["DoiteAuras_HardDisabled"] = true
 

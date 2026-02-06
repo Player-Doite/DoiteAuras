@@ -39,6 +39,34 @@ local str_find = string.find
 local str_gsub = string.gsub
 local SpellUsableArgCache = {}
 
+-- Nampower Returns: name, texturePath (either may be nil)
+local function _NP_SpellNameAndTexture(spellId)
+  if not spellId or spellId <= 0 then
+    return nil, nil
+  end
+
+  local name = nil
+  if GetSpellNameAndRankForId then
+    local n = GetSpellNameAndRankForId(spellId)
+    if type(n) == "string" and n ~= "" then
+      name = n
+    end
+  end
+
+  local tex = nil
+  if GetSpellRecField and GetSpellIconTexture then
+    local iconId = GetSpellRecField(spellId, "spellIconID")
+    if iconId and iconId > 0 then
+      local t = GetSpellIconTexture(iconId)
+      if type(t) == "string" and t ~= "" then
+        tex = t
+      end
+    end
+  end
+
+  return name, tex
+end
+
 -- Fast frame getter for hot paths (ApplyVisuals / aura scans / time text)
 local function _GetIconFrame(k)
   if not k then
@@ -285,24 +313,8 @@ local function _MaybeResolveSpellIdForEntry(key, data)
 
   local name, tex
 
-  -- SuperWoW: SpellInfo(spellId) -> name, rank, texture, ...
-  if SpellInfo then
-    local n, _, t = SpellInfo(sid)
-    if type(n) == "string" and n ~= "" then
-      name = n
-    end
-    if type(t) == "string" and t ~= "" then
-      tex = t
-    end
-  end
-
-  -- Nampower fallback: GetSpellNameAndRankForId(spellId)
-  if (not name) and GetSpellNameAndRankForId then
-    local n, rank = GetSpellNameAndRankForId(sid)
-    if type(n) == "string" and n ~= "" then
-      name = n
-    end
-  end
+  -- Nampower: resolve spellId -> name + texture
+  name, tex = _NP_SpellNameAndTexture(sid)
 
   -- If still don’t have a real name, bail out without changing anything
   if not name or name == "" then
@@ -405,7 +417,7 @@ local function _GetTrackedByName()
     local key, data
     for key, data in pairs(DoiteAurasDB.spells) do
       if data and (data.type == "Buff" or data.type == "Debuff") then
-        -- If this aura was added via spellid with a temporary "Spell ID: ###" name, resolve it once here using SuperWoW / Nampower.
+        -- If this aura was added via spellid with a temporary "Spell ID: ###" name, resolve it once here using Nampower.
         _MaybeResolveSpellIdForEntry(key, data)
 
         local nm = data.displayName or data.name
@@ -466,7 +478,7 @@ local function _EnsureTooltip()
   end
 end
 
--- SuperWoW: UnitBuff/UnitDebuff return auraId, SpellInfo(auraId) gives name/texture.
+--UnitBuff/UnitDebuff return auraId, Nampower gives name/texture.
 local _AuraNameTipLeft1FS = nil
 local function _GetAuraName(unit, index, isDebuff)
   if not unit or not index or index < 1 then
@@ -475,10 +487,10 @@ local function _GetAuraName(unit, index, isDebuff)
 
   local tex, auraId
   if isDebuff then
-    -- SuperWoW: texture, stacks, dtype, spellID
+    -- Nampower: texture, stacks, dtype, spellID
     tex, _, _, auraId = UnitDebuff(unit, index)
   else
-    -- SuperWoW: texture, stacks, spellID
+    -- Nampower: texture, stacks, spellID
     tex, _, auraId = UnitBuff(unit, index)
   end
   if not tex then
@@ -488,9 +500,9 @@ local function _GetAuraName(unit, index, isDebuff)
 
   local name
 
-  -- SuperWoW path: auraId -> SpellInfo(id) -> name
-  if auraId and SpellInfo then
-    local n = SpellInfo(auraId)
+  -- Nampower: auraId (spellId) -> name
+  if auraId then
+    local n = _NP_SpellNameAndTexture(auraId)
     if type(n) == "string" and n ~= "" then
       name = n
     end
@@ -629,18 +641,19 @@ local function _ScanTargetUnitAuras()
   ----------------------------------------------------------------
   local i = 1
   while true do
-    -- SuperWoW: texture, stacks, spellID
+    -- Nampower: texture, stacks, spellID
     local tex, _, auraId = UnitBuff(unit, i)
     if not tex then
       break
     end
     buffCount = buffCount + 1
 
-    -- Resolve name once: SpellInfo(id) fast path, tooltip-only fallback if needed
+    -- Resolve name once: Nampower id->name fast path, tooltip-only fallback if needed
     local name = nil
-    if auraId and SpellInfo then
-      name = SpellInfo(auraId)
+    if auraId then
+      name = _NP_SpellNameAndTexture(auraId)
     end
+
     if (not name) or name == "" then
       local n2 = _GetAuraName_TooltipOnly(unit, i, false)
       if n2 and n2 ~= "" then
@@ -707,7 +720,7 @@ local function _ScanTargetUnitAuras()
   ----------------------------------------------------------------
   i = 1
   while true do
-    -- SuperWoW: texture, stacks, dtype, spellID
+    -- Nampower: texture, stacks, dtype, spellID
     local tex, _, _, auraId = UnitDebuff(unit, i)
     if not tex then
       break
@@ -716,9 +729,10 @@ local function _ScanTargetUnitAuras()
     debuffCount = debuffCount + 1
 
     local name = nil
-    if auraId and SpellInfo then
-      name = SpellInfo(auraId)
+    if auraId then
+      name = _NP_SpellNameAndTexture(auraId)
     end
+
     if (not name) or name == "" then
       local n2 = _GetAuraName_TooltipOnly(unit, i, true)
       if n2 ~= nil and n2 ~= "" then
@@ -1797,25 +1811,11 @@ local function _EvaluateItemCoreState(data, c)
 end
 
 -- =================================================================
--- Lightweight Combat Log Watcher
+-- Slider check
 -- =================================================================
 
 -- For slider gating: which spells have we actually seen cast?
 _G["Doite_SliderSeen"] = _G["Doite_SliderSeen"] or {}
-DoiteConditions._SliderNoCastWhitelist = {
-  -- Druid
-  ["Hurricane"] = true,
-  ["Tranquility"] = true,
-
-  -- Hunter
-  ["Volley"] = true,
-
-  -- Shaman (totem-based AoE nukes)
-  ["Fire Nova Totem"] = true,
-
-  -- Warlock
-  ["Inferno"] = true,
-}
 
 local function _MarkSliderSeen(spellName)
   if not spellName or spellName == "" then
@@ -1892,60 +1892,55 @@ local function _GetCanonicalSpellNameFromData(data)
 end
 
 -- =================================================================
--- SuperWoW: UNIT_CASTEVENT -> cooldown ownership (PLAYER ONLY)
+-- Nampower: SPELL_GO_SELF -> cooldown ownership (PLAYER ONLY)
+-- Only used to gate "soon off CD" sliders so shared-CD abilities
+-- don't show sliders unless the player actually cast them.
 -- =================================================================
-local _playerGUID_cached = nil
 
--- SuperWoW: UnitExists(unit) -> exists, guid
-local function _GetUnitGuid(unit)
-  if not unit or not UnitExists then
-    return nil
+-- Nampower gates these events behind NP_EnableSpellGoEvents (default 0).
+-- Enable if available; harmless if CVars are missing.
+do
+  if GetCVar and SetCVar then
+    local ok, v = pcall(GetCVar, "NP_EnableSpellGoEvents")
+    if ok and v and tostring(v) == "0" then
+      pcall(SetCVar, "NP_EnableSpellGoEvents", "1")
+    end
   end
-  local exists, guid = UnitExists(unit)
-  if exists and guid and guid ~= "" then
-    return guid
-  end
-  return nil
-end
-
-local function _GetPlayerGUID()
-  if _playerGUID_cached then
-    return _playerGUID_cached
-  end
-  local guid = _GetUnitGuid("player")
-  if guid and guid ~= "" then
-    _playerGUID_cached = guid
-    return guid
-  end
-  return nil
 end
 
 local _daCast = CreateFrame("Frame", "DoiteCast")
-_daCast:RegisterEvent("UNIT_CASTEVENT")
+_daCast:RegisterEvent("SPELL_GO_SELF")
 _daCast:SetScript("OnEvent", function()
-  local casterGUID = arg1
-  local evType = arg3
-  local spellId = arg4
+  -- SPELL_GO_SELF params (Nampower):
+  -- arg1=itemId (0 if not item-triggered)
+  -- arg2=spellId
+  local itemId = arg1
+  local spellId = arg2
 
-  -- ONLY use this for slider ownership: only completed SPELL casts
-  if evType ~= "CAST" then
+  -- Only track real spell casts for slider ownership (ignore item-triggered)
+  if itemId and itemId ~= 0 then
+    return
+  end
+  if not spellId then
     return
   end
 
-  -- Critical: ignore other units' casts
-  local pg = _GetPlayerGUID()
-  if pg and casterGUID and casterGUID ~= pg then
+  -- Nampower id->name mapping
+  local name = nil
+  if GetSpellNameAndRankForId then
+    local n = GetSpellNameAndRankForId(spellId)
+    if type(n) == "string" and n ~= "" then
+      name = n
+    end
+  end
+
+  if not name or name == "" then
     return
   end
 
-  if not spellId or not SpellInfo then
-    return
-  end
-
-  local name = SpellInfo(spellId)
-  if type(name) ~= "string" or name == "" then
-    return
-  end
+  -- debug: last GO_SELF seen
+  Doite_LastGoSelfId = spellId
+  Doite_LastGoSelfName = name
 
   _MarkSliderSeen(name)
 end)
@@ -2733,8 +2728,8 @@ local function _GetAuraStacksOnUnit(unit, auraName, wantDebuff)
     end
 
     local name
-    if auraId and SpellInfo then
-      name = SpellInfo(auraId)
+    if auraId then
+      name = _NP_SpellNameAndTexture(auraId)
     end
 
     if name == auraName then
@@ -2753,7 +2748,7 @@ local function _GetAuraStacksOnUnit(unit, auraName, wantDebuff)
       local buffs = snap.buffs
 
       if debCount >= 16 and buffs and buffs[auraName] then
-        -- First try a SpellInfo-based pass (mirrors main loop)
+        -- First try a nampower-based pass (mirrors main loop)
         local j = 1
         while j <= 32 do
           local tex2, applications2, auraId2 = UnitBuff(unit, j)
@@ -2762,8 +2757,8 @@ local function _GetAuraStacksOnUnit(unit, auraName, wantDebuff)
           end
 
           local name2
-          if auraId2 and SpellInfo then
-            name2 = SpellInfo(auraId2)
+          if auraId2 then
+            name2 = _NP_SpellNameAndTexture(auraId2)
           end
 
           if name2 == auraName then
@@ -3112,17 +3107,36 @@ local function _PassesTargetDistance(condTbl, unit, spellName)
   local canAttack = UnitCanAttack and UnitCanAttack("player", unit)
   local isHostile = canAttack and (not isFriend)
 
-  -- Positional checks first
-  if val == "Behind" then
+  -- Combined positional+range modes
+  local wantPos = nil  -- "behind" / "front" / nil
+  if val == "Behind & in range" then
+    wantPos = "behind"
+    val = "In range"
+  elseif val == "In front & in range" then
+    wantPos = "front"
+    val = "In range"
+  end
+
+  -- Positional checks first (also supports the combined modes above)
+  local posOK = true
+
+  if val == "Behind" or wantPos == "behind" then
     if type(UnitXP) == "function" then
       local ok, behind = pcall(UnitXP, "behind", "player", unit)
       if ok then
-        return (behind == true)
+        posOK = (behind == true)
+      else
+        posOK = true
       end
+    else
+      posOK = true
     end
-    return true
 
-  elseif val == "In front" then
+    if val == "Behind" then
+      return posOK
+    end
+
+  elseif val == "In front" or wantPos == "front" then
     if type(UnitXP) == "function" then
       local okB, behind = pcall(UnitXP, "behind", "player", unit)
       local okS, inSight = pcall(UnitXP, "inSight", "player", unit)
@@ -3132,9 +3146,14 @@ local function _PassesTargetDistance(condTbl, unit, spellName)
       if not okS then
         inSight = true
       end
-      return (not behind) and (inSight ~= false)
+      posOK = (not behind) and (inSight ~= false)
+    else
+      posOK = true
     end
-    return true
+
+    if val == "In front" then
+      return posOK
+    end
   end
 
   -- Dead-target guard for range-based checks
@@ -3215,6 +3234,9 @@ local function _PassesTargetDistance(condTbl, unit, spellName)
   end
 
   if val == "In range" then
+    if wantPos ~= nil then
+      return (posOK and inRange)
+    end
     return inRange
 
   elseif val == "Not in range" then
@@ -3325,6 +3347,14 @@ local function _PassesTargetUnitType(condTbl, unit)
       return true
     end
     return (cls == "worldboss")
+
+  elseif val == "Not a boss" then
+    -- Opposite of Boss.
+    local cls = UnitClassification and UnitClassification(unit) or nil
+    if not cls or cls == "" then
+      return true
+    end
+    return (cls ~= "worldboss")
   end
 
   local creatureType = UnitCreatureType and UnitCreatureType(unit) or nil
@@ -3616,7 +3646,11 @@ local function _DruidNoForm(map)
 end
 
 local function _DruidStealth()
-  return DoitePlayerAuras.HasBuff("prowl")
+  return DoitePlayerAuras.HasBuff("Prowl")
+end
+
+local function _PriestShadowform()
+  return DoitePlayerAuras.HasBuff("Shadowform")
 end
 
 -- Normalize editor labels so logic is robust to wording differences
@@ -3692,10 +3726,10 @@ local function _PassesFormRequirement(formStr)
   -- PRIEST
   if cls == "PRIEST" then
     if formStr == "1. Shadowform" then
-      return map["Shadowform"] == true
+      return _PriestShadowform()
     end
     if formStr == "0. No form" then
-      return map["Shadowform"] ~= true
+      return not _PriestShadowform()
     end
     return true
   end
@@ -3896,11 +3930,11 @@ local function _EnsureAuraTexture(frame, data)
     return
   end
 
-  -- 0a) If config already has a spellid, trust SpellInfo(spellid) first.
-  if data.spellid and SpellInfo then
+  -- 0a) If config already has a spellid, resolve texture via Nampower.
+  if data.spellid then
     local sid = tonumber(data.spellid)
     if sid and sid > 0 then
-      local _, _, tex = SpellInfo(sid)
+      local _, tex = _NP_SpellNameAndTexture(sid)
       if tex and tex ~= "" then
         local cur = icon:GetTexture()
         if cur ~= tex then
@@ -3919,11 +3953,11 @@ local function _EnsureAuraTexture(frame, data)
     end
   end
 
-  -- 0b) If Nampower is present and this spell exists in player spellbook, resolve name -> spellId -> texture even if no one has the aura up.
-  if GetSpellIdForName and SpellInfo then
+  -- 0b) If Nampower spellbook lookup exists, resolve name -> spellId -> texture even if no one has the aura up.
+  if GetSpellIdForName then
     local sid = GetSpellIdForName(name)
     if sid and sid > 0 then
-      local _, _, tex = SpellInfo(sid)
+      local _, tex = _NP_SpellNameAndTexture(sid)
       if tex and tex ~= "" then
         local cur = icon:GetTexture()
         if cur ~= tex then
@@ -3997,7 +4031,7 @@ local function _EnsureAuraTexture(frame, data)
   end
 
   local function tryUnit(unit)
-    -- 1) BUFFS: confirm NAME via SpellInfo/tooltip, then take TEXTURE from UnitBuff
+    -- 1) BUFFS: confirm NAME via Nampower, then take TEXTURE from UnitBuff
     local i = 1
     while i <= 40 do
       local n = _GetAuraName(unit, i, false)
@@ -4018,7 +4052,7 @@ local function _EnsureAuraTexture(frame, data)
       i = i + 1
     end
 
-    -- 2) DEBUFFS: confirm NAME via SpellInfo/tooltip, then take TEXTURE from UnitDebuff
+    -- 2) DEBUFFS: confirm NAME, then take TEXTURE from UnitDebuff
     i = 1
     while i <= 40 do
       local n = _GetAuraName(unit, i, true)
@@ -6134,23 +6168,18 @@ local function _HandleAbilitySlider(key, ca, dataTbl, sliderGuardOk)
   local wasSliding = SlideMgr.active and SlideMgr.active[key]
   local maxWindow = math.min(3.0, (dur or 0) * 0.6)
 
-  -- Last time *this* spell was actually seen cast (UNIT_CASTEVENT -> _MarkSliderSeen)
+  -- Last time *this* spell was actually seen cast (SPELL_GO_SELF -> _MarkSliderSeen)
   local lastSeen = spellName and Doite_SliderSeen and Doite_SliderSeen[spellName] or nil
 
   local hasSeenForThisCD = false
 
-  if spellName
-      and DoiteConditions._SliderNoCastWhitelist[spellName]
-      and rem and dur and dur > 1.6 then
-    -- Whitelisted: trust the *real* cooldown even without UNIT_CASTEVENT.
-    hasSeenForThisCD = true
-
-  elseif lastSeen and rem and dur and dur > 0 then
+  -- With SPELL_GO_SELF, only show sliders for cooldowns that began at (or immediately after) an observed cast of THIS spell.
+  if lastSeen and rem and dur and dur > 0 then
     local now = GetTime()
     -- reconstruct approximate cooldown start from (now, rem, dur)
     local start = now + rem - dur
-    -- small epsilon because lastSeen and start are sampled in
-    if lastSeen + 0.25 >= start then
+    -- allow a small epsilon for event timing / rounding
+    if lastSeen + 0.35 >= start then
       hasSeenForThisCD = true
     end
   end

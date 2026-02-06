@@ -226,7 +226,7 @@ function DoitePlayerAuras.GetBuffBarSlot(spellName)
   -- check cached index first
   local cachedIndex = DoitePlayerAuras.playerBuffIndexCache[spellName]
   if cachedIndex then
-    local buffSpellId = GetPlayerBuffID(cachedIndex) -- superwow function that returns spellId at player buff index
+    local buffSpellId = GetPlayerBuffID(cachedIndex)
     if buffSpellId == spellId then
       return cachedIndex
     end

@@ -36,57 +36,6 @@ local function _IsRogueOrDruid()
   return (c == "ROGUE" or c == "DRUID")
 end
 
-----------------------------------------------------------------
--- Nampower version guard (needed for Aura owner tracking) Requires Nampower 2.24.0
-----------------------------------------------------------------
-local _NP_REQ_MAJOR, _NP_REQ_MINOR, _NP_REQ_PATCH = 2, 24, 0
-
-local function _NP_GetVersion()
-  if type(GetNampowerVersion) == "function" then
-    local a, b, c = GetNampowerVersion()
-    return (tonumber(a) or 0), (tonumber(b) or 0), (tonumber(c) or 0), true
-  end
-  return 0, 0, 0, false
-end
-
-local function _NP_VersionString(maj, min, pat, hasFn)
-  if not hasFn then
-    return "unknown"
-  end
-  return tostring(maj) .. "." .. tostring(min) .. "." .. tostring(pat)
-end
-
--- returns: ok(bool), verStr(string), maj, min, pat
-local function _NP_AtLeast(reqMaj, reqMin, reqPat)
-  local maj, min, pat, hasFn = _NP_GetVersion()
-  local verStr = _NP_VersionString(maj, min, pat, hasFn)
-
-  if not hasFn then
-    return false, verStr, maj, min, pat
-  end
-
-  if maj > reqMaj then
-    return true, verStr, maj, min, pat
-  end
-  if maj < reqMaj then
-    return false, verStr, maj, min, pat
-  end
-
-  -- maj equal
-  if min > reqMin then
-    return true, verStr, maj, min, pat
-  end
-  if min < reqMin then
-    return false, verStr, maj, min, pat
-  end
-
-  -- min equal
-  if pat >= reqPat then
-    return true, verStr, maj, min, pat
-  end
-  return false, verStr, maj, min, pat
-end
-
 -- === Lightweight throttle for heavy UI work (prevents lag while dragging sliders) ===
 local _DoiteEdit_PendingHeavy = false
 local _DoiteEdit_Accum = 0
@@ -1860,7 +1809,6 @@ local function CreateConditionsUI()
   condFrame.cond_aura_others = MakeCheck("DoiteCond_Aura_OthersAura", "Others Aura", 75, row9_y)
   condFrame.cond_aura_owner_tip = _Parent():CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
   condFrame.cond_aura_owner_tip:SetPoint("LEFT", condFrame.cond_aura_others, "RIGHT", 70, -3)
-  -- Keep the original text as the default; swapped dynamically for old Nampower versions
   condFrame._aura_owner_tip_default = condFrame._aura_owner_tip_default
       or "'Remaining' can only be used for a 'My Aura' on 'Target (Help/Harm)'"
   condFrame.cond_aura_owner_tip:SetText(condFrame._aura_owner_tip_default)
@@ -3548,101 +3496,6 @@ function UpdateItemStacksForMissing()
     end
   end
 
-  -- Nampower guard: Aura owner tracking requires Nampower
-  local function AuraOwner_ApplyNampowerGuard()
-    if not condFrame then
-      return
-    end
-
-    local ok, verStr = _NP_AtLeast(_NP_REQ_MAJOR, _NP_REQ_MINOR, _NP_REQ_PATCH)
-    condFrame._npAuraOwnerOK = ok and true or false
-    condFrame._npAuraOwnerVerStr = verStr
-
-    -- Tip text: keep original for OK versions, otherwise show requirement text + detected version
-    if condFrame.cond_aura_owner_tip and condFrame.cond_aura_owner_tip.SetText then
-      if ok then
-        condFrame._aura_owner_tip_default = condFrame._aura_owner_tip_default
-            or "'Remaining' can only be used for a 'My Aura' on 'Target (Help/Harm)'"
-        condFrame.cond_aura_owner_tip:SetText(condFrame._aura_owner_tip_default)
-      else
-        condFrame.cond_aura_owner_tip:SetText(
-            "Nampower 2.24.0+ req. for these options. You have " .. tostring(verStr) .. "."
-        )
-      end
-    end
-
-    -- If not supported: force unchecked + disabled + greyed, and clear DB flags so logic never runs
-    if not ok then
-      _SetAuraCheckEnabled(condFrame.cond_aura_mine, false, true)
-      _SetAuraCheckEnabled(condFrame.cond_aura_others, false, true)
-
-      if currentKey then
-        local d = EnsureDBEntry(currentKey)
-        d.conditions = d.conditions or {}
-        d.conditions.aura = d.conditions.aura or {}
-        d.conditions.aura.onlyMine = nil
-        d.conditions.aura.onlyOthers = nil
-      end
-
-      -- Ensure nothing later re-paints enabled/checked visuals without the guard reasserting.
-      SafeRefresh()
-      SafeEvaluate()
-    end
-  end
-
-  -- Re-apply the guard reliably:
-  local function AuraOwner_EnsureNampowerGuard()
-    if not condFrame then
-      return
-    end
-    AuraOwner_ApplyNampowerGuard()
-  end
-
-  -- 1) Apply right now (important: condFrame may already be visible)
-  AuraOwner_EnsureNampowerGuard()
-
-  -- 2) Hook OnShow once
-  if condFrame and not condFrame._npAuraOwnerGuardHooked then
-    condFrame._npAuraOwnerGuardHooked = true
-    local oldOnShow = condFrame:GetScript("OnShow")
-    condFrame:SetScript("OnShow", function()
-      if oldOnShow then
-        oldOnShow()
-      end
-      AuraOwner_EnsureNampowerGuard()
-    end)
-  end
-
-  -- 3) Wrap UpdateCondFrameForKey once it exists
-  if condFrame and not condFrame._npAuraOwnerUCFKHooked then
-    condFrame._npAuraOwnerUCFKHooked = true
-
-    local hooker = CreateFrame("Frame")
-    hooker._accum = 0
-    hooker:SetScript("OnUpdate", function()
-      hooker._accum = (hooker._accum or 0) + (arg1 or 0)
-      if hooker._accum < 0.10 then
-        return
-      end
-      hooker._accum = 0
-
-      if type(UpdateCondFrameForKey) == "function" and not _G["DoiteEdit_NP_UCFKWrapped"] then
-        _G["DoiteEdit_NP_UCFKWrapped"] = true
-
-        local old = UpdateCondFrameForKey
-        UpdateCondFrameForKey = function(key, ...)
-          local r = { old(key, unpack(arg)) }
-          -- After any refresh, force the Nampower guard to re-assert disabled state.
-          AuraOwner_EnsureNampowerGuard()
-          return unpack(r)
-        end
-
-        hooker:SetScript("OnUpdate", nil)
-        hooker:Hide()
-      end
-    end)
-  end
-
   local function AuraOwner_UpdateDependentChecks()
     if not condFrame then
       return
@@ -3756,15 +3609,6 @@ function UpdateItemStacksForMissing()
   -- Wire up the Aura owner checkboxes ("My Aura" / "Others Aura")
   if condFrame.cond_aura_mine then
     condFrame.cond_aura_mine:SetScript("OnClick", function()
-      -- Hard guard (lazy): haven't evaluated yet (nil) or it's false, force evaluation now.
-      if condFrame and condFrame._npAuraOwnerOK ~= true then
-        AuraOwner_ApplyNampowerGuard()
-        if condFrame._npAuraOwnerOK ~= true then
-          this:SetChecked(false)
-          return
-        end
-      end
-
       if not currentKey then
         this:SetChecked(false)
         return
@@ -3785,15 +3629,6 @@ function UpdateItemStacksForMissing()
 
   if condFrame.cond_aura_others then
     condFrame.cond_aura_others:SetScript("OnClick", function()
-      -- Hard guard (lazy): haven't evaluated yet (nil) or it's false, force evaluation now.
-      if condFrame and condFrame._npAuraOwnerOK ~= true then
-        AuraOwner_ApplyNampowerGuard()
-        if condFrame._npAuraOwnerOK ~= true then
-          this:SetChecked(false)
-          return
-        end
-      end
-
       if not currentKey then
         this:SetChecked(false)
         return
@@ -4221,10 +4056,10 @@ function UpdateItemStacksForMissing()
   ----------------------------------------------------------------
   -- Target Distance & Type dropdowns (shared lists)
   ----------------------------------------------------------------
-  local distanceChoices = { "Any", "In range", "Melee range", "Not in range", "Behind", "In front" }
+  local distanceChoices = { "Any", "In range", "Melee range", "Not in range", "Behind", "In front", "Behind & in range", "In front & in range" }
 
   local unitTypeChoices = {
-    "Any", "Players", "NPC", "Boss",
+    "Any", "Players", "NPC", "Boss", "Not a boss",
     "1. Humanoid", "2. Beast", "3. Dragonkin", "4. Undead",
     "5. Demon", "6. Giant", "7. Mechanical", "8. Elemental",
     -- Multi: versions (like forms; add common combos)
@@ -8229,10 +8064,7 @@ local ic = c.item or {}
       condFrame.cond_aura_hp_val_enter:Hide()
     end
 
-    -- Aura owner flags ("My Aura" / "Others Aura") – buff and debuff identical. IMPORTANT: must respect Nampower guard, otherwise UpdateConditionsUI will re-enable them.
-    local npOK = (condFrame and condFrame._npAuraOwnerOK == true) and true or false
-
-    -- Use the shared helper if available; otherwise fall back to local enable/disable behavior.
+    -- Aura owner flags ("My Aura" / "Others Aura") – buff and debuff identical.
     local function _AO_SetEnabled(cb, enabled, clearWhenDisabling)
       if not cb then
         return
@@ -8265,35 +8097,26 @@ local ic = c.item or {}
     local onlyMine = (c.aura and c.aura.onlyMine) and true or false
     local onlyOthers = (c.aura and c.aura.onlyOthers) and true or false
 
-    -- If Nampower is not supported, forcibly clear DB + UI state here as well.
-    if not npOK then
-      onlyMine, onlyOthers = false, false
+    -- Sanitize DB: if both are somehow true, keep "My Aura" only.
+    if onlyMine and onlyOthers then
+      onlyOthers = false
       if c.aura then
-        c.aura.onlyMine = nil
         c.aura.onlyOthers = nil
-      end
-    else
-      -- Sanitize DB: if both are somehow true, keep "My Aura" only.
-      if onlyMine and onlyOthers then
-        onlyOthers = false
-        if c.aura then
-          c.aura.onlyOthers = nil
-        end
       end
     end
 
     if amode == "found" then
-      -- Owner row visible for FOUND. Enabled only when Nampower guard is OK; otherwise visible but greyed + forced off.
+      -- Owner row visible for FOUND. Always enabled.
       if condFrame.cond_aura_mine then
         condFrame.cond_aura_mine:Show()
         condFrame.cond_aura_mine:SetChecked(onlyMine)
-        _AO_SetEnabled(condFrame.cond_aura_mine, npOK, true)
+        _AO_SetEnabled(condFrame.cond_aura_mine, true, true)
       end
 
       if condFrame.cond_aura_others then
         condFrame.cond_aura_others:Show()
         condFrame.cond_aura_others:SetChecked(onlyOthers)
-        _AO_SetEnabled(condFrame.cond_aura_others, npOK, true)
+        _AO_SetEnabled(condFrame.cond_aura_others, true, true)
       end
 
     elseif amode == "missing" then
