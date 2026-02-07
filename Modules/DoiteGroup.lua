@@ -97,6 +97,32 @@ local function _ComputeOffset(baseX, baseY, growth, pad, steps)
   return x, y
 end
 
+-- Helper function for centered horizontal expansion (WeakAuras style)
+-- Icons grow from center of the GROUP, not alternating from a center point
+-- For 5 icons: positions are [-2, -1, 0, +1, +2] 
+-- For 4 icons: positions are [-1.5, -0.5, +0.5, +1.5]
+local function _ComputeCenteredOffset(baseX, baseY, growth, pad, index, totalVisible)
+  local x = baseX
+  local y = baseY
+  
+  if growth == "Centered Horizontal" then
+    -- Calculate offset so the entire group is centered
+    -- For odd count (e.g., 5): middle icon at center, others distributed evenly
+    -- For even count (e.g., 4): icons straddle the center
+    local halfCount = totalVisible / 2.0
+    local offset = (index - 1) - (halfCount - 0.5)
+    x = baseX + (offset * pad)
+    
+  elseif growth == "Centered Vertical" then
+    -- Same logic but vertical
+    local halfCount = totalVisible / 2.0
+    local offset = (index - 1) - (halfCount - 0.5)
+    y = baseY + (offset * pad)
+  end
+  
+  return x, y
+end
+
 local function _ApplyPlacement(entry, x, y, size)
   if not entry then
     return
@@ -372,13 +398,21 @@ local function ComputeGroupLayout(entries, groupName)
     end
 
     -- Place visible-known entries into their fixed slots (up to limit).
+    local isCentered = (growth == "Centered Horizontal" or growth == "Centered Vertical")
+    
     local p = 0
     local v = 1
     while v <= vn do
       local e = visibleKnown[v]
       local slot = e and e._daFixedSlot
       if slot and slot <= limit then
-        local curX, curY = _ComputeOffset(baseX, baseY, growth, pad, slot - 1)
+        local curX, curY
+        
+        if isCentered then
+          curX, curY = _ComputeCenteredOffset(baseX, baseY, growth, pad, slot, limit)
+        else
+          curX, curY = _ComputeOffset(baseX, baseY, growth, pad, slot - 1)
+        end
 
         -- Inline placement so we can respect _daDragging (avoid fighting the drag owner).
         local pos = e._computedPos
@@ -419,20 +453,36 @@ local function ComputeGroupLayout(entries, groupName)
 
     actualPlaced = p
   else
-    local curX, curY = baseX, baseY
-    local p = 1
-    while p <= actualPlaced do
-      local e = visibleKnown[p]
-
-      _ApplyPlacement(e, curX, curY, baseSize)
-
-      placed[p] = e
-
-      if p < actualPlaced then
-        curX, curY = _ComputeOffset(baseX, baseY, growth, pad, p)
+    -- Dynamic (non-fixed) layout
+    local isCentered = (growth == "Centered Horizontal" or growth == "Centered Vertical")
+    
+    if isCentered then
+      -- Use centered expansion logic
+      local p = 1
+      while p <= actualPlaced do
+        local e = visibleKnown[p]
+        local curX, curY = _ComputeCenteredOffset(baseX, baseY, growth, pad, p, actualPlaced)
+        _ApplyPlacement(e, curX, curY, baseSize)
+        placed[p] = e
+        p = p + 1
       end
+    else
+      -- Standard directional growth
+      local curX, curY = baseX, baseY
+      local p = 1
+      while p <= actualPlaced do
+        local e = visibleKnown[p]
 
-      p = p + 1
+        _ApplyPlacement(e, curX, curY, baseSize)
+
+        placed[p] = e
+
+        if p < actualPlaced then
+          curX, curY = _ComputeOffset(baseX, baseY, growth, pad, p)
+        end
+
+        p = p + 1
+      end
     end
   end
 

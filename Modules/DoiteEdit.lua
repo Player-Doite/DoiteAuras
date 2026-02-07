@@ -674,7 +674,7 @@ end
 local function InitGrowthDropdown(dd, data)
   UIDropDownMenu_Initialize(dd, function(frame, level, menuList)
     local info
-    local directions = { "Horizontal Right", "Horizontal Left", "Vertical Down", "Vertical Up" }
+    local directions = { "Horizontal Right", "Horizontal Left", "Vertical Down", "Vertical Up", "Centered Horizontal", "Centered Vertical" }
     for _, dir in ipairs(directions) do
       info = {}
       info.text = dir
@@ -9241,6 +9241,51 @@ function DoiteConditions_Show(key)
     -- Ensure distinct Draw Layer to not hide under standard dialog art
     gridBtn:SetFrameLevel(condFrame:GetFrameLevel() + 5)
     condFrame.gridBtn = gridBtn
+
+    -- pfUI Border Toggle Button (LEFT of grid button)
+    local borderBtn = CreateFrame("Button", nil, condFrame, "UIPanelButtonTemplate")
+    borderBtn:SetWidth(100)
+    borderBtn:SetHeight(18)
+    borderBtn:ClearAllPoints()
+    borderBtn:SetPoint("RIGHT", gridBtn, "LEFT", -5, 0)  -- Changed to LEFT of grid button
+    
+    -- Initialize DB if needed
+    DoiteAurasDB = DoiteAurasDB or {}
+    DoiteAurasDB.settings = DoiteAurasDB.settings or {}
+    if DoiteAurasDB.settings.pfuiBorder == nil then
+        DoiteAurasDB.settings.pfuiBorder = true  -- Default: enabled
+    end
+    
+    -- Set initial button text
+    if DoiteAurasDB.settings.pfuiBorder then
+        borderBtn:SetText("PFUI Border: ON")  -- Changed text
+    else
+        borderBtn:SetText("PFUI Border: OFF")  -- Changed text
+    end
+    
+    borderBtn:SetScript("OnClick", function()
+        -- Toggle the setting
+        DoiteAurasDB.settings.pfuiBorder = not DoiteAurasDB.settings.pfuiBorder
+        
+        -- Update button text
+        if DoiteAurasDB.settings.pfuiBorder then
+            borderBtn:SetText("PFUI Border: ON")  -- Changed text
+        else
+            borderBtn:SetText("PFUI Border: OFF")  -- Changed text
+        end
+        
+        -- Notify user they need to reload
+        local cf = DEFAULT_CHAT_FRAME or ChatFrame1
+        if cf then
+            if DoiteAurasDB.settings.pfuiBorder then
+                cf:AddMessage("|cff00ff00DoiteAuras:|r pfUI borders |cff00ff00ENABLED|r. Type /reload to apply.", 1, 1, 0.5)
+            else
+                cf:AddMessage("|cffff0000DoiteAuras:|r pfUI borders |cffff0000DISABLED|r. Type /reload to apply.", 1, 1, 0.5)
+            end
+        end
+    end)
+    borderBtn:SetFrameLevel(condFrame:GetFrameLevel() + 5)
+    condFrame.borderBtn = borderBtn
 
     -- Sliders helper (makes a slider + small EditBox beneath it)
     local function MakeSlider(name, text, x, y, width, minVal, maxVal, step)

@@ -1760,6 +1760,16 @@ local function FindPlayerDebuff(name)
     return false,nil
 end
 
+-- pfUI Integration: Get border color from pfUI if loaded
+local function GetPfUIBorderColor()
+    if pfUI and pfUI.api and pfUI.api.GetStringColor and pfUI_config and pfUI_config.appearance and pfUI_config.appearance.border then
+        local er, eg, eb, ea = pfUI.api.GetStringColor(pfUI_config.appearance.border.color)
+        return er, eg, eb, ea
+    end
+    -- pfUI default border color: dark gray
+    return 0.1, 0.1, 0.1, 1
+end
+
 -- Create or update icon *structure only* (no positioning or texture changes here)
 local function CreateOrUpdateIcon(key, layer)
     local globalName = "DoiteIcon_" .. key
@@ -1774,13 +1784,54 @@ local function CreateOrUpdateIcon(key, layer)
         f:SetMovable(true)    -- Allow movement when dragged
         f:RegisterForDrag("LeftButton")
 
-        -- icon texture (created once)
-        f.icon = f:CreateTexture(nil, "BACKGROUND")
-        f.icon:SetAllPoints(f)
+        -- Check if pfUI borders are enabled (default: true)
+        DoiteAurasDB = DoiteAurasDB or {}
+        DoiteAurasDB.settings = DoiteAurasDB.settings or {}
+        if DoiteAurasDB.settings.pfuiBorder == nil then
+            DoiteAurasDB.settings.pfuiBorder = true  -- Default: enabled
+        end
+        local borderEnabled = DoiteAurasDB.settings.pfuiBorder
+
+        -- pfUI-style border (thin border only, NO background)
+        if borderEnabled then
+            local borderSize = 1
+            local backdrop = {
+                bgFile = nil,  -- NO background! Icon shows through
+                edgeFile = "Interface\\BUTTONS\\WHITE8X8",
+                tile = false, tileSize = 0, edgeSize = borderSize,
+                insets = {left = -borderSize, right = -borderSize, top = -borderSize, bottom = -borderSize}
+            }
+            f:SetBackdrop(backdrop)
+            
+            -- Get border color from pfUI (auto-detects theme)
+            local er, eg, eb, ea = GetPfUIBorderColor()
+            f:SetBackdropBorderColor(er, eg, eb, ea)
+        end
+
+        -- icon texture (created once) - adjust based on border
+        f.icon = f:CreateTexture(nil, "ARTWORK")
+        if borderEnabled then
+            -- Inset 1px for border visibility
+            f.icon:SetPoint("TOPLEFT", f, "TOPLEFT", 1, -1)
+            f.icon:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -1, 1)
+            f.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        else
+            -- No border = fill entire frame
+            f.icon:SetAllPoints(f)
+            f.icon:SetTexCoord(0, 1, 0, 1)
+        end
 
         -- optional count text (created once)
         local fs = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        fs:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -2, 2)
+        if borderEnabled then
+            -- With border: inset positioning + outline
+            fs:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -1, 1)
+            fs:SetFont("Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
+        else
+            -- Without border: standard positioning
+            fs:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -2, 2)
+            fs:SetFont("Fonts\\FRIZQT__.TTF", 12)
+        end
         fs:SetText("")
         f.count = fs
 
