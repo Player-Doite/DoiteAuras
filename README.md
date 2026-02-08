@@ -30,7 +30,7 @@ _Timestamps are available in the description._
 - `/da` or `/doite` or `/doiteauras`
 
 ## Shared exported builds (for inspiration or use)
-- Warrior [all stances]: [**LINK**](https://pastecode.io/s/2mg0y7gx)
+- Warrior [all stances]: [**LINK**](https://pastecode.io/s/vajoxwa6)
 - Druid [all forms]: [**LINK**](https://pastecode.io/s/g7bhkpjn)
 - Paladin [Seal Tracker]: [**LINK**](https://pastecode.io/s/b3ikammv)
 - Kara40 Boss Debuffs: [**LINK**](https://pastecode.io/s/473z2tgz)
