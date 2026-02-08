@@ -29,6 +29,11 @@ local AuraCond_RegisterManager
 local AuraCond_RefreshFromDB
 local AuraCond_ResetEditing
 
+local VfxCond_Managers = {}
+local VfxCond_RegisterManager
+local VfxCond_RefreshFromDB
+local VfxCond_ResetEditing
+
 -- class gate used by UpdateConditionsUI and others
 local function _IsRogueOrDruid()
   local _, c = UnitClass("player")
@@ -1694,11 +1699,19 @@ local function CreateConditionsUI()
 
   -- Ability: dynamic Aura Conditions section
   local abilityAuraBaseY = row12_y
-  SetSeparator("ability", 12, "EXTRA: ABILITY, BUFF, DEBUFF & TALENT CONDITIONS", true, true)
+  SetSeparator("ability", 12, "EXTRA: VISIBILITY CONDITIONS", true, true)
   condFrame.abilityAuraAnchor = CreateFrame("Frame", nil, _Parent())
   condFrame.abilityAuraAnchor:SetPoint("TOPLEFT", _Parent(), "TOPLEFT", 0, abilityAuraBaseY)
   condFrame.abilityAuraAnchor:SetPoint("TOPRIGHT", _Parent(), "TOPRIGHT", 0, abilityAuraBaseY)
   condFrame.abilityAuraAnchor:SetHeight(20)
+
+  -- Ability: dynamic Visual Effects Conditions section
+  local abilityVfxBaseY = row13_y
+  SetSeparator("ability", 13, "EXTRA: VISUAL EFFECTS CONDITIONS", true, true)
+  condFrame.abilityVfxAnchor = CreateFrame("Frame", nil, _Parent())
+  condFrame.abilityVfxAnchor:SetPoint("TOPLEFT", _Parent(), "TOPLEFT", 0, abilityVfxBaseY)
+  condFrame.abilityVfxAnchor:SetPoint("TOPRIGHT", _Parent(), "TOPRIGHT", 0, abilityVfxBaseY)
+  condFrame.abilityVfxAnchor:SetHeight(20)
 
   --------------------------------------------------
   -- Buff/Debuff rows
@@ -1875,7 +1888,7 @@ local function CreateConditionsUI()
   condFrame.cond_aura_class_note:SetText("No class-specific option added for your class.")
   condFrame.cond_aura_class_note:Hide()
 
-  local sepAuraBuff = SetSeparator("aura", 13, "EXTRA: ABILITY, BUFF, DEBUFF & TALENT CONDITIONS", true, true)
+  local sepAuraBuff = SetSeparator("aura", 13, "EXTRA: VISIBILITY CONDITIONS", true, true)
   if sepAuraBuff and srows then
     local newY = (srows[13] or 0) - 10
     sepAuraBuff:ClearAllPoints()
@@ -1889,6 +1902,14 @@ local function CreateConditionsUI()
   condFrame.auraAuraAnchor:SetPoint("TOPLEFT", _Parent(), "TOPLEFT", 0, auraAuraBaseY)
   condFrame.auraAuraAnchor:SetPoint("TOPRIGHT", _Parent(), "TOPRIGHT", 0, auraAuraBaseY)
   condFrame.auraAuraAnchor:SetHeight(20)
+
+  -- Aura: dynamic Visual Effects Conditions section
+  local auraVfxBaseY = row14_y - 10
+  SetSeparator("aura", 14, "EXTRA: VISUAL EFFECTS CONDITIONS", true, true)
+  condFrame.auraVfxAnchor = CreateFrame("Frame", nil, _Parent())
+  condFrame.auraVfxAnchor:SetPoint("TOPLEFT", _Parent(), "TOPLEFT", 0, auraVfxBaseY)
+  condFrame.auraVfxAnchor:SetPoint("TOPRIGHT", _Parent(), "TOPRIGHT", 0, auraVfxBaseY)
+  condFrame.auraVfxAnchor:SetHeight(20)
 
   --------------------------------------------------
   -- Item rows
@@ -2084,11 +2105,19 @@ local function CreateConditionsUI()
 
   -- Item: dynamic Aura Conditions section
   local itemAuraBaseY = row14_y
-  SetSeparator("item", 14, "EXTRA: ABILITY, BUFF, DEBUFF & TALENT CONDITIONS", true, true)
+  SetSeparator("item", 14, "EXTRA: VISIBILITY CONDITIONS", true, true)
   condFrame.itemAuraAnchor = CreateFrame("Frame", nil, _Parent())
   condFrame.itemAuraAnchor:SetPoint("TOPLEFT", _Parent(), "TOPLEFT", 0, itemAuraBaseY)
   condFrame.itemAuraAnchor:SetPoint("TOPRIGHT", _Parent(), "TOPRIGHT", 0, itemAuraBaseY)
   condFrame.itemAuraAnchor:SetHeight(20)
+
+  -- Item: dynamic Visual Effects Conditions section
+  local itemVfxBaseY = row15_y
+  SetSeparator("item", 15, "EXTRA: VISUAL EFFECTS CONDITIONS", true, true)
+  condFrame.itemVfxAnchor = CreateFrame("Frame", nil, _Parent())
+  condFrame.itemVfxAnchor:SetPoint("TOPLEFT", _Parent(), "TOPLEFT", 0, itemVfxBaseY)
+  condFrame.itemVfxAnchor:SetPoint("TOPRIGHT", _Parent(), "TOPRIGHT", 0, itemVfxBaseY)
+  condFrame.itemVfxAnchor:SetHeight(20)
 
   ----------------------------------------------------------------
   -- Icon categories (shared across all types)
@@ -3000,14 +3029,7 @@ local function CreateConditionsUI()
     local bg = condFrame.cond_item_where_bag:GetChecked()
     local ms = condFrame.cond_item_where_missing:GetChecked()
 
-    if clicked == condFrame.cond_item_where_missing and ms then
-      -- Missing exclusive
-      condFrame.cond_item_where_equipped:SetChecked(false)
-      condFrame.cond_item_where_bag:SetChecked(false)
-    elseif (clicked == condFrame.cond_item_where_equipped or clicked == condFrame.cond_item_where_bag) and clicked:GetChecked() then
-      -- Any of the positive whereabouts -> clear Missing
-      condFrame.cond_item_where_missing:SetChecked(false)
-    end
+    -- (No exclusivity enforced anymore)
 
     eq = condFrame.cond_item_where_equipped:GetChecked()
     bg = condFrame.cond_item_where_bag:GetChecked()
@@ -3047,11 +3069,17 @@ function UpdateItemStacksForMissing()
       end
     end
 
-    -- If item is marked Missing: stacks condition + "Icon text: Stacks" do not apply. Disable them and clear their checks immediately.
-    _setCheckState(condFrame.cond_item_stacks_cb, (not ms), true)
-    _setCheckState(condFrame.cond_item_text_stack, (not ms), true)
+    -- If item is marked Missing ONLY: stacks condition + "Icon text: Stacks" do not apply.
+    local eq = condFrame.cond_item_where_equipped and condFrame.cond_item_where_equipped:GetChecked()
+    local bg = condFrame.cond_item_where_bag and condFrame.cond_item_where_bag:GetChecked()
 
-    if ms then
+    -- Only disable features if Missing is checked AND neither Equipped nor Bag is checked
+    local shouldDisable = (ms and (not eq) and (not bg))
+    
+    _setCheckState(condFrame.cond_item_stacks_cb, (not shouldDisable), true)
+    _setCheckState(condFrame.cond_item_text_stack, (not shouldDisable), true)
+
+    if shouldDisable then
       if condFrame.cond_item_stacks_comp then
         condFrame.cond_item_stacks_comp:Hide()
       end
@@ -5115,6 +5143,19 @@ function UpdateItemStacksForMissing()
     end
   end
 
+  -- Register the three per-type Visual Effects Conditions managers
+  if VfxCond_RegisterManager then
+    if condFrame.abilityVfxAnchor then
+      VfxCond_RegisterManager("ability", condFrame.abilityVfxAnchor)
+    end
+    if condFrame.auraVfxAnchor then
+      VfxCond_RegisterManager("aura", condFrame.auraVfxAnchor)
+    end
+    if condFrame.itemVfxAnchor then
+      VfxCond_RegisterManager("item", condFrame.itemVfxAnchor)
+    end
+  end
+
   -- start hidden; visibility controlled from UpdateConditionsUI
   if condFrame.abilityAuraAnchor then
     condFrame.abilityAuraAnchor:Hide()
@@ -5124,6 +5165,15 @@ function UpdateItemStacksForMissing()
   end
   if condFrame.itemAuraAnchor then
     condFrame.itemAuraAnchor:Hide()
+  end
+  if condFrame.abilityVfxAnchor then
+    condFrame.abilityVfxAnchor:Hide()
+  end
+  if condFrame.auraVfxAnchor then
+    condFrame.auraVfxAnchor:Hide()
+  end
+  if condFrame.itemVfxAnchor then
+    condFrame.itemVfxAnchor:Hide()
   end
 
   -- Make sure the AND/OR logic popup and buttons vanish when the edit frame is closed
@@ -5154,22 +5204,111 @@ function UpdateItemStacksForMissing()
 end
 
 -- Dynamically resize the scroll/content area to fit the last visible row (+20px buffer)
+-- Dynamically resize the scroll/content area AND reposition VFX sections
 local function _ReflowCondAreaHeight()
   if not condFrame then
     return
   end
 
-  -- Fallback to the frame itself if no explicit content frame exists.
   local parent = condFrame._condArea or condFrame.condArea or condFrame
-  if not parent or not parent.GetChildren then
+  if not parent then
     return
   end
 
+
+  -- 1. Reflow Ability Section
+  -- Base Y for Ability Visibility is row12_y (-470)
+  -- The layout uses fixed rows normally, so we check if the visibility anchor has grown.
+  if condFrame.abilityAuraAnchor and condFrame.abilityAuraAnchor:IsShown() then
+    local visHeight = condFrame.abilityAuraAnchor:GetHeight() or 20
+    -- The extra vertical space needed beyond the default 20px
+    -- (If height is 20, expansion is 0. If height is 100, expansion is 80)
+    
+    -- Original Y for Ability Visibility is around -470 (row12_y)
+    -- Original Y for Ability VFX is around -510 (row13_y) gap is ~40px.
+    -- If visHeight > 20, we need to push VFX down by (visHeight - 20).
+    
+    local ROW12_Y = -470
+    local ROW13_Y = -510
+    
+    local expansion = visHeight - 20
+    if expansion < 0 then expansion = 0 end
+    
+    local newVfxY = ROW13_Y - expansion
+    
+    -- Move the separator
+    if condFrame._seps and condFrame._seps.ability and condFrame._seps.ability[13] then
+      local sep = condFrame._seps.ability[13]
+      sep:ClearAllPoints()
+      sep:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, newVfxY)
+      sep:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, newVfxY)
+    end
+    
+    -- Move the VFX anchor
+    if condFrame.abilityVfxAnchor then
+      condFrame.abilityVfxAnchor:ClearAllPoints()
+      condFrame.abilityVfxAnchor:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, newVfxY)
+      condFrame.abilityVfxAnchor:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, newVfxY)
+    end
+  end
+
+  -- 2. Reflow Aura Section
+  -- Aura Visibility base is (row13_y - 10) = -520
+  -- Aura VFX base is (row14_y - 10) = -560
+  if condFrame.auraAuraAnchor and condFrame.auraAuraAnchor:IsShown() then
+    local visHeight = condFrame.auraAuraAnchor:GetHeight() or 20
+    local AURA_VIS_Y = -520
+    local AURA_VFX_Y = -560
+    
+    local expansion = visHeight - 20
+    if expansion < 0 then expansion = 0 end
+    
+    local newVfxY = AURA_VFX_Y - expansion
+    if condFrame._seps and condFrame._seps.aura and condFrame._seps.aura[14] then
+      local sep = condFrame._seps.aura[14]
+      sep:ClearAllPoints()
+      sep:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, newVfxY)
+      sep:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, newVfxY)
+    end
+    if condFrame.auraVfxAnchor then
+      condFrame.auraVfxAnchor:ClearAllPoints()
+      condFrame.auraVfxAnchor:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, newVfxY)
+      condFrame.auraVfxAnchor:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, newVfxY)
+    end
+  end
+
+  -- 3. Reflow Item Section
+  -- Item Visibility base is row14_y = -550
+  -- Item VFX base is row15_y = -590
+  if condFrame.itemAuraAnchor and condFrame.itemAuraAnchor:IsShown() then
+    local visHeight = condFrame.itemAuraAnchor:GetHeight() or 20
+    local ITEM_VIS_Y = -550
+    local ITEM_VFX_Y = -590
+    
+    local expansion = visHeight - 20
+    if expansion < 0 then expansion = 0 end
+    
+    local newVfxY = ITEM_VFX_Y - expansion
+    
+    if condFrame._seps and condFrame._seps.item and condFrame._seps.item[15] then
+      local sep = condFrame._seps.item[15]
+      sep:ClearAllPoints()
+      sep:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, newVfxY)
+      sep:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, newVfxY)
+    end
+    if condFrame.itemVfxAnchor then
+      condFrame.itemVfxAnchor:ClearAllPoints()
+      condFrame.itemVfxAnchor:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, newVfxY)
+      condFrame.itemVfxAnchor:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, newVfxY)
+    end
+  end
+
+
+  -- Now calculate total height based on new positions
+  if not parent.GetChildren then
+    return
+  end
   local children = { parent:GetChildren() }
-  if not children or not children[1] then
-    return
-  end
-
   local minBottom = nil
 
   local i = 1
@@ -5192,18 +5331,13 @@ local function _ReflowCondAreaHeight()
     return
   end
 
-  -- minBottom is negative (rows go downward), so -minBottom is the content depth.
   local height = -minBottom + 20
-
-  -- Don't collapse too far; small entries (few rows) still get a sane min height.
   if height < 200 then
     height = 200
   end
 
   parent:SetHeight(height)
 
-  -- Make sure the scrollframe actually uses this content frame as its scroll child
-  -- Try both "_scrollFrame" and "scrollFrame" to match actual field names.
   local sf = condFrame._scrollFrame or condFrame.scrollFrame
   if sf then
     if sf.SetScrollChild then
@@ -6157,7 +6291,7 @@ do
       label:SetPoint("TOPLEFT", anchorFrame, "TOPLEFT", 0, 0)
       label:SetJustifyH("LEFT")
       label:SetTextColor(1, 0.82, 0)
-      label:SetText("Add extra ability / aura / talent conditions:")
+      label:SetText("Add visibility conditions:")
       mgr.label = label
     end
 
@@ -6225,6 +6359,595 @@ do
 
   AuraCond_ResetEditing = function()
     -- no-op for now; all editing state is rebuilt from DB in AuraCond_RefreshFromDB
+  end
+end
+
+----------------------------------------------------------------
+-- VfxCond: Visual Effects Conditions System
+-- (Uses same Ability/Buff/Debuff/Talent UI as AuraCond but stores to vfxConds)
+----------------------------------------------------------------
+do
+  -- VfxCond shares the AuraCond row state machine and UI, but uses different managers and data storage.
+  -- We reuse AuraCond_SetRowState, AuraCond_BuildDescription, etc. by referencing them.
+
+  local function VfxCond_GetListForType(typeKey)
+    if not currentKey then
+      DEFAULT_CHAT_FRAME:AddMessage("|cffff0000GetList: No currentKey|r")
+      return nil
+    end
+    -- Use EnsureDBEntry like AuraCond does to access main DB
+    local d = EnsureDBEntry(currentKey)
+    if not d then
+      DEFAULT_CHAT_FRAME:AddMessage("|cffff0000GetList: EnsureDBEntry failed for '"..tostring(currentKey).."'|r")
+      return nil
+    end
+
+    if not d.conditions then d.conditions = {} end
+    if not d.conditions.vfxConds then d.conditions.vfxConds = {} end
+
+    if not d.conditions.vfxConds[typeKey] then
+      d.conditions.vfxConds[typeKey] = {}
+    end
+    return d.conditions.vfxConds[typeKey]
+  end
+
+  local function VfxCond_Len(t)
+    if not t then return 0 end
+    local n = 0
+    for _ in pairs(t) do n = n + 1 end
+    return n
+  end
+
+  local function VfxCond_TitleCase(str)
+    if not str then return "" end
+    return string.sub(string.gsub(" " .. str, "%W%l", string.upper), 2)
+  end
+
+  local function VfxCond_BuildDescription(buffType, mode, unit, name)
+    local tStr = (buffType or "?")
+    local mStr = (mode or "found")
+    local uStr = (unit and unit ~= "") and (" (on " .. unit .. ")") or ""
+    local nStr = (name or "?")
+
+    local text = ""
+    if mStr == "missing" then
+      text = "Missing " .. tStr .. ": " .. nStr .. uStr
+    else
+      -- "found" or default
+      text = tStr .. ": " .. nStr .. uStr
+    end
+    return "|cffffffff" .. text .. "|r"
+  end
+
+  local VfxCond_RowCounter = 0
+
+  local function VfxCond_SetRowState(row, state)
+    row._state = state
+
+    row.btn1:Hide()
+    row.btn2:Hide()
+    if row.btn3 then row.btn3:Hide() end
+    row.closeBtn:Show()
+    row.editBox:Hide()
+    row.addButton:Hide()
+    row.labelFS:Hide()
+    if row.abilityDD then row.abilityDD:Hide() end
+    if row.glowCB then row.glowCB:Hide() end
+    if row.greyCB then row.greyCB:Hide() end
+
+    local spacing = row._spacing or 4
+    local parentWidth = row._parentWidth or 260
+    local closeWidth = row._closeWidth or 20
+
+    if state == "STEP1" then
+      row._branch = nil
+      local available = parentWidth - closeWidth - spacing * 5
+      if available < 80 then available = 80 end
+      local w = math.floor(available / 4)
+
+      row.btn1:SetWidth(w)
+      row.btn2:SetWidth(w)
+      row.addButton:SetWidth(w)
+      if row.btn3 then row.btn3:SetWidth(w) end
+
+      row.btn1:ClearAllPoints()
+      row.btn2:ClearAllPoints()
+      row.addButton:ClearAllPoints()
+      if row.btn3 then row.btn3:ClearAllPoints() end
+
+      row.btn1:SetPoint("LEFT", row, "LEFT", 0, 0)
+      row.btn2:SetPoint("LEFT", row.btn1, "RIGHT", spacing, 0)
+      row.addButton:SetPoint("LEFT", row.btn2, "RIGHT", spacing, 0)
+      if row.btn3 then row.btn3:SetPoint("LEFT", row.addButton, "RIGHT", spacing, 0) end
+
+      row.btn1:SetText("Ability")
+      row.btn2:SetText("Buff")
+      row.addButton:SetText("Debuff")
+      if row.btn3 then row.btn3:SetText("Talent") end
+
+      row.btn1:Show()
+      row.btn2:Show()
+      row.addButton:Show()
+      if row.btn3 then row.btn3:Show() end
+
+    elseif state == "STEP2" then
+      local available = parentWidth - closeWidth - spacing * 3
+      if available < 120 then available = 120 end
+      local w = math.floor(available / 2)
+
+      row.btn1:SetWidth(w)
+      row.btn2:SetWidth(w)
+
+      row.btn1:ClearAllPoints()
+      row.btn2:ClearAllPoints()
+      row.btn1:SetPoint("LEFT", row, "LEFT", 0, 0)
+      row.btn2:SetPoint("LEFT", row.btn1, "RIGHT", spacing, 0)
+
+      if row._branch == "ABILITY" then
+        row.btn1:SetText("Not on CD")
+        row.btn2:SetText("On CD")
+      elseif row._branch == "TALENT" then
+        row.btn1:SetText("Known")
+        row.btn2:SetText("Not known")
+      else
+        row.btn1:SetText("Found")
+        row.btn2:SetText("Missing")
+      end
+
+      row.btn1:Show()
+      row.btn2:Show()
+
+    elseif state == "STEP3" then
+      local available = parentWidth - closeWidth - spacing * 3
+      if available < 120 then available = 120 end
+      local w = math.floor(available / 2)
+
+      row.btn1:SetWidth(w)
+      row.btn2:SetWidth(w)
+
+      row.btn1:ClearAllPoints()
+      row.btn2:ClearAllPoints()
+      row.btn1:SetPoint("LEFT", row, "LEFT", 0, 0)
+      row.btn2:SetPoint("LEFT", row.btn1, "RIGHT", spacing, 0)
+
+      row.btn1:SetText("On player")
+      row.btn2:SetText("On target")
+      row.btn1:Show()
+      row.btn2:Show()
+
+    elseif state == "INPUT" then
+      local addWidth = row.addButton:GetWidth() or 40
+      local rightGap = 2
+      local totalRight = closeWidth + spacing + addWidth + rightGap
+
+      local editWidth = parentWidth - spacing - totalRight
+      if editWidth < 60 then editWidth = 60 end
+
+      row.editBox:ClearAllPoints()
+      row.addButton:ClearAllPoints()
+
+      row.editBox:SetWidth(editWidth)
+      row.editBox:SetPoint("LEFT", row, "LEFT", 10, 0)
+      row.addButton:SetPoint("RIGHT", row.closeBtn, "LEFT", -rightGap, 0)
+      row.addButton:SetText("Add")
+
+      row.editBox:Show()
+      row.addButton:Show()
+
+    elseif state == "SAVED" then
+      row.labelFS:SetText(row._desc or "")
+      row.labelFS:Show()
+
+      if row.glowCB and row.greyCB then
+        row.labelFS:ClearAllPoints()
+        row.labelFS:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+        row.labelFS:SetWidth(parentWidth - 30) -- Full width (minus delete button)
+
+        -- New row below text for checkboxes
+        row.glowCB:ClearAllPoints()
+        row.greyCB:ClearAllPoints()
+        row.glowCB:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -14)
+        row.greyCB:SetPoint("LEFT", row.glowCB, "RIGHT", 40, 0)
+
+        row.glowCB:Show()
+        row.greyCB:Show()
+      end
+    end
+  end
+
+  local function VfxCond_OnCancelEditing(row)
+    row._branch = nil
+    row._choiceBuffType = nil
+    row._choiceMode = nil
+    row._choiceUnit = nil
+    row._spellName = nil
+
+    if row.editBox and row.editBox.SetText then
+      row.editBox:SetText("")
+    end
+
+    VfxCond_SetRowState(row, "STEP1")
+  end
+
+  local function VfxCond_RebuildFromDB_Internal(typeKey)
+    local mgr = VfxCond_Managers[typeKey]
+    if not mgr or not mgr.anchor then return end
+
+    local list = VfxCond_GetListForType(typeKey) or {}
+    local count = VfxCond_Len(list)
+
+    if not mgr.savedRows then mgr.savedRows = {} end
+
+    local i
+    for i = 1, count do
+      local entry = list[i]
+      local row = mgr.savedRows[i]
+      if not row then
+        row = mgr._createRow(mgr, false)
+        mgr.savedRows[i] = row
+      end
+      row._entryIndex = i
+      row._choiceBuffType = (entry and entry.buffType) or "BUFF"
+      row._choiceMode = (entry and entry.mode) or "found"
+      row._choiceUnit = (entry and entry.unit) or "player"
+      row._spellName = (entry and entry.name) or ""
+      row._desc = VfxCond_BuildDescription(
+        row._choiceBuffType,
+        row._choiceMode,
+        row._choiceUnit,
+        row._spellName
+      )
+
+      if row.glowCB then
+        row.glowCB:SetChecked(entry and entry.glow)
+        row.glowCB:SetScript("OnClick", function()
+          local list = VfxCond_GetListForType(typeKey)
+          if list and list[row._entryIndex] then
+            list[row._entryIndex].glow = this:GetChecked() and true or nil
+            SafeRefresh(); SafeEvaluate()
+            UpdateCondFrameForKey(currentKey)
+          end
+        end)
+      end
+      if row.greyCB then
+        row.greyCB:SetChecked(entry and entry.grey)
+        row.greyCB:SetScript("OnClick", function()
+          local list = VfxCond_GetListForType(typeKey)
+          if list and list[row._entryIndex] then
+            list[row._entryIndex].grey = this:GetChecked() and true or nil
+            SafeRefresh(); SafeEvaluate()
+            UpdateCondFrameForKey(currentKey)
+          end
+        end)
+      end
+
+      VfxCond_SetRowState(row, "SAVED")
+      row:Show()
+    end
+
+    local nRows = VfxCond_Len(mgr.savedRows)
+    for i = count + 1, nRows do
+      if mgr.savedRows[i] then
+        mgr.savedRows[i]:Hide()
+        mgr.savedRows[i]._entryIndex = nil
+      end
+    end
+
+    if not mgr.editRow then
+      mgr.editRow = mgr._createRow(mgr, true)
+    end
+    VfxCond_OnCancelEditing(mgr.editRow)
+    mgr.editRow:Show()
+
+    local y = -35
+
+    i = 1
+    while mgr.savedRows and mgr.savedRows[i] do
+      local row = mgr.savedRows[i]
+      if row:IsShown() then
+        row:ClearAllPoints()
+        row:SetHeight(36)
+        row:SetPoint("TOPLEFT", mgr.anchor, "TOPLEFT", 0, y)
+        row:SetPoint("TOPRIGHT", mgr.anchor, "TOPRIGHT", 0, y)
+        y = y - 38
+      end
+      i = i + 1
+    end
+
+    if mgr.editRow and mgr.editRow:IsShown() then
+      mgr.editRow:ClearAllPoints()
+      mgr.editRow:SetPoint("TOPLEFT", mgr.anchor, "TOPLEFT", 0, y)
+      mgr.editRow:SetPoint("TOPRIGHT", mgr.anchor, "TOPRIGHT", 0, y)
+      y = y - 18
+    end
+
+    mgr.anchor:SetHeight(-y + 4)
+    _ReflowCondAreaHeight()
+  end
+
+  local function VfxCond_OnAdd(row)
+    if not currentKey then return end
+    local mgr = row._manager
+    if not mgr then return end
+
+    local text = row.editBox and row.editBox:GetText() or ""
+    text = string.gsub(text or "", "^%s*(.-)%s*$", "%1")
+    if text == "" then return end
+
+    local buffType = row._choiceBuffType or "BUFF"
+    local mode = row._choiceMode or "found"
+    local unit
+
+    if row._branch == "ABILITY" then
+      unit = nil
+      buffType = "ABILITY"
+    elseif row._branch == "TALENT" then
+      unit = nil
+    else
+      unit = row._choiceUnit or "player"
+    end
+
+    local list = VfxCond_GetListForType(mgr.typeKey)
+    if not list then
+      DEFAULT_CHAT_FRAME:AddMessage("|cffff0000VfxCond_OnAdd: list is nil for type "..tostring(mgr.typeKey).."|r")
+      return
+    end
+
+    local entry = {
+      buffType = buffType,
+      mode = mode,
+      unit = unit,
+      name = VfxCond_TitleCase(text),
+    }
+
+    local n = VfxCond_Len(list)
+    list[n + 1] = entry
+    DEFAULT_CHAT_FRAME:AddMessage("|cff00ff00VfxCond_OnAdd: Saved! n="..(n+1).." name="..entry.name.."|r")
+
+    VfxCond_RebuildFromDB_Internal(mgr.typeKey)
+  end
+
+  local function VfxCond_OnDeleteSaved(row)
+    if not currentKey then return end
+    local mgr = row._manager
+    if not mgr then return end
+
+    local list = VfxCond_GetListForType(mgr.typeKey)
+    if not list then return end
+
+    local idx = row._entryIndex or 0
+    local n = VfxCond_Len(list)
+    if idx < 1 or idx > n then return end
+
+    for j = idx, n - 1 do
+      list[j] = list[j + 1]
+    end
+    list[n] = nil
+
+    VfxCond_RebuildFromDB_Internal(mgr.typeKey)
+  end
+
+  local function VfxCond_CreateRow(mgr, isEditing)
+    VfxCond_RowCounter = VfxCond_RowCounter + 1
+
+    local parent = mgr.anchor
+    local row = CreateFrame("Frame", nil, parent)
+    row:SetHeight(18)
+
+    row._manager = mgr
+
+    local parentWidth = (parent and parent.GetWidth and parent:GetWidth()) or 0
+    if parentWidth <= 0 then parentWidth = 260 end
+    local closeWidth = 20
+    local spacing = 4
+    local mainWidth = math.floor((parentWidth - closeWidth - spacing * 3) / 2)
+
+    row._parentWidth = parentWidth
+    row._closeWidth = closeWidth
+    row._spacing = spacing
+    row._mainWidth = mainWidth
+
+    row.btn1 = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+    row.btn2 = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+    row.btn3 = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+    row.closeBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+    row.editBox = CreateFrame("EditBox", nil, row, "InputBoxTemplate")
+    row.addButton = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+    row.labelFS = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    row.labelFS:SetJustifyH("LEFT")
+
+    row.btn1:SetWidth(mainWidth)
+    row.btn2:SetWidth(mainWidth)
+    row.btn3:SetWidth(mainWidth)
+    row.btn1:SetHeight(18)
+    row.btn2:SetHeight(18)
+    row.btn3:SetHeight(18)
+
+    row.closeBtn:SetWidth(closeWidth)
+    row.closeBtn:SetHeight(18)
+
+    local editWidth = parentWidth - closeWidth - spacing * 3 - 40
+    if editWidth < 60 then editWidth = 60 end
+
+    row.editBox:SetWidth(editWidth)
+    row.editBox:SetHeight(18)
+    row.editBox:SetAutoFocus(false)
+    row.editBox:SetFontObject("GameFontNormalSmall")
+
+    row.addButton:SetWidth(40)
+    row.addButton:SetHeight(18)
+
+    row.btn1:SetPoint("LEFT", row, "LEFT", 0, 0)
+    row.btn2:SetPoint("LEFT", row.btn1, "RIGHT", spacing, 0)
+    row.closeBtn:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+
+    row.editBox:SetPoint("LEFT", row, "LEFT", 0, 0)
+    row.addButton:SetPoint("LEFT", row.editBox, "RIGHT", spacing, 0)
+
+    row.labelFS:SetPoint("LEFT", row, "LEFT", 0, 0)
+    row.labelFS:SetTextColor(1, 1, 1)
+    row.labelFS:SetNonSpaceWrap(false)
+
+    -- New Glow/Grey checkboxes for the SAVED state
+    local function CreateMiniCheck(label)
+      local cb = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
+      cb:SetWidth(18); cb:SetHeight(18)
+      cb.text = cb:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+      cb.text:SetPoint("LEFT", cb, "RIGHT", 0, 0)
+      cb.text:SetText(label)
+      return cb
+    end
+
+    row.glowCB = CreateMiniCheck("Glow")
+    row.greyCB = CreateMiniCheck("Grey")
+
+    row.closeBtn:SetText("X")
+
+    local function YellowifyButton(btn)
+      if not btn then return end
+      if btn.SetNormalFontObject then btn:SetNormalFontObject("GameFontNormalSmall") end
+      local fs = btn:GetFontString()
+      if fs and fs.SetTextColor then fs:SetTextColor(1, 0.82, 0) end
+    end
+
+    YellowifyButton(row.btn1)
+    YellowifyButton(row.btn2)
+    YellowifyButton(row.btn3)
+    YellowifyButton(row.addButton)
+    YellowifyButton(row.closeBtn)
+
+    -- Button click handlers
+    row.btn1:SetScript("OnClick", function()
+      local state = row._state
+      if state == "STEP1" then
+        row._branch = "ABILITY"
+        row._choiceBuffType = "ABILITY"
+        VfxCond_SetRowState(row, "STEP2")
+      elseif state == "STEP2" then
+        if row._branch == "ABILITY" then
+          row._choiceMode = "notcd"
+          VfxCond_SetRowState(row, "INPUT")
+        elseif row._branch == "TALENT" then
+          row._choiceMode = "Known"
+          VfxCond_SetRowState(row, "INPUT")
+        else
+          row._choiceMode = "found"
+          VfxCond_SetRowState(row, "STEP3")
+        end
+      elseif state == "STEP3" then
+        row._choiceUnit = "player"
+        VfxCond_SetRowState(row, "INPUT")
+      end
+    end)
+
+    row.btn2:SetScript("OnClick", function()
+      local state = row._state
+      if state == "STEP1" then
+        row._branch = "BUFF"
+        row._choiceBuffType = "BUFF"
+        VfxCond_SetRowState(row, "STEP2")
+      elseif state == "STEP2" then
+        if row._branch == "ABILITY" then
+          row._choiceMode = "oncd"
+          VfxCond_SetRowState(row, "INPUT")
+        elseif row._branch == "TALENT" then
+          row._choiceMode = "NotKnown"
+          VfxCond_SetRowState(row, "INPUT")
+        else
+          row._choiceMode = "missing"
+          VfxCond_SetRowState(row, "STEP3")
+        end
+      elseif state == "STEP3" then
+        row._choiceUnit = "target"
+        VfxCond_SetRowState(row, "INPUT")
+      end
+    end)
+
+    row.addButton:SetScript("OnClick", function()
+      local state = row._state
+      if state == "STEP1" then
+        row._branch = "DEBUFF"
+        row._choiceBuffType = "DEBUFF"
+        VfxCond_SetRowState(row, "STEP2")
+      elseif state == "INPUT" then
+        VfxCond_OnAdd(row)
+      end
+    end)
+
+    row.btn3:SetScript("OnClick", function()
+      if row._state == "STEP1" then
+        row._branch = "TALENT"
+        row._choiceBuffType = "TALENT"
+        VfxCond_SetRowState(row, "STEP2")
+      end
+    end)
+
+    row.closeBtn:SetScript("OnClick", function()
+      if row._state == "SAVED" then
+        VfxCond_OnDeleteSaved(row)
+      else
+        VfxCond_OnCancelEditing(row)
+      end
+    end)
+
+    row.editBox:SetScript("OnEnterPressed", function()
+      VfxCond_OnAdd(row)
+    end)
+
+    row._state = "SAVED"
+    VfxCond_SetRowState(row, "SAVED")
+
+    row:Hide()
+    return row
+  end
+
+  VfxCond_RegisterManager = function(typeKey, anchorFrame)
+    if not anchorFrame then return end
+
+    local mgr = VfxCond_Managers[typeKey]
+    if not mgr then
+      mgr = {}
+      VfxCond_Managers[typeKey] = mgr
+    end
+
+    mgr.typeKey = typeKey
+    mgr.anchor = anchorFrame
+    mgr.savedRows = mgr.savedRows or {}
+    mgr.editRow = mgr.editRow or nil
+    mgr._createRow = VfxCond_CreateRow
+
+    if not mgr.label then
+      local label = anchorFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+      label:SetPoint("TOPLEFT", anchorFrame, "TOPLEFT", 0, -15)
+      label:SetJustifyH("LEFT")
+      label:SetTextColor(1, 0.82, 0)
+      label:SetText("Add visual effect conditions:")
+      mgr.label = label
+    end
+
+    anchorFrame:SetHeight(20)
+    anchorFrame:Hide()
+  end
+
+  VfxCond_RefreshFromDB = function(typeKey)
+    for tk, mgr in pairs(VfxCond_Managers) do
+      if mgr.anchor then
+        if tk == typeKey then
+          mgr.anchor:Show()
+        else
+          mgr.anchor:Hide()
+        end
+      end
+    end
+
+    if typeKey then
+      VfxCond_RebuildFromDB_Internal(typeKey)
+    end
+    _ReflowCondAreaHeight()
+  end
+
+  VfxCond_ResetEditing = function()
+    -- no-op
   end
 end
 
@@ -6315,6 +7038,9 @@ local function UpdateConditionsUI(data)
     end
     if AuraCond_RefreshFromDB then
       AuraCond_RefreshFromDB("ability")
+    end
+    if VfxCond_RefreshFromDB then
+      VfxCond_RefreshFromDB("ability")
     end
 
     condFrame.cond_ability_usable:Show()
@@ -6953,6 +7679,9 @@ local function UpdateConditionsUI(data)
     if AuraCond_RefreshFromDB then
       AuraCond_RefreshFromDB("item")
     end
+    if VfxCond_RefreshFromDB then
+      VfxCond_RefreshFromDB("item")
+    end
 
 local ic = c.item or {}
 
@@ -7118,7 +7847,9 @@ local ic = c.item or {}
       condFrame.cond_item_where_missing:SetChecked(ms)
 
       -- preserve outer isMissing flag for rest of Item logic
-      isMissing = ms
+      -- Only consider "missing" effectively if it is the ONLY selection.
+      -- If Equipped or Bag is also checked, we allow configuring other properties (stacks, cooldowns, etc.)
+      isMissing = (ms and (not eq) and (not bg))
     end
 
     ----------------------------------------------------------------
@@ -7792,6 +8523,9 @@ local ic = c.item or {}
 
     if AuraCond_RefreshFromDB then
       AuraCond_RefreshFromDB("aura")
+    end
+    if VfxCond_RefreshFromDB then
+      VfxCond_RefreshFromDB("aura")
     end
 
     -- small helpers used in this branch only
