@@ -244,11 +244,13 @@ local function ComputeGroupLayout(entries, groupName)
   local baseY = num(L.offsetY, 0)
   local baseSize = num(L.iconSize, 36)
   local growth = L.growth or "Horizontal Right"
-  local limit = num(L.numAuras, 5)
+  local limit = num(L.numAuras, 50)
   local fixed = GetGroupFixedMode(groupName, L)
   local settings = (DoiteAurasDB and DoiteAurasDB.settings)
   local spacing = num(L.spacing, (settings and settings.spacing) or 8)
   local pad = baseSize + spacing
+
+  local isCentered = (growth == "Centered Horizontal" or growth == "Centered Vertical")
 
   -- 2) Build pools: known (for fixed slots) and visible-known (for actual placement)
   local fixedKnown
