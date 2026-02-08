@@ -97,6 +97,29 @@ local function _ComputeOffset(baseX, baseY, growth, pad, steps)
   return x, y
 end
 
+-- Centered expansion (keeps whole group centered around baseX/baseY)
+local function _ComputeCenteredOffset(baseX, baseY, growth, pad, index, totalVisible)
+  local x = baseX
+  local y = baseY
+
+  if not totalVisible or totalVisible <= 0 then
+    return x, y
+  end
+
+  if growth == "Centered Horizontal" then
+    local halfCount = totalVisible / 2.0
+    local offset = (index - 1) - (halfCount - 0.5)
+    x = baseX + (offset * pad)
+
+  elseif growth == "Centered Vertical" then
+    local halfCount = totalVisible / 2.0
+    local offset = (index - 1) - (halfCount - 0.5)
+    y = baseY + (offset * pad)
+  end
+
+  return x, y
+end
+
 local function _ApplyPlacement(entry, x, y, size)
   if not entry then
     return
@@ -218,11 +241,13 @@ local function ComputeGroupLayout(entries, groupName)
   local baseY = num(L.offsetY, 0)
   local baseSize = num(L.iconSize, 36)
   local growth = L.growth or "Horizontal Right"
-  local limit = num(L.numAuras, 5)
+  local limit = num(L.numAuras, 50)
   local fixed = GetGroupFixedMode(groupName, L)
   local settings = (DoiteAurasDB and DoiteAurasDB.settings)
   local spacing = num(L.spacing, (settings and settings.spacing) or 8)
   local pad = baseSize + spacing
+
+  local isCentered = (growth == "Centered Horizontal" or growth == "Centered Vertical")
 
   -- 2) Build pools: known (for fixed slots) and visible-known (for actual placement)
   local fixedKnown
@@ -378,7 +403,12 @@ local function ComputeGroupLayout(entries, groupName)
       local e = visibleKnown[v]
       local slot = e and e._daFixedSlot
       if slot and slot <= limit then
-        local curX, curY = _ComputeOffset(baseX, baseY, growth, pad, slot - 1)
+        local curX, curY
+        if isCentered then
+          curX, curY = _ComputeCenteredOffset(baseX, baseY, growth, pad, slot, limit)
+        else
+          curX, curY = _ComputeOffset(baseX, baseY, growth, pad, slot - 1)
+        end
 
         -- Inline placement so we can respect _daDragging (avoid fighting the drag owner).
         local pos = e._computedPos
@@ -419,20 +449,31 @@ local function ComputeGroupLayout(entries, groupName)
 
     actualPlaced = p
   else
-    local curX, curY = baseX, baseY
-    local p = 1
-    while p <= actualPlaced do
-      local e = visibleKnown[p]
-
-      _ApplyPlacement(e, curX, curY, baseSize)
-
-      placed[p] = e
-
-      if p < actualPlaced then
-        curX, curY = _ComputeOffset(baseX, baseY, growth, pad, p)
+    if isCentered then
+      local p = 1
+      while p <= actualPlaced do
+        local e = visibleKnown[p]
+        local curX, curY = _ComputeCenteredOffset(baseX, baseY, growth, pad, p, actualPlaced)
+        _ApplyPlacement(e, curX, curY, baseSize)
+        placed[p] = e
+        p = p + 1
       end
+    else
+      local curX, curY = baseX, baseY
+      local p = 1
+      while p <= actualPlaced do
+        local e = visibleKnown[p]
 
-      p = p + 1
+        _ApplyPlacement(e, curX, curY, baseSize)
+
+        placed[p] = e
+
+        if p < actualPlaced then
+          curX, curY = _ComputeOffset(baseX, baseY, growth, pad, p)
+        end
+
+        p = p + 1
+      end
     end
   end
 

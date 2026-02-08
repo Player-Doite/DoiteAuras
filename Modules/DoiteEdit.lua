@@ -674,7 +674,7 @@ end
 local function InitGrowthDropdown(dd, data)
   UIDropDownMenu_Initialize(dd, function(frame, level, menuList)
     local info
-    local directions = { "Horizontal Right", "Horizontal Left", "Vertical Down", "Vertical Up" }
+    local directions = { "Horizontal Right", "Horizontal Left", "Centered Horizontal", "Vertical Down", "Vertical Up", "Centered Vertical" }
     for _, dir in ipairs(directions) do
       info = {}
       info.text = dir
