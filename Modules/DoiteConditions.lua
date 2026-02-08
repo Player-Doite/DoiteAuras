@@ -1831,8 +1831,10 @@ _G.DoiteConditions_ProcWindowDurations = _G.DoiteConditions_ProcWindowDurations 
   ["Overpower"] = 4.0,
   ["Revenge"] = 4.0,
   ["Surprise Attack"] = 4.0,
+  ["Riposte"] = 4.0,
   ["Arcane Surge"] = 4.0,
 }
+
 -- SpellName -> absolute endTime (GetTime() + duration)
 _G.DoiteConditions_ProcUntil = _G.DoiteConditions_ProcUntil or {}
 -- Per-icon rising-edge detector for "usable proc" icons
@@ -2014,7 +2016,7 @@ do
   elseif cls == "ROGUE" then
     -- Surprise Attack: needs dodge detection
     _daClassCL:RegisterEvent("CHAT_MSG_COMBAT_SELF_MISSES")
-	_daClassCL:RegisterEvent("CHAT_MSG_SPELL_SELF_DAMAGE")
+    _daClassCL:RegisterEvent("CHAT_MSG_SPELL_SELF_DAMAGE")
 
     _daClassCL:SetScript("OnEvent", function()
       local line = arg1
@@ -2041,6 +2043,25 @@ do
           _ProcWindowSet("Surprise Attack", now + dur)
           dirty_ability = true
         end
+      end
+    end)
+
+    -- Riposte: procs on YOUR parry (not target-bound)
+    _daClassCL2:RegisterEvent("CHAT_MSG_COMBAT_CREATURE_VS_SELF_MISSES")
+    _daClassCL2:RegisterEvent("CHAT_MSG_COMBAT_CREATURE_VS_SELF_HITS")
+
+    _daClassCL2:SetScript("OnEvent", function()
+      local line = arg1
+      if not line or line == "" then
+        return
+      end
+
+      -- Riposte: you parried an attack
+      if str_find(line, "You parry") then
+        local dur = _ProcWindowDuration("Riposte") or 4.0
+        local now = _Now()
+        _ProcWindowSet("Riposte", now + dur)
+        dirty_ability = true
       end
     end)
 
