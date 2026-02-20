@@ -1784,6 +1784,33 @@ function DoiteTrack:_OnAuraNPEvent()
     local now = GetTime and GetTime() or 0
 
     ----------------------------------------------------------------
+    -- Non-player apply overwrite guard:
+    -- If an *_ADDED_OTHER event confirms this spell was applied on guid and
+    -- player have no very-recent pending cast for guid+spell, clear stale
+    -- "mine" runtime state so ownership can flip to others immediately.
+    ----------------------------------------------------------------
+    if event == "BUFF_ADDED_OTHER" or event == "DEBUFF_ADDED_OTHER" then
+      local entryOther = TrackedBySpellId[spellId]
+      if entryOther and entryOther.onlyMine == true then
+        local pendOther = _GetPendingTable()
+        local tOther = pendOther[spellId]
+        local pOther = tOther and tOther[guid] or nil
+
+        local fromRecentPlayerCast = false
+        if pOther and pOther.t and (now - (pOther.t or now)) <= 2.5 then
+          fromRecentPlayerCast = true
+        end
+
+        if not fromRecentPlayerCast then
+          local bOther = AuraStateByGuid[guid]
+          if bOther then
+            bOther[spellId] = nil
+          end
+        end
+      end
+    end
+
+    ----------------------------------------------------------------
     -- Paladin SC: confirm Judgement apply (do NOT rely on AURA_CAST_ON_OTHER)
     -- Duration is hardcoded to 10 seconds for all tracked Judgements.
     -- Also supports buff-slot spillover (BUFF_ADDED_OTHER).
@@ -2182,6 +2209,41 @@ function DoiteTrack:_OnAuraNPEvent()
           end
 
           a.appliedAt = now
+          a.fullDur = secRounded
+          a.cp = cp or 0
+          a.isDebuff = (entry.kind == "Debuff")
+
+          t[targetGuid] = nil
+        end
+      end
+    else
+      ----------------------------------------------------------------
+      -- Fallback confirm:
+      -- Some exclusive auras (e.g. same-rank HoTs) can be refreshed by player
+      -- without emitting *_ADDED_* events. If player can currently verify the aura
+      -- on a visible unit, treat this cast as confirmed ownership.
+      ----------------------------------------------------------------
+      local probeUnit = nil
+      if targetGuid == pGuid then
+        probeUnit = "player"
+      else
+        local tGuid = _GetUnitGuidSafe("target")
+        if tGuid and tGuid == targetGuid then
+          probeUnit = "target"
+        end
+      end
+
+      if probeUnit and _AuraHasSpellId(probeUnit, spellId, (entry.kind == "Debuff")) then
+        local bucket = _GetAuraBucketForGuid(targetGuid, true)
+        if bucket then
+          local a = bucket[spellId]
+          if not a then
+            a = {}
+            bucket[spellId] = a
+          end
+
+          a.appliedAt = now
+          a.lastSeen = now
           a.fullDur = secRounded
           a.cp = cp or 0
           a.isDebuff = (entry.kind == "Debuff")
