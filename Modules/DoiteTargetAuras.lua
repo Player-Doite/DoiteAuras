@@ -202,8 +202,9 @@ local function IsCurrentTargetPlayer()
     return false
   end
 
-  local _, playerGuid = UnitExists("player")
-  return playerGuid and DoiteTargetAuras.targetGuid == playerGuid
+  -- We need this for any player target (self or other players), because
+  -- *_OTHER aura delta events are unreliable for player units.
+  return UnitIsPlayer("target") and true or false
 end
 
 local function UpdateAuras()
