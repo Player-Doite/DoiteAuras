@@ -6921,6 +6921,9 @@ function DoiteConditions_RequestEvaluate()
   if _RebuildTargetModsFlags then
     _RebuildTargetModsFlags()
   end
+  if DoiteConditions then
+    DoiteConditions._customKeysDirty = true
+  end
   dirty_ability, dirty_aura, dirty_target, dirty_power = true, true, true, true
 end
 
@@ -7170,32 +7173,92 @@ function DoiteConditions:EvaluateCustom()
   local live = DoiteAurasDB and DoiteAurasDB.spells
   local edit = DoiteDB and DoiteDB.icons
   local touched = false
+  local needsRebuild = (self._customKeysDirty == true)
+  local liveKeys = self._customKeysLive
+  local editKeys = self._customKeysEdit
 
-  if live then
-    for key, data in pairs(live) do
-      if type(data) ~= "table" then
-        live[key] = nil
-      elseif data.type == "Custom" then
+  if not liveKeys then
+    liveKeys = {}
+    self._customKeysLive = liveKeys
+    needsRebuild = true
+  end
+  if not editKeys then
+    editKeys = {}
+    self._customKeysEdit = editKeys
+    needsRebuild = true
+  end
+
+  if needsRebuild then
+    local n = table.getn(liveKeys)
+    while n > 0 do
+      liveKeys[n] = nil
+      n = n - 1
+    end
+
+    n = table.getn(editKeys)
+    while n > 0 do
+      editKeys[n] = nil
+      n = n - 1
+    end
+
+    if live then
+      for key, data in pairs(live) do
+        if type(data) ~= "table" then
+          live[key] = nil
+        elseif data.type == "Custom" then
+          table.insert(liveKeys, key)
+        end
+      end
+    end
+
+    if edit then
+      for key, data in pairs(edit) do
+        if (not live) or (not live[key]) then
+          if type(data) ~= "table" then
+            edit[key] = nil
+          elseif data.type == "Custom" then
+            table.insert(editKeys, key)
+          end
+        end
+      end
+    end
+
+    self._customKeysDirty = false
+  end
+
+  if live and liveKeys then
+    local i, n = 1, table.getn(liveKeys)
+    while i <= n do
+      local key = liveKeys[i]
+      local data = key and live[key]
+      if type(data) == "table" and data.type == "Custom" then
         data.key = key
         if _DoiteCustomEvaluateOne(key, data) then
           touched = true
         end
+      else
+        self._customKeysDirty = true
       end
+      i = i + 1
     end
   end
 
-  if edit and editingAny then
-    for key, data in pairs(edit) do
+  if edit and editingAny and editKeys then
+    local i, n = 1, table.getn(editKeys)
+    while i <= n do
+      local key = editKeys[i]
       if (not live) or (not live[key]) then
-        if type(data) ~= "table" then
-          edit[key] = nil
-        elseif data.type == "Custom" then
+        local data = key and edit[key]
+        if type(data) == "table" and data.type == "Custom" then
           data.key = key
           if _DoiteCustomEvaluateOne(key, data) then
             touched = true
           end
+        else
+          self._customKeysDirty = true
         end
       end
+      i = i + 1
     end
   end
 
