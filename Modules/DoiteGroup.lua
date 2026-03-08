@@ -1539,10 +1539,20 @@ function DoiteGroup.AttachEditGroupUI(frame, api)
     return d.isLeader == true
   end
 
-  frame:HookScript("OnHide", function()
+  local function _dgOnHideReset()
     ctx.state.key = nil
     DoiteGroup._DG_UI_ResetStepForKey(ctx, nil)
-  end)
+  end
+
+  if frame.HookScript then
+    frame:HookScript("OnHide", _dgOnHideReset)
+  else
+    local prevOnHide = frame.GetScript and frame:GetScript("OnHide")
+    frame:SetScript("OnHide", function()
+      if prevOnHide then prevOnHide() end
+      _dgOnHideReset()
+    end)
+  end
 
   ctx.state.key = editingKey()
   DoiteGroup._DG_UI_ResetStepForKey(ctx, ctx.state.key)
