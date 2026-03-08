@@ -20,6 +20,12 @@ if DoiteAurasDB.showtooltip == nil then
 end
 DoiteAuras = DoiteAuras or {}
 
+local renameState
+local DA_GetSpellIdShownName
+local DA_ClearRenameState
+local DA_CancelRename
+local DA_IsRenameNameDuplicate
+
 -- Always return a valid name->texture cache table
 local function DA_Cache()
   DoiteAurasDB = DoiteAurasDB or {}
@@ -500,6 +506,8 @@ exportBtn:SetHeight(20)
 exportBtn:SetPoint("RIGHT", closeBtn, "LEFT", -4, 0)
 exportBtn:SetText("Export")
 exportBtn:SetScript("OnClick", function()
+    DA_CancelRename()
+    if DoiteAuras_RefreshList then pcall(DoiteAuras_RefreshList) end
     if DoiteExport_ShowExportFrame then
         DoiteExport_ShowExportFrame()
     else
@@ -513,6 +521,8 @@ importBtn:SetHeight(20)
 importBtn:SetPoint("RIGHT", exportBtn, "LEFT", -4, 0)
 importBtn:SetText("Import")
 importBtn:SetScript("OnClick", function()
+    DA_CancelRename()
+    if DoiteAuras_RefreshList then pcall(DoiteAuras_RefreshList) end
     if DoiteExport_ShowImportFrame then
         DoiteExport_ShowImportFrame()
     else
@@ -529,6 +539,8 @@ settingsBtn:SetText("Settings")
 
 -- External call
 settingsBtn:SetScript("OnClick", function()
+    DA_CancelRename()
+    if DoiteAuras_RefreshList then pcall(DoiteAuras_RefreshList) end
     if DoiteAuras_ShowSettings then
         DoiteAuras_ShowSettings()
     else
@@ -1218,6 +1230,9 @@ customCB.text:SetPoint("LEFT", customCB, "RIGHT", 2, 0)
 customCB.text:SetText("Custom")
 
 abilityCB:SetScript("OnClick", function()
+    DA_CancelRename()
+    if DoiteAuras_RefreshList then pcall(DoiteAuras_RefreshList) end
+
     abilityCB:SetChecked(true)
     buffCB:SetChecked(false)
     debuffCB:SetChecked(false)
@@ -1233,6 +1248,9 @@ abilityCB:SetScript("OnClick", function()
 end)
 
 buffCB:SetScript("OnClick", function()
+    DA_CancelRename()
+    if DoiteAuras_RefreshList then pcall(DoiteAuras_RefreshList) end
+
     abilityCB:SetChecked(false)
     buffCB:SetChecked(true)
     debuffCB:SetChecked(false)
@@ -1244,6 +1262,9 @@ buffCB:SetScript("OnClick", function()
 end)
 
 debuffCB:SetScript("OnClick", function()
+    DA_CancelRename()
+    if DoiteAuras_RefreshList then pcall(DoiteAuras_RefreshList) end
+
     abilityCB:SetChecked(false)
     buffCB:SetChecked(false)
     debuffCB:SetChecked(true)
@@ -1255,6 +1276,9 @@ debuffCB:SetScript("OnClick", function()
 end)
 
 itemsCB:SetScript("OnClick", function()
+    DA_CancelRename()
+    if DoiteAuras_RefreshList then pcall(DoiteAuras_RefreshList) end
+
     if not itemsCB:GetChecked() then
         -- prevent "nothing selected": keep it checked if Item is current
         if currentType == "Item" then
@@ -1278,6 +1302,9 @@ itemsCB:SetScript("OnClick", function()
 end)
 
 barsCB:SetScript("OnClick", function()
+    DA_CancelRename()
+    if DoiteAuras_RefreshList then pcall(DoiteAuras_RefreshList) end
+
     if not barsCB:GetChecked() then
         if currentType == "Bar" then
             barsCB:SetChecked(true)
@@ -1296,6 +1323,9 @@ barsCB:SetScript("OnClick", function()
 end)
 
 customCB:SetScript("OnClick", function()
+    DA_CancelRename()
+    if DoiteAuras_RefreshList then pcall(DoiteAuras_RefreshList) end
+
     if not customCB:GetChecked() then
         if currentType == "Custom" then
             customCB:SetChecked(true)
@@ -1332,6 +1362,8 @@ frame:SetScript("OnShow", function()
 end)
 
 frame:SetScript("OnHide", function()
+    DA_CancelRename()
+
     -- Force-close Import / Export / Settings windows when the main DoiteAuras frame is hidden
     local f
 
@@ -1413,6 +1445,69 @@ guide:SetText("Guide: DoiteAuras shows only what matters—abilities, buffs, deb
 
 -- storage
 local spellButtons, icons, groupHeaders = {}, {}, {}
+renameState = {
+    key = nil,
+    original = nil,
+}
+
+DA_GetSpellIdShownName = function(spellIdStr)
+    if not spellIdStr or spellIdStr == "" then return nil end
+
+    local resolvedSpellName = nil
+    local resolvedSpellRank = nil
+
+    if type(GetSpellNameAndRankForId) == "function" then
+        local ok, sn, sr = pcall(GetSpellNameAndRankForId, tonumber(spellIdStr))
+        if ok and sn and sn ~= "" then
+            resolvedSpellName = tostring(sn)
+            if sr and sr ~= "" then
+                resolvedSpellRank = tostring(sr)
+            end
+        end
+    end
+
+    if resolvedSpellName then
+        if resolvedSpellRank then
+            return resolvedSpellName .. " [" .. resolvedSpellRank .. "] - ID: " .. spellIdStr
+        end
+        return resolvedSpellName .. " - ID: " .. spellIdStr
+    end
+
+    return "Spell ID: " .. spellIdStr .. " (will update when seen)"
+end
+
+DA_ClearRenameState = function()
+    renameState.key = nil
+    renameState.original = nil
+end
+
+DA_CancelRename = function()
+    local key = renameState.key
+    if key and DoiteAurasDB and DoiteAurasDB.spells and DoiteAurasDB.spells[key] then
+        DoiteAurasDB.spells[key].shownName = renameState.original
+    end
+    DA_ClearRenameState()
+end
+
+DA_IsRenameNameDuplicate = function(currentKey, txt)
+    if not txt or txt == "" or not DoiteAurasDB or not DoiteAurasDB.spells then
+        return false
+    end
+    local k, d
+    for k, d in pairs(DoiteAurasDB.spells) do
+        if k ~= currentKey and d then
+            local otherShown = d.shownName
+            if otherShown and otherShown == txt then
+                return true
+            end
+            local otherDisplay = d.displayName or d.name
+            if otherDisplay and otherDisplay == txt then
+                return true
+            end
+        end
+    end
+    return false
+end
 
 function DoiteAuras_GetIconFrame(key)
     if not key then return nil end
@@ -2989,7 +3084,7 @@ local function RefreshList()
                 local btn = spellButtons[key]
                 if not btn then
                     btn = CreateFrame("Frame", nil, listContent)
-                    btn:SetWidth(320); btn:SetHeight(50)
+                    btn:SetWidth(320); btn:SetHeight(78)
 
                     btn.fontString = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                     btn.fontString:SetPoint("TOPLEFT", btn, "TOPLEFT", 15, -2)
@@ -3018,6 +3113,31 @@ local function RefreshList()
                     btn.upBtn:SetNormalTexture("Interface\\MainMenuBar\\UI-MainMenu-ScrollDownButton-Up")
                     btn.upBtn:SetPushedTexture("Interface\\MainMenuBar\\UI-MainMenu-ScrollDownButton-Down")
                     btn.upBtn:SetPoint("RIGHT", btn.downBtn, "LEFT", -5, 0)
+
+                    btn.renameBtn = CreateFrame("Button", nil, btn, "UIPanelButtonTemplate")
+                    btn.renameBtn:SetWidth(55); btn.renameBtn:SetHeight(18)
+                    btn.renameBtn:SetPoint("RIGHT", btn.upBtn, "LEFT", -5, 0)
+                    btn.renameBtn:SetText("Rename")
+
+                    btn.renameInput = CreateFrame("EditBox", nil, btn, "InputBoxTemplate")
+                    btn.renameInput:SetWidth(80); btn.renameInput:SetHeight(18)
+                    btn.renameInput:SetAutoFocus(false)
+                    btn.renameInput:SetPoint("TOPLEFT", btn, "TOPLEFT", 15, -29)
+
+                    btn.renameAddBtn = CreateFrame("Button", nil, btn, "UIPanelButtonTemplate")
+                    btn.renameAddBtn:SetWidth(40); btn.renameAddBtn:SetHeight(18)
+                    btn.renameAddBtn:SetPoint("LEFT", btn.renameInput, "RIGHT", 5, 0)
+                    btn.renameAddBtn:SetText("Add")
+
+                    btn.renameResetBtn = CreateFrame("Button", nil, btn, "UIPanelButtonTemplate")
+                    btn.renameResetBtn:SetWidth(40); btn.renameResetBtn:SetHeight(18)
+                    btn.renameResetBtn:SetPoint("LEFT", btn.renameAddBtn, "RIGHT", 5, 0)
+                    btn.renameResetBtn:SetText("Reset")
+
+                    btn.renameBackBtn = CreateFrame("Button", nil, btn, "UIPanelButtonTemplate")
+                    btn.renameBackBtn:SetWidth(40); btn.renameBackBtn:SetHeight(18)
+                    btn.renameBackBtn:SetPoint("LEFT", btn.renameResetBtn, "RIGHT", 5, 0)
+                    btn.renameBackBtn:SetText("Back")
 
                     btn.sep = btn:CreateTexture(nil, "ARTWORK")
                     btn.sep:SetHeight(1)
@@ -3079,7 +3199,9 @@ local function RefreshList()
                 btn.tag:SetText(typeText)
 
                 -- Scripts are re-bound each refresh (keeps exact existing logic with current locals)
-				btn.removeBtn:SetScript("OnClick", function()
+                btn.removeBtn:SetScript("OnClick", function()
+					DA_CancelRename()
+
 					-- detect if this was the last icon using them.
 					local groupName    = data and data.group
 					local categoryName = data and data.category
@@ -3126,6 +3248,9 @@ local function RefreshList()
 				end)
 
                 btn.editBtn:SetScript("OnClick", function()
+                    DA_CancelRename()
+                    RefreshList()
+
                     local baseName = data.displayName or data.name or display
 
                     currentType = data.type or "Ability"
@@ -3161,6 +3286,8 @@ local function RefreshList()
                 end)
 
                 btn.downBtn:SetScript("OnClick", function()
+                    DA_CancelRename()
+
                     local isGrouped = DA_IsGrouped(data)
                     local moved = false
 
@@ -3183,6 +3310,8 @@ local function RefreshList()
                 end)
 
                 btn.upBtn:SetScript("OnClick", function()
+                    DA_CancelRename()
+
                     local isGrouped = DA_IsGrouped(data)
                     local moved = false
 
@@ -3202,10 +3331,95 @@ local function RefreshList()
                     end
                 end)
 
+                local function DA_UpdateRenameAddStateForRow()
+                    local txt = btn.renameInput:GetText() or ""
+                    txt = string.gsub(txt, "^%s+", "")
+                    txt = string.gsub(txt, "%s+$", "")
+                    if txt == "" or DA_IsRenameNameDuplicate(key, txt) then
+                        btn.renameAddBtn:Disable()
+                    else
+                        btn.renameAddBtn:Enable()
+                    end
+                end
+
+                btn.renameInput:SetScript("OnTextChanged", function()
+                    DA_UpdateRenameAddStateForRow()
+                end)
+
+                btn.renameBtn:SetScript("OnClick", function()
+                    DA_CancelRename()
+                    renameState.key = key
+                    renameState.original = data.shownName
+                    btn.renameInput:SetText(data.shownName or data.displayName or data.name or "")
+                    btn.renameInput:Show()
+                    btn.renameAddBtn:Show()
+                    btn.renameResetBtn:Show()
+                    btn.renameBackBtn:Show()
+                    btn.renameInput:SetFocus()
+                    DA_UpdateRenameAddStateForRow()
+                    RefreshList()
+                end)
+
+                btn.renameBackBtn:SetScript("OnClick", function()
+                    DA_CancelRename()
+                    RefreshList()
+                end)
+
+                btn.renameResetBtn:SetScript("OnClick", function()
+                    if data.Addedviaspellid == true and data.spellid and data.spellid ~= "" then
+                        data.shownName = DA_GetSpellIdShownName(tostring(data.spellid))
+                    else
+                        data.shownName = nil
+                    end
+                    DA_ClearRenameState()
+                    RefreshList()
+                    RefreshIcons(true)
+                    if DoiteConditions_RequestEvaluate then
+                        DoiteConditions_RequestEvaluate()
+                    end
+                end)
+
+                btn.renameAddBtn:SetScript("OnClick", function()
+                    local txt = btn.renameInput:GetText() or ""
+                    txt = string.gsub(txt, "^%s+", "")
+                    txt = string.gsub(txt, "%s+$", "")
+                    if txt == "" then return end
+                    if DA_IsRenameNameDuplicate(key, txt) then return end
+
+                    data.shownName = txt
+                    DA_ClearRenameState()
+                    RefreshList()
+                    RefreshIcons(true)
+                    if DoiteConditions_RequestEvaluate then
+                        DoiteConditions_RequestEvaluate()
+                    end
+                end)
+
+                if renameState.key == key then
+                    btn.renameInput:Show()
+                    btn.renameAddBtn:Show()
+                    btn.renameResetBtn:Show()
+                    btn.renameBackBtn:Show()
+                    local currentShown = data.shownName or data.displayName or data.name or ""
+                    if btn.renameInput:GetText() ~= currentShown and not btn.renameInput:HasFocus() then
+                        btn.renameInput:SetText(currentShown)
+                    end
+                    DA_UpdateRenameAddStateForRow()
+                else
+                    btn.renameInput:Hide()
+                    btn.renameAddBtn:Hide()
+                    btn.renameResetBtn:Hide()
+                    btn.renameBackBtn:Hide()
+                end
+
                 -- Position row (ClearAllPoints is important when reusing frames)
                 btn:ClearAllPoints()
                 btn:SetPoint("TOPLEFT", listContent, "TOPLEFT", 0, yOffset)
-                yOffset = yOffset - 55
+                if renameState.key == key then
+                    yOffset = yOffset - 80
+                else
+                    yOffset = yOffset - 55
+                end
                 btn:Show()
             end
         end
@@ -3223,6 +3437,8 @@ end
 
 -- Add button
 addBtn:SetScript("OnClick", function()
+  DA_CancelRename()
+
   local t = currentType
   local name
 
@@ -3275,14 +3491,10 @@ addBtn:SetScript("OnClick", function()
               name = resolvedSpellName
 
               -- Pretty list label (your current behavior, but stored separately)
-              if resolvedSpellRank then
-                  shownName = resolvedSpellName .. " [" .. resolvedSpellRank .. "] - ID: " .. spellIdStr
-              else
-                  shownName = resolvedSpellName .. " - ID: " .. spellIdStr
-              end
+              shownName = DA_GetSpellIdShownName(spellIdStr)
           else
               -- Fallback if resolver isn't available yet
-              shownName = "Spell ID: " .. spellIdStr .. " (will update when seen)"
+              shownName = DA_GetSpellIdShownName(spellIdStr)
               name = shownName
           end
       end
