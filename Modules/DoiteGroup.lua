@@ -1051,6 +1051,34 @@ function DoiteGroup._DG_UI_RefreshAll(ctx)
   if ctx.api.UpdateEditor and ctx.state and ctx.state.key then pcall(ctx.api.UpdateEditor, ctx.state.key) end
 end
 
+function DoiteGroup._DG_UI_ResetStepForKey(ctx, key)
+  local state = ctx.state
+  state.rename = false
+  state.renameFrom = nil
+  state.mode = nil
+
+  if not key or key == "" then
+    state.step = "pick"
+    return
+  end
+
+  local d = nil
+  if ctx.api and ctx.api.Ensure then
+    d = ctx.api.Ensure(key)
+  end
+
+  if d and d.group and d.group ~= "" then
+    state.mode = "group"
+    state.step = "ingroup"
+  elseif d and d.category and d.category ~= "" then
+    state.mode = "category"
+    state.step = "incategory"
+  else
+    state.step = "pick"
+  end
+end
+
+
 function DoiteGroup._DG_UI_HideAll(ctx)
   local w = ctx.w
   local i = 1
@@ -1496,7 +1524,11 @@ function DoiteGroup.AttachEditGroupUI(frame, api)
   DoiteGroup._DG_UI_WireHandlers(ctx)
 
   frame.DoiteGroupUIRefresh = function(_, key)
+    local changed = (ctx.state.key ~= key)
     ctx.state.key = key
+    if changed then
+      DoiteGroup._DG_UI_ResetStepForKey(ctx, key)
+    end
     DoiteGroup._DG_UI_Refresh(ctx)
   end
 
@@ -1507,6 +1539,12 @@ function DoiteGroup.AttachEditGroupUI(frame, api)
     return d.isLeader == true
   end
 
+  frame:HookScript("OnHide", function()
+    ctx.state.key = nil
+    DoiteGroup._DG_UI_ResetStepForKey(ctx, nil)
+  end)
+
   ctx.state.key = editingKey()
+  DoiteGroup._DG_UI_ResetStepForKey(ctx, ctx.state.key)
   DoiteGroup._DG_UI_Refresh(ctx)
 end
