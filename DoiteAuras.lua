@@ -1855,7 +1855,7 @@ end
 -- Helper: Use item by name scanning bags/inventory
 local function DA_UseItemByName(itemName)
     if not itemName or itemName == "" then return end
-    
+
     -- Check bags 0-4
     for bag = 0, 4 do
         local slots = GetContainerNumSlots(bag)
@@ -1888,7 +1888,7 @@ local function DA_UseItemByName(itemName)
             end
         end
     end
-    
+
     if DEFAULT_CHAT_FRAME then DEFAULT_CHAT_FRAME:AddMessage("DoiteAuras: Item [" .. itemName .. "] NOT FOUND in bags or inventory.") end
 end
 
@@ -2027,13 +2027,13 @@ local function CreateOrUpdateIcon(key, layer)
             GameTooltip:Hide()
 
             local frameKey = this._daKey
-            
+
             -- Only save if valid key
             if not frameKey then return end
 
             -- MoveAnything Coordinate Formula:
             -- Precise deviation from screen center, normalized to frame scale.
-            
+
             -- 1. Screen Center (Reference)
             local rScale = UIParent:GetEffectiveScale()
             local rX, rY = UIParent:GetCenter()
@@ -2069,7 +2069,7 @@ local function CreateOrUpdateIcon(key, layer)
             if DoiteEdit_FlushHeavy then
                 DoiteEdit_FlushHeavy()
             end
-            
+
             -- Force group layout re-calc so followers snap to new leader pos immediately
             if DoiteGroup and DoiteGroup.RequestReflow then
                 DoiteGroup.RequestReflow()
@@ -2125,10 +2125,10 @@ end
 local function EnsureDefaults(key)
     if not DoiteAurasDB.spells[key] then return end
     local d = DoiteAurasDB.spells[key]
-    
+
     -- Structure must exist
     if not d.conditions then d.conditions = {} end
-    
+
     if d.type == "Item" then
         if not d.conditions.item then d.conditions.item = {} end
         -- Note: Don't force 'clickable' to true here, respect the saved value (or nil).
@@ -2248,10 +2248,10 @@ local function RefreshIcons(force)
     -- Step 1: collect lightweight icon state (no extra combat logic – DoiteConditions owns that)
     for i = 1, total do
         local key  = keyList[i]
-        
+
         -- Ensure defaults exist so condition checks don't fail on nil tables
         EnsureDefaults(key)
-        
+
         local data = DoiteAurasDB.spells[key]
         local typ  = data and data.type or "Ability"
 
@@ -2371,7 +2371,7 @@ local function RefreshIcons(force)
     if DoiteGroup and not _G["DoiteGroup_LayoutInProgress"] and DoiteGroup.ApplyGroupLayout then
         pcall(DoiteGroup.ApplyGroupLayout, layoutCandidates)
     end
-	
+
 	-- Persist the computed layout so future refresh passes keep using it
 	do
 		local map = _G["DoiteGroup_Computed"]
@@ -2559,7 +2559,7 @@ local function RefreshIcons(force)
 
         -- MOVED OUTSIDE of visibility check to ensure handlers are attached even if the icon is initially hidden (e.g. startup race).
         -- Visibility is dynamic (DoiteConditions), but the handler must be ready when it shows.
-        
+
         local ic = data and data.conditions and data.conditions.item
         -- Only allow clicking if configured, NOT greyed out, and NOT in edit mode
         -- STRICTLY restrict to Items only
@@ -2577,7 +2577,7 @@ local function RefreshIcons(force)
 
         if isClickable or showTooltips then
              f:EnableMouse(true)
-             
+
              if isClickable then
                  f:SetScript("OnClick", function()
                      -- Block item use while in edit mode (Issue #50)
@@ -2640,7 +2640,7 @@ local function RefreshIcons(force)
     end
 
     _G["DoiteAuras_RefreshInProgress"] = false
-    
+
     -- Ensure conditions are evaluated immediately so "grey" state is correct on startup
     if DoiteConditions and DoiteConditions.EvaluateAll then
         DoiteConditions:EvaluateAll()
@@ -2794,103 +2794,80 @@ local function RefreshList()
                     end
                 end)
 
-                -- Sort controls (created once; shown only for group headers)
-                hdr.sortTime = CreateFrame("CheckButton", nil, hdr, "UICheckButtonTemplate")
-                hdr.sortTime:SetWidth(14); hdr.sortTime:SetHeight(14)
-                hdr.sortTime.text = hdr:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                hdr.sortTime.text:SetPoint("LEFT", hdr.sortTime, "RIGHT", 2, 0)
-                hdr.sortTime.text:SetText("Time")
-                if hdr.sortTime.text.SetTextColor then
-                    hdr.sortTime.text:SetTextColor(1, 1, 1)
-                end
+	                -- Group mode dropdown (group-only; replaces sort/fixed/disable checks)
+	                hdr.groupModeDropdown = CreateFrame("Frame", "DoiteAurasGroupModeDropdown" .. tostring(headerIndex), hdr, "UIDropDownMenuTemplate")
+	                UIDropDownMenu_SetWidth(80, hdr.groupModeDropdown)
 
-                hdr.sortPrio = CreateFrame("CheckButton", nil, hdr, "UICheckButtonTemplate")
-                hdr.sortPrio:SetWidth(14); hdr.sortPrio:SetHeight(14)
-                hdr.sortPrio.text = hdr:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                hdr.sortPrio.text:SetPoint("LEFT", hdr.sortPrio, "RIGHT", 2, 0)
-                hdr.sortPrio.text:SetText("Prio")
-                if hdr.sortPrio.text.SetTextColor then
-                    hdr.sortPrio.text:SetTextColor(1, 1, 1)
-                end
+	                hdr.groupModeLabels = {
+	                    prio = "Sort by prio",
+	                    time = "Sort by time",
+	                    fixed = "Dont sort: Fixed / Static",
+	                    disabled = "Disable group",
+	                }
 
-                hdr.fixedCheck = CreateFrame("CheckButton", nil, hdr, "UICheckButtonTemplate")
-                hdr.fixedCheck:SetWidth(14); hdr.fixedCheck:SetHeight(14)
-                hdr.fixedCheck.text = hdr:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-                hdr.fixedCheck.text:SetPoint("LEFT", hdr.fixedCheck, "RIGHT", 2, 0)
-                hdr.fixedCheck.text:SetText("Fixed")
-                if hdr.fixedCheck.text.SetTextColor then
-                    hdr.fixedCheck.text:SetTextColor(1, 1, 1)
-                end
+	                local function DA_ApplyGroupModeSelection(parent, selectedMode)
+	                    if not parent or not parent.groupName or parent.groupName == "" then return end
 
-                hdr.sortPrio:SetScript("OnClick", function()
-                    local p = this:GetParent()
-                    if not p or not p.groupName or p.groupName == "" then
-                        this:SetChecked(true)
-                        return
-                    end
-                    if not this:GetChecked() then
-                        this:SetChecked(true)
-                        return
-                    end
-                    this:SetChecked(true)
-                    if p.sortTime then p.sortTime:SetChecked(false) end
-                    if p.fixedCheck then p.fixedCheck:SetChecked(false) end
-                    DoiteAurasDB.groupSort = DoiteAurasDB.groupSort or {}
-                    DoiteAurasDB.groupSort[p.groupName] = "prio"
-                    if DoiteAurasDB.groupFixed then
-                        DoiteAurasDB.groupFixed[p.groupName] = nil
-                    end
-                    DoiteGroup.InvalidateSortCache(p.groupName)
-                    _G["DoiteGroup_NeedReflow"] = true
-                end)
+	                    local groupName = parent.groupName
+	                    local bucketKey = parent.bucketKey
 
-                hdr.sortTime:SetScript("OnClick", function()
-                    local p = this:GetParent()
-                    if not p or not p.groupName or p.groupName == "" then
-                        this:SetChecked(true)
-                        return
-                    end
-                    if not this:GetChecked() then
-                        this:SetChecked(true)
-                        return
-                    end
-                    this:SetChecked(true)
-                    if p.sortPrio then p.sortPrio:SetChecked(false) end
-                    if p.fixedCheck then p.fixedCheck:SetChecked(false) end
-                    DoiteAurasDB.groupSort = DoiteAurasDB.groupSort or {}
-                    DoiteAurasDB.groupSort[p.groupName] = "time"
-                    if DoiteAurasDB.groupFixed then
-                        DoiteAurasDB.groupFixed[p.groupName] = nil
-                    end
-                    DoiteGroup.InvalidateSortCache(p.groupName)
-                    _G["DoiteGroup_NeedReflow"] = true
-                end)
+	                    DoiteAurasDB.groupSort = DoiteAurasDB.groupSort or {}
+	                    DoiteAurasDB.groupFixed = DoiteAurasDB.groupFixed or {}
+	                    DoiteAurasDB.bucketDisabled = DoiteAurasDB.bucketDisabled or {}
 
-                hdr.fixedCheck:SetScript("OnClick", function()
-                    local p = this:GetParent()
-                    if not p or not p.groupName or p.groupName == "" then
-                        this:SetChecked(false)
-                        return
-                    end
-                    DoiteAurasDB.groupFixed = DoiteAurasDB.groupFixed or {}
-                    if this:GetChecked() then
-                        DoiteAurasDB.groupFixed[p.groupName] = true
-                        if p.sortPrio then p.sortPrio:SetChecked(false) end
-                        if p.sortTime then p.sortTime:SetChecked(false) end
-                    else
-                        DoiteAurasDB.groupFixed[p.groupName] = nil
-                    end
-                    if DoiteGroup and DoiteGroup.RequestReflow then
-                        DoiteGroup.RequestReflow()
-                    else
-                        _G["DoiteGroup_NeedReflow"] = true
-                    end
-                    if DoiteAuras_RefreshIcons then
-                        pcall(DoiteAuras_RefreshIcons)
-                    end
-                end)
+	                    if bucketKey then
+	                        if selectedMode == "disabled" then
+	                            DoiteAurasDB.bucketDisabled[bucketKey] = true
+	                        else
+	                            DoiteAurasDB.bucketDisabled[bucketKey] = nil
+	                        end
+	                    end
 
-                hdr.sepTex = hdr:CreateTexture(nil, "ARTWORK")
+	                    if selectedMode == "time" or selectedMode == "prio" then
+	                        DoiteAurasDB.groupSort[groupName] = selectedMode
+	                        DoiteAurasDB.groupFixed[groupName] = nil
+	                        DoiteGroup.InvalidateSortCache(groupName)
+	                        _G["DoiteGroup_NeedReflow"] = true
+	                    elseif selectedMode == "fixed" then
+	                        DoiteAurasDB.groupFixed[groupName] = true
+	                        if DoiteGroup and DoiteGroup.RequestReflow then
+	                            DoiteGroup.RequestReflow()
+	                        else
+	                            _G["DoiteGroup_NeedReflow"] = true
+	                        end
+	                    end
+
+	                    UIDropDownMenu_SetSelectedValue(parent.groupModeDropdown, selectedMode)
+	                    UIDropDownMenu_SetText(parent.groupModeLabels[selectedMode] or parent.groupModeLabels.prio, parent.groupModeDropdown)
+
+	                    if DoiteAuras_RefreshIcons then
+	                        pcall(DoiteAuras_RefreshIcons)
+	                    end
+	                end
+
+	                UIDropDownMenu_Initialize(hdr.groupModeDropdown, function(level)
+	                    local p = (this and this:GetParent()) or nil
+	                    if not p or not p.groupModeLabels then return end
+
+	                    local function addOption(modeValue)
+	                        local info = UIDropDownMenu_CreateInfo()
+	                        info.text = p.groupModeLabels[modeValue] or "Sort by prio"
+	                        info.value = modeValue
+	                        info.func = function()
+	                            local selected = (this and this.value) or modeValue
+	                            DA_ApplyGroupModeSelection(p, selected)
+	                        end
+	                        info.checked = (UIDropDownMenu_GetSelectedValue(p.groupModeDropdown) == modeValue)
+	                        UIDropDownMenu_AddButton(info, level or 1)
+	                    end
+
+	                    addOption("prio")
+	                    addOption("time")
+	                    addOption("fixed")
+	                    addOption("disabled")
+	                end)
+
+	                hdr.sepTex = hdr:CreateTexture(nil, "ARTWORK")
                 hdr.sepTex:SetHeight(1)
                 hdr.sepTex:SetPoint("BOTTOMLEFT", hdr, "BOTTOMLEFT", 0, -2)
                 hdr.sepTex:SetPoint("BOTTOMRIGHT", hdr, "BOTTOMRIGHT", 0, -2)
@@ -2911,7 +2888,6 @@ local function RefreshList()
 			if hdr.bucketKey then
 				hdr.disableCheck:ClearAllPoints()
 				hdr.disableCheck:SetPoint("RIGHT", hdr, "RIGHT", -45, 0)
-				hdr.disableCheck:Show()
 				hdr.disableCheck:SetChecked(DoiteAurasDB.bucketDisabled[hdr.bucketKey] == true)
 
 				-- Accordion toggle text
@@ -2928,46 +2904,31 @@ local function RefreshList()
 				if hdr.toggleBtn then hdr.toggleBtn:Hide() end
 			end
 
-            -- Group sort controls (only for group headers)
+            -- Group mode dropdown (only for group headers)
             if entry.kind == "group" and hdr.groupName and hdr.groupName ~= "" then
                 local mode = DA_GetGroupSortMode(hdr.groupName)  -- "prio" or "time"
                 DoiteAurasDB.groupFixed = DoiteAurasDB.groupFixed or {}
                 local fixed = DoiteAurasDB.groupFixed[hdr.groupName] == true
 
-                local rightAnchor = hdr
-                local rightPointX = -45
-                if hdr.disableCheck and hdr.disableCheck.IsShown and hdr.disableCheck:IsShown() then
-                    rightAnchor = hdr.disableCheck
-                    rightPointX = -30
-                end
+				hdr.disableCheck:Hide()
 
-                hdr.fixedCheck:ClearAllPoints()
-                hdr.fixedCheck:SetPoint("RIGHT", rightAnchor, "LEFT", -35, 0)
+				local selectedMode = "prio"
+				if hdr.bucketKey and DoiteAurasDB.bucketDisabled[hdr.bucketKey] == true then
+					selectedMode = "disabled"
+				elseif fixed then
+					selectedMode = "fixed"
+				elseif mode == "time" then
+					selectedMode = "time"
+				end
 
-                hdr.sortTime:ClearAllPoints()
-                hdr.sortTime:SetPoint("RIGHT", hdr.fixedCheck, "LEFT", -30, 0)
-
-                hdr.sortPrio:ClearAllPoints()
-                hdr.sortPrio:SetPoint("RIGHT", hdr.sortTime, "LEFT", -30, 0)
-
-                hdr.fixedCheck:SetChecked(fixed)
-                if fixed then
-                    hdr.sortPrio:SetChecked(false)
-                    hdr.sortTime:SetChecked(false)
-                else
-                    hdr.sortPrio:SetChecked(mode == "prio")
-                    hdr.sortTime:SetChecked(mode == "time")
-                end
-
-                hdr.sortPrio:Show()
-                hdr.sortTime:Show()
-                hdr.fixedCheck:Show()
+				hdr.groupModeDropdown:ClearAllPoints()
+				hdr.groupModeDropdown:SetPoint("RIGHT", hdr, "RIGHT", 8, -2)
+				UIDropDownMenu_SetSelectedValue(hdr.groupModeDropdown, selectedMode)
+				UIDropDownMenu_SetText(hdr.groupModeLabels[selectedMode] or hdr.groupModeLabels.prio, hdr.groupModeDropdown)
+				hdr.groupModeDropdown:Show()
             else
-                hdr.sortPrio:Hide()
-                hdr.sortTime:Hide()
-                if hdr.fixedCheck then
-                    hdr.fixedCheck:Hide()
-                end
+				hdr.disableCheck:Show()
+				hdr.groupModeDropdown:Hide()
             end
 
             -- Position header
