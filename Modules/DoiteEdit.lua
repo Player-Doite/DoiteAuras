@@ -24,10 +24,6 @@ local DEFAULT_CUSTOM_FUNCTION_SOURCE
 local _ReflowCondAreaHeight
 
 -- Icon-level category UI helpers (assigned later from CreateConditionsUI)
-local Category_RefreshDropdown = nil
-local Category_UpdateButtonState = nil
-local Category_AddFromUI = nil
-local Category_RemoveSelected = nil
 
 local AuraCond_Managers = {}
 local AuraCond_RegisterManager
@@ -718,16 +714,6 @@ ClearDropdown = function(dd)
   dd._initializedForType = nil
 end
 
-local function BuildGroupLeaders()
-  local leaders = {}
-  for k, v in pairs(DoiteAurasDB.spells) do
-    if v.group and v.isLeader then
-      leaders[v.group] = k
-    end
-  end
-  return leaders
-end
-
 SafeEvaluate = function()
   DoiteEdit_QueueHeavy()
 end
@@ -847,78 +833,6 @@ local function _DA_ApplySliderRanges()
   end
 end
 
-
--- Internal: initialize group dropdown contents for current data
-local function InitGroupDropdown(dd, data)
-  UIDropDownMenu_Initialize(dd, function(frame, level, menuList)
-    local info
-    local choices = { "No" }
-    for i = 1, 10 do
-      table.insert(choices, "Group " .. tostring(i))
-    end
-
-    for _, choice in ipairs(choices) do
-      info = {}
-      info.text = choice
-      info.value = choice
-      local pickedChoice = choice
-      info.func = function(button)
-        local picked = (button and button.value) or pickedChoice
-        if not currentKey then
-          return
-        end
-        local d = EnsureDBEntry(currentKey)
-
-        if picked == "No" then
-          d.group = nil
-          d.isLeader = false
-        else
-          local leaders = BuildGroupLeaders()
-          d.group = picked
-          if not leaders[picked] then
-            d.isLeader = true
-          else
-            if leaders[picked] ~= currentKey then
-              d.isLeader = false
-            end
-          end
-        end
-
-        -- Custom auras: clear stale runtime data and auto-save when group changes
-        if d.type == "Custom" then
-          d._daCustomRuntime = {}
-          if condFrame and condFrame.cond_custom_function_save then
-            condFrame.cond_custom_function_save:Click()
-          end
-        end
-
-        UIDropDownMenu_SetSelectedValue(dd, picked)
-        UIDropDownMenu_SetText(picked, dd)
-        CloseDropDownMenus()
-        UpdateCondFrameForKey(currentKey)
-
-        -- Queue the normal batched refresh/evaluate
-        SafeRefresh()
-        SafeEvaluate()
-
-        -- if /da is open, force an immediate list refresh so the icon visibly moves to the selected group right away (no reopen needed).
-        if DoiteAurasFrame and DoiteAurasFrame.IsShown and DoiteAurasFrame:IsShown() then
-          if DoiteAuras_RefreshList then
-            pcall(DoiteAuras_RefreshList)
-          end
-        end
-      end
-
-      if data and ((not data.group and choice == "No") or (data.group == choice)) then
-        info.checked = true
-      else
-        info.checked = false
-      end
-
-      UIDropDownMenu_AddButton(info)
-    end
-  end)
-end
 
 -- Internal: initialize growth direction dropdown (leader-only control)
 local function InitGrowthDropdown(dd, data)
@@ -1594,23 +1508,6 @@ local function AuraCond_TitleCase(str)
 
   result = string.gsub(result, "%s+$", "")
   return result
-end
-
--- Small helper: trim leading/trailing whitespace
-local function _TrimCategoryText(str)
-  if not str then
-    return ""
-  end
-  return (string.gsub(str, "^%s*(.-)%s*$", "%1"))
-end
-
--- Global category list helper (stored in DoiteAurasDB.categories)
-local function _GetCategoryList()
-  if not DoiteAurasDB then
-    return {}
-  end
-  DoiteAurasDB.categories = DoiteAurasDB.categories or {}
-  return DoiteAurasDB.categories
 end
 
 ----------------------------------------------------------------
@@ -2517,486 +2414,7 @@ local function CreateConditionsUI()
   condFrame.itemVfxAnchor:SetPoint("TOPRIGHT", _Parent(), "TOPRIGHT", 0, itemVfxBaseY)
   condFrame.itemVfxAnchor:SetHeight(20)
 
-  ----------------------------------------------------------------
-  -- Icon categories (shared across all types)
-  ----------------------------------------------------------------
-  -- Checkbox: "Categorize (eg. Boss debuffs)"
-  condFrame.categoryCheck = CreateFrame("CheckButton", "DoiteCond_Category_Check", condFrame, "UICheckButtonTemplate")
-  condFrame.categoryCheck:SetWidth(20);
-  condFrame.categoryCheck:SetHeight(20)
-  condFrame.categoryCheck:SetPoint("Left", condFrame.groupDD, "Right", -10, 0)
-  condFrame.categoryCheck.text = condFrame.categoryCheck:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-  condFrame.categoryCheck.text:SetPoint("LEFT", condFrame.categoryCheck, "RIGHT", 4, 0)
-  condFrame.categoryCheck.text:SetText("Categorize")
-  condFrame.categoryCheck.text:SetTextColor(1, 0.82, 0) -- yellow small text
-
-  condFrame.categoryInput = CreateFrame("EditBox", "DoiteCond_Category_Input", condFrame, "InputBoxTemplate")
-  condFrame.categoryInput:SetAutoFocus(false)
-  condFrame.categoryInput:SetHeight(18)
-  condFrame.categoryInput:SetWidth(75)
-  condFrame.categoryInput:SetPoint("BOTTOMLEFT", condFrame.groupLabel, "BOTTOMLEFT", 0, -32)
-  condFrame.categoryInput:SetFontObject("GameFontNormalSmall")
-  condFrame.categoryInput:SetJustifyH("LEFT")
-  if condFrame.categoryInput.SetTextColor then
-    condFrame.categoryInput:SetTextColor(1, 1, 1)
-  end
-
-  -- Add/Remove button ("<-Add" / "Remove->")
-  condFrame.categoryButton = CreateFrame("Button", "DoiteCond_Category_Button", condFrame, "UIPanelButtonTemplate")
-  condFrame.categoryButton:SetWidth(70)
-  condFrame.categoryButton:SetHeight(18)
-  condFrame.categoryButton:SetPoint("LEFT", condFrame.categoryInput, "RIGHT", 4, 0)
-  condFrame.categoryButton:SetText("<-Add")
-
-  -- "Categories:" label (yellow small text)
-  condFrame.categoryLabel = condFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-  condFrame.categoryLabel:SetPoint("LEFT", condFrame.categoryButton, "RIGHT", 8, 0)
-  condFrame.categoryLabel:SetText("Categories:")
-  condFrame.categoryLabel:SetTextColor(1, 0.82, 0)
-
-  -- Dropdown listing all global categories
-  condFrame.categoryDD = CreateFrame("Frame", "DoiteCond_Category_Dropdown", condFrame, "UIDropDownMenuTemplate")
-  condFrame.categoryDD:SetPoint("LEFT", condFrame.categoryLabel, "RIGHT", -10, -4)
-  if UIDropDownMenu_SetWidth then
-    pcall(UIDropDownMenu_SetWidth, 75, condFrame.categoryDD)
-  end
-
-  -- Helpers for button text & dropdown refresh (assigned to upvalues so UpdateConditionsUI can call them)
-  Category_UpdateButtonState = function()
-    if not condFrame or not condFrame.categoryButton or not condFrame.categoryInput or not condFrame.categoryDD then
-      return
-    end
-    local txt = _TrimCategoryText(condFrame.categoryInput:GetText() or "")
-    local hasText = (txt ~= "")
-
-    local selected = nil
-    if UIDropDownMenu_GetSelectedValue and condFrame.categoryDD then
-      selected = UIDropDownMenu_GetSelectedValue(condFrame.categoryDD)
-    end
-
-    -- If there is text, always offer "<-Add".
-    -- If no text but a category is selected, offer "Remove->".
-    if hasText or not selected then
-      condFrame.categoryButton:SetText("<-Add")
-    else
-      condFrame.categoryButton:SetText("Remove->")
-    end
-  end
-
-  Category_RefreshDropdown = function(selectedName)
-    if not condFrame or not condFrame.categoryDD then
-      return
-    end
-    local dd = condFrame.categoryDD
-    local list = _GetCategoryList()
-
-    ClearDropdown(dd)
-
-    -- Robust "any entries?" check that doesn't rely on table.getn semantics
-    local hasAny = false
-    if list then
-      local i = 1
-      while list[i] ~= nil do
-        hasAny = true
-        break
-      end
-    end
-
-    if not hasAny then
-      -- No categories yet: show "(Empty)" and grey text, but DO NOT disable the button.
-      -- Keeping the button enabled avoids the "stuck disabled" state after adding
-      -- categories again in the same session.
-      UIDropDownMenu_Initialize(dd, function()
-      end)
-
-      if UIDropDownMenu_SetSelectedValue then
-        pcall(UIDropDownMenu_SetSelectedValue, dd, nil)
-      end
-      if UIDropDownMenu_SetText then
-        pcall(UIDropDownMenu_SetText, "(Empty)", dd)
-      end
-
-      _GreyifyDD(dd)
-
-      -- NOTE: deliberately do NOT disable the button here.
-      -- local btn = _G[dd:GetName().."Button"]
-      -- if btn and btn.Disable then btn:Disable() end
-
-      Category_UpdateButtonState()
-      return
-    end
-
-    -- Categories: build the real menu
-    UIDropDownMenu_Initialize(dd, function(frame, level, menuList)
-      local info
-      for _, name in ipairs(list) do
-        info = {}
-        info.text = name
-        info.value = name
-        local pickedName = name
-
-        info.func = function(button)
-          if not currentKey then
-            return
-          end
-          local picked = (button and button.value) or pickedName
-          local d = EnsureDBEntry(currentKey)
-          d.category = picked
-
-          if UIDropDownMenu_SetSelectedValue then
-            pcall(UIDropDownMenu_SetSelectedValue, dd, picked)
-          end
-          if UIDropDownMenu_SetText then
-            pcall(UIDropDownMenu_SetText, picked, dd)
-          end
-          _WhiteifyDDText(dd)
-          Category_UpdateButtonState()
-          SafeRefresh();
-          SafeEvaluate()
-        end
-
-        local d = (currentKey and DoiteAurasDB and DoiteAurasDB.spells and DoiteAurasDB.spells[currentKey]) or nil
-        local dcat = d and d.category
-        if selectedName and selectedName == name then
-          info.checked = true
-        else
-          info.checked = (dcat == name)
-        end
-
-        UIDropDownMenu_AddButton(info)
-      end
-    end)
-
-    -- Ensure button is enabled again now that have entries
-    local btn = _G[dd:GetName() .. "Button"]
-    if btn and btn.Enable then
-      btn:Enable()
-    end
-    _WhiteifyDDText(dd)
-
-    -- Pick selection: passed-in, or this icon's current category, or "Select"
-    local d = (currentKey and DoiteAurasDB and DoiteAurasDB.spells and DoiteAurasDB.spells[currentKey]) or nil
-    local chosen = selectedName or (d and d.category)
-
-    if chosen then
-      if UIDropDownMenu_SetSelectedValue then
-        pcall(UIDropDownMenu_SetSelectedValue, dd, chosen)
-      end
-      if UIDropDownMenu_SetText then
-        pcall(UIDropDownMenu_SetText, chosen, dd)
-      end
-    else
-      if UIDropDownMenu_SetSelectedValue then
-        pcall(UIDropDownMenu_SetSelectedValue, dd, nil)
-      end
-      if UIDropDownMenu_SetText then
-        pcall(UIDropDownMenu_SetText, "Select", dd)
-      end
-    end
-    _WhiteifyDDText(dd)
-    Category_UpdateButtonState()
-  end
-
-  Category_AddFromUI = function()
-    if not currentKey or not condFrame or not condFrame.categoryInput then
-      return
-    end
-    local raw = _TrimCategoryText(condFrame.categoryInput:GetText() or "")
-    if raw == "" then
-      return
-    end
-
-    -- Always store and present categories in TitleCase
-    local pretty = AuraCond_TitleCase(raw)
-    local list = _GetCategoryList()
-
-    local i, n = 1, table.getn(list)
-    local found = false
-    while i <= n do
-      if list[i] == pretty then
-        found = true
-        break
-      end
-      i = i + 1
-    end
-    if not found then
-      list[n + 1] = pretty
-    end
-
-    local d = EnsureDBEntry(currentKey)
-    d.category = pretty
-
-    condFrame.categoryInput:SetText("")
-
-    -- Make sure "Categorize" is on and the widgets are visible
-    if condFrame.categoryCheck then
-      condFrame.categoryCheck:Show()
-      condFrame.categoryCheck:SetChecked(true)
-    end
-    if condFrame.categoryInput then
-      condFrame.categoryInput:Show()
-    end
-    if condFrame.categoryButton then
-      condFrame.categoryButton:Show()
-    end
-    if condFrame.categoryLabel then
-      condFrame.categoryLabel:Show()
-    end
-    if condFrame.categoryDD then
-      condFrame.categoryDD:Show()
-    end
-
-    if Category_RefreshDropdown then
-      Category_RefreshDropdown(pretty)
-    end
-    if Category_UpdateButtonState then
-      Category_UpdateButtonState()
-    end
-
-    SafeRefresh();
-    SafeEvaluate()
-    if UpdateCondFrameForKey then
-      UpdateCondFrameForKey(currentKey)
-    end
-  end
-
-  -- Confirmation popup for removing a category
-  local categoryConfirmFrame, categoryConfirmBG, categoryConfirmBox
-  local categoryConfirmTitle, categoryConfirmDesc
-  local categoryConfirmYes, categoryConfirmNo
-  local categoryPendingRemoveName
-  local Category_DoRemove
-
-  local function Category_EnsureConfirmFrame()
-    if categoryConfirmFrame then
-      return
-    end
-
-    categoryConfirmFrame = CreateFrame("Frame", "DoiteCond_CategoryConfirmFrame", UIParent)
-
-    -- Make absolutely sure it's on top of everything
-    if categoryConfirmFrame.SetFrameStrata then
-      categoryConfirmFrame:SetFrameStrata("TOOLTIP")
-    end
-    if UIParent and UIParent.GetFrameLevel and categoryConfirmFrame.SetFrameLevel then
-      local lvl = UIParent:GetFrameLevel() or 0
-      categoryConfirmFrame:SetFrameLevel(lvl + 1000)
-    end
-
-    categoryConfirmFrame:SetAllPoints(UIParent)
-    categoryConfirmFrame:Hide()
-
-
-    -- Make Esc close this popup
-    if UISpecialFrames then
-      table.insert(UISpecialFrames, "DoiteCond_CategoryConfirmFrame")
-    end
-
-    -- Dark fullscreen background
-    categoryConfirmBG = categoryConfirmFrame:CreateTexture(nil, "BACKGROUND")
-    categoryConfirmBG:SetAllPoints(categoryConfirmFrame)
-    categoryConfirmBG:SetTexture(0, 0, 0, 0.75)
-
-    -- Center dialog box
-    categoryConfirmBox = CreateFrame("Frame", nil, categoryConfirmFrame)
-    categoryConfirmBox:SetWidth(400)
-    categoryConfirmBox:SetHeight(120)
-    categoryConfirmBox:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-
-    -- ensure the box itself is above the dark background
-    if categoryConfirmFrame.GetFrameLevel and categoryConfirmBox.SetFrameLevel then
-      categoryConfirmBox:SetFrameLevel(categoryConfirmFrame:GetFrameLevel() + 1)
-    end
-
-    local boxBG = categoryConfirmBox:CreateTexture(nil, "BACKGROUND")
-    boxBG:SetAllPoints(categoryConfirmBox)
-    boxBG:SetTexture(0, 0, 0, 0.9)
-
-    -- Title: "Are you sure?"
-    categoryConfirmTitle = categoryConfirmBox:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
-    categoryConfirmTitle:SetPoint("TOP", categoryConfirmBox, "TOP", 0, -16)
-    categoryConfirmTitle:SetText("Are you sure?")
-
-    -- Description text (centered, wraps)
-    categoryConfirmDesc = categoryConfirmBox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    categoryConfirmDesc:SetPoint("TOP", categoryConfirmTitle, "BOTTOM", 0, -10)
-    categoryConfirmDesc:SetWidth(360)
-    categoryConfirmDesc:SetJustifyH("CENTER")
-
-    -- Yes button
-    categoryConfirmYes = CreateFrame("Button", nil, categoryConfirmBox, "UIPanelButtonTemplate")
-    categoryConfirmYes:SetWidth(80)
-    categoryConfirmYes:SetHeight(22)
-    categoryConfirmYes:SetText("Yes")
-    categoryConfirmYes:SetPoint("BOTTOMRIGHT", categoryConfirmBox, "BOTTOM", -10, 15)
-
-    -- No button
-    categoryConfirmNo = CreateFrame("Button", nil, categoryConfirmBox, "UIPanelButtonTemplate")
-    categoryConfirmNo:SetWidth(80)
-    categoryConfirmNo:SetHeight(22)
-    categoryConfirmNo:SetText("No")
-    categoryConfirmNo:SetPoint("BOTTOMLEFT", categoryConfirmBox, "BOTTOM", 10, 15)
-
-    categoryConfirmNo:SetScript("OnClick", function()
-      categoryPendingRemoveName = nil
-      categoryConfirmFrame:Hide()
-    end)
-
-    categoryConfirmYes:SetScript("OnClick", function()
-      if categoryPendingRemoveName then
-        Category_DoRemove(categoryPendingRemoveName)
-      end
-      categoryPendingRemoveName = nil
-      categoryConfirmFrame:Hide()
-    end)
-  end
-
-  -- Worker that actually removes the given category from DB + UI
-  Category_DoRemove = function(selected)
-    if not currentKey or not condFrame or not condFrame.categoryDD then
-      return
-    end
-    if not selected or selected == "" then
-      return
-    end
-
-    local list = _GetCategoryList()
-    local n = table.getn(list)
-    if n > 0 then
-      local i = 1
-      while i <= n do
-        if list[i] == selected then
-          table.remove(list, i)
-          n = n - 1
-        else
-          i = i + 1
-        end
-      end
-    end
-
-    -- Remove this category from all icons that had it
-    if DoiteAurasDB and DoiteAurasDB.spells then
-      for key, spell in pairs(DoiteAurasDB.spells) do
-        if spell and spell.category == selected then
-          spell.category = nil
-        end
-      end
-    end
-
-    local d = EnsureDBEntry(currentKey)
-    if d.category == selected then
-      d.category = nil
-    end
-
-    condFrame.categoryInput:SetText("")
-    Category_RefreshDropdown(nil)
-    Category_UpdateButtonState()
-    SafeRefresh();
-    SafeEvaluate()
-    if UpdateCondFrameForKey then
-      UpdateCondFrameForKey(currentKey)
-    end
-  end
-
-  -- Public entry point: called when "Remove->" is pressed
-  Category_RemoveSelected = function()
-    if not currentKey or not condFrame or not condFrame.categoryDD then
-      return
-    end
-    local dd = condFrame.categoryDD
-    local selected = nil
-    if UIDropDownMenu_GetSelectedValue then
-      selected = UIDropDownMenu_GetSelectedValue(dd)
-    end
-    if not selected or selected == "" then
-      return
-    end
-
-    Category_EnsureConfirmFrame()
-    categoryPendingRemoveName = selected
-
-    local msg = "You are about to remove a category - " .. selected .. "."
-        .. "\nAll icons in this category will be uncategorized if you proceed."
-        .. "\nDo you wish to proceed?"
-    categoryConfirmDesc:SetText(msg)
-
-    categoryConfirmFrame:Show()
-  end
-
-  -- Wiring for category widgets
-  condFrame.categoryCheck:SetScript("OnClick", function()
-    if not currentKey then
-      this:SetChecked(false)
-      return
-    end
-    local d = EnsureDBEntry(currentKey)
-    local checked = this:GetChecked()
-
-    if checked then
-      -- Show controls; category itself is chosen via dropdown
-      condFrame.categoryInput:Show()
-      condFrame.categoryButton:Show()
-      condFrame.categoryLabel:Show()
-      condFrame.categoryDD:Show()
-      Category_RefreshDropdown(d.category)
-    else
-      -- Uncategorize this icon
-      d.category = nil
-      condFrame.categoryInput:Hide()
-      condFrame.categoryButton:Hide()
-      condFrame.categoryLabel:Hide()
-      condFrame.categoryDD:Hide()
-      condFrame.categoryInput:SetText("")
-      Category_RefreshDropdown(nil)
-    end
-
-    Category_UpdateButtonState()
-    SafeRefresh();
-    SafeEvaluate()
-
-    if UpdateCondFrameForKey and not checked then
-      UpdateCondFrameForKey(currentKey)
-    end
-  end)
-
-  condFrame.categoryInput:SetScript("OnTextChanged", function()
-    Category_UpdateButtonState()
-  end)
-
-  condFrame.categoryInput:SetScript("OnEnterPressed", function()
-    Category_AddFromUI()
-    if this and this.ClearFocus then
-      this:ClearFocus()
-    end
-  end)
-
-  condFrame.categoryButton:SetScript("OnClick", function()
-    if not currentKey then
-      return
-    end
-    local txt = _TrimCategoryText(condFrame.categoryInput:GetText() or "")
-    local selected = nil
-    if UIDropDownMenu_GetSelectedValue and condFrame.categoryDD then
-      selected = UIDropDownMenu_GetSelectedValue(condFrame.categoryDD)
-    end
-
-    if txt ~= "" then
-      -- Always treat non-empty text as an add action
-      Category_AddFromUI()
-    elseif selected then
-      -- No text but a selection: remove it everywhere
-      Category_RemoveSelected()
-    else
-      -- No-op: no text and nothing selected
-    end
-  end)
-
-  -- Start hidden; UpdateConditionsUI will manage visibility based on group state
-  condFrame.categoryCheck:Hide()
-  condFrame.categoryInput:Hide()
-  condFrame.categoryButton:Hide()
-  condFrame.categoryLabel:Hide()
-  condFrame.categoryDD:Hide()
+  -- Legacy icon-category widgets were removed; Group/Category is handled by DoiteGroup.AttachEditGroupUI.
 
   ----------------------------------------------------------------
   -- 'Form' dropdowns
@@ -5613,23 +5031,6 @@ function UpdateItemStacksForMissing()
   end
   if condFrame.cond_aura_unitTypeDD then
     condFrame.cond_aura_unitTypeDD:Hide()
-  end
-
-  -- Category widgets start hidden; UpdateConditionsUI will toggle them
-  if condFrame.categoryCheck then
-    condFrame.categoryCheck:Hide()
-  end
-  if condFrame.categoryInput then
-    condFrame.categoryInput:Hide()
-  end
-  if condFrame.categoryButton then
-    condFrame.categoryButton:Hide()
-  end
-  if condFrame.categoryLabel then
-    condFrame.categoryLabel:Hide()
-  end
-  if condFrame.categoryDD then
-    condFrame.categoryDD:Hide()
   end
 
   condFrame.cond_aura_cp_cb:Hide()
@@ -8327,59 +7728,10 @@ local function UpdateConditionsUI(data)
   end
 
 
-  ----------------------------------------------------------------
-  -- Icon-level categories (applies regardless of type)
-  ----------------------------------------------------------------
-  if condFrame.categoryCheck and condFrame.categoryInput and condFrame.categoryButton
-      and condFrame.categoryLabel and condFrame.categoryDD then
-
-    if data.group then
-      -- When grouped: hide and auto-uncheck the category UI
-      condFrame.categoryCheck:SetChecked(false)
-      condFrame.categoryCheck:Hide()
-      condFrame.categoryInput:Hide()
-      condFrame.categoryButton:Hide()
-      condFrame.categoryLabel:Hide()
-      condFrame.categoryDD:Hide()
-    else
-      -- Not grouped: category UI is available
-      condFrame.categoryCheck:Show()
-
-      local dcat = data.category
-      local isOn = (dcat ~= nil and dcat ~= "")
-
-      condFrame.categoryCheck:SetChecked(isOn)
-
-      if isOn then
-        condFrame.categoryInput:Show()
-        condFrame.categoryButton:Show()
-        condFrame.categoryLabel:Show()
-        condFrame.categoryDD:Show()
-        if Category_RefreshDropdown then
-          Category_RefreshDropdown(dcat)
-        end
-      else
-        condFrame.categoryInput:Hide()
-        condFrame.categoryButton:Hide()
-        condFrame.categoryLabel:Hide()
-        condFrame.categoryDD:Hide()
-        condFrame.categoryInput:SetText("")
-        if Category_RefreshDropdown then
-          -- Still refresh so "(Empty)" or "Select" is correct when user ticks the box
-          Category_RefreshDropdown(nil)
-        end
-      end
-
-      if Category_UpdateButtonState then
-        Category_UpdateButtonState()
-      end
-    end
-  end
-
   -- ABILITY
   if data.type == "Ability" then
     -- show rows
-    ShowSeparatorsForType("ability")
+    if ShowSeparatorsForType then ShowSeparatorsForType("ability") end
     -- ensure aura-only tip is hidden when not editing an aura
     if condFrame.cond_aura_tip then
       condFrame.cond_aura_tip:Hide()
@@ -9051,7 +8403,7 @@ local function UpdateConditionsUI(data)
 
     -- ITEM
   elseif data.type == "Item" then
-    ShowSeparatorsForType("item")
+    if ShowSeparatorsForType then ShowSeparatorsForType("item") end
     -- ensure aura-only tip is hidden when not editing an aura
     if condFrame.cond_aura_tip then
       condFrame.cond_aura_tip:Hide()
@@ -10136,7 +9488,7 @@ local ic = c.item or {}
 
     -- AURA (Buff/Debuff)
   else
-    ShowSeparatorsForType("aura")
+    if ShowSeparatorsForType then ShowSeparatorsForType("aura") end
 
     if AuraCond_RefreshFromDB then
       AuraCond_RefreshFromDB("aura")
@@ -11086,133 +10438,20 @@ function UpdateCondFrameForKey(key)
   end
   condFrame.header:SetText("Edit: " .. (data.displayName or key) .. " " .. typeColor .. "(" .. (data.type or "") .. ")|r")
 
-  -- Initialize group dropdown contents (pass current data to get 'checked' right)
-  if condFrame.groupDD then
-    InitGroupDropdown(condFrame.groupDD, data)
-    local sel = data.group or "No"
-    UIDropDownMenu_SetSelectedValue(condFrame.groupDD, sel)
-    UIDropDownMenu_SetText(sel, condFrame.groupDD)
-  end
-
-  -- Leader checkbox logic & leader-only controls
-  if condFrame.leaderCB then
-    if not data.group then
-      condFrame.leaderCB:Hide()
-      if condFrame.growthDD then
-        condFrame.growthDD:Hide()
-      end
-      if condFrame.numAurasLabel then
-        condFrame.numAurasLabel:Hide()
-      end
-      if condFrame.numAurasDD then
-        condFrame.numAurasDD:Hide()
-      end
-      if condFrame.spacingLabel then
-        condFrame.spacingLabel:Hide()
-      end
-      if condFrame.spacingEdit then
-        condFrame.spacingEdit:Hide()
-      end
-      if condFrame.spacingSlider then
-        condFrame.spacingSlider:Hide()
-      end
-    else
-      condFrame.leaderCB:Show()
-      local leaders = BuildGroupLeaders()
-      local leaderKey = leaders[data.group]
-      if not leaderKey then
-        data.isLeader = true
-        condFrame.leaderCB:SetChecked(true)
-        condFrame.leaderCB:Disable()
-        if condFrame.growthDD then
-          condFrame.growthDD:Show()
-          InitGrowthDropdown(condFrame.growthDD, data)
-          UIDropDownMenu_SetSelectedValue(condFrame.growthDD, data.growth or "Horizontal Right")
-          UIDropDownMenu_SetText(data.growth or "Horizontal Right", condFrame.growthDD)
-        end
-        if condFrame.numAurasLabel and condFrame.numAurasDD then
-          condFrame.numAurasLabel:Show()
-          condFrame.numAurasDD:Show()
-          InitNumAurasDropdown(condFrame.numAurasDD, data)
-          UIDropDownMenu_SetSelectedValue(condFrame.numAurasDD, data.numAuras or 5)
-          UIDropDownMenu_SetText(tostring(data.numAuras or 5), condFrame.numAurasDD)
-        end
-        if condFrame.spacingLabel and condFrame.spacingEdit then
-          condFrame.spacingLabel:Show()
-          condFrame.spacingEdit:Show()
-          local s = data.spacing
-          if not s then
-            local settings = (DoiteAurasDB and DoiteAurasDB.settings)
-            s = (settings and settings.spacing) or 8
-          end
-          condFrame.spacingEdit:SetText(tostring(s))
-          if condFrame.spacingSlider then
-             condFrame.spacingSlider:Show()
-             condFrame.spacingSlider:SetValue(s)
-          end
-        end
-      else
-        if leaderKey == key then
-          condFrame.leaderCB:SetChecked(true)
-          condFrame.leaderCB:Disable()
-          if condFrame.growthDD then
-            condFrame.growthDD:Show()
-            InitGrowthDropdown(condFrame.growthDD, data)
-            UIDropDownMenu_SetSelectedValue(condFrame.growthDD, data.growth or "Horizontal Right")
-            UIDropDownMenu_SetText(data.growth or "Horizontal Right", condFrame.growthDD)
-          end
-          if condFrame.numAurasLabel and condFrame.numAurasDD then
-            condFrame.numAurasLabel:Show()
-            condFrame.numAurasDD:Show()
-            InitNumAurasDropdown(condFrame.numAurasDD, data)
-            UIDropDownMenu_SetSelectedValue(condFrame.numAurasDD, data.numAuras or 5)
-            UIDropDownMenu_SetText(tostring(data.numAuras or 5), condFrame.numAurasDD)
-          end
-          if condFrame.spacingLabel and condFrame.spacingEdit then
-            condFrame.spacingLabel:Show()
-            condFrame.spacingEdit:Show()
-            local s = data.spacing
-            if not s then
-              local settings = (DoiteAurasDB and DoiteAurasDB.settings)
-              s = (settings and settings.spacing) or 8
-            end
-            condFrame.spacingEdit:SetText(tostring(s))
-            if condFrame.spacingSlider then
-               condFrame.spacingSlider:Show()
-               condFrame.spacingSlider:SetValue(s)
-            end
-          end
-        else
-          condFrame.leaderCB:SetChecked(false)
-          condFrame.leaderCB:Enable()
-          if condFrame.growthDD then
-            condFrame.growthDD:Hide()
-          end
-          if condFrame.numAurasLabel then
-            condFrame.numAurasLabel:Hide()
-          end
-          if condFrame.numAurasDD then
-            condFrame.numAurasDD:Hide()
-          end
-          if condFrame.spacingLabel then
-            condFrame.spacingLabel:Hide()
-          end
-          if condFrame.spacingEdit then
-            condFrame.spacingEdit:Hide()
-          end
-          if condFrame.spacingSlider then
-            condFrame.spacingSlider:Hide()
-          end
-        end
-      end
-    end
+  if condFrame.DoiteGroupUIRefresh then
+    condFrame:DoiteGroupUIRefresh(key)
   end
 
   -- Update Conditions UI (always visible area between top and POS & SIZE)
   UpdateConditionsUI(data)
 
   -- Show/hide Position & Size section (only when no group OR leader)
-  if (not data.group) or data.isLeader then
+  local showPosSize = (not data.group) or data.isLeader
+  if condFrame.DoiteGroupUIIsLeaderOrFree then
+    showPosSize = condFrame:DoiteGroupUIIsLeaderOrFree()
+  end
+
+  if showPosSize then
     if condFrame.groupTitle3 then
       condFrame.groupTitle3:Show()
     end
@@ -11399,22 +10638,9 @@ function DoiteConditions_Show(key)
 
     condFrame.groupLabel = condFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     condFrame.groupLabel:SetPoint("TOPLEFT", condFrame, "TOPLEFT", 20, -68)
-    condFrame.groupLabel:SetText("Group this Aura?")
-
-    condFrame.groupDD = CreateFrame("Frame", "DoiteConditions_GroupDD", condFrame, "UIDropDownMenuTemplate")
-    condFrame.groupDD:SetPoint("LEFT", condFrame.groupLabel, "RIGHT", -10, -2)
-    if UIDropDownMenu_SetWidth then
-      pcall(UIDropDownMenu_SetWidth, 75, condFrame.groupDD)
-    end
-
-    condFrame.leaderCB = CreateFrame("CheckButton", nil, condFrame, "UICheckButtonTemplate")
-    condFrame.leaderCB:SetWidth(20);
-    condFrame.leaderCB:SetHeight(20)
-    condFrame.leaderCB:SetPoint("Left", condFrame.groupDD, "Right", -10, 0)
-    condFrame.leaderCB.text = condFrame.leaderCB:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    condFrame.leaderCB.text:SetPoint("LEFT", condFrame.leaderCB, "RIGHT", 2, 0)
-    condFrame.leaderCB.text:SetText("Aura group leader")
-    condFrame.leaderCB:Hide()
+    condFrame.groupLabel:SetText("If you want to Group or Categorize this icon, select an option below:")
+    condFrame.groupLabel:SetWidth(315)
+    condFrame.groupLabel:SetJustifyH("LEFT")
 
     condFrame.growthDD = CreateFrame("Frame", "DoiteConditions_GrowthDD", condFrame, "UIDropDownMenuTemplate")
     condFrame.growthDD:SetPoint("BOTTOMLEFT", condFrame.groupLabel, "BOTTOMLEFT", -18, -43)
@@ -11497,64 +10723,18 @@ function DoiteConditions_Show(key)
       this:SetText(tostring(val))
     end)
 
-    -- leaderCB click behavior
-    condFrame.leaderCB:SetScript("OnClick", function(self)
-      local cb = self or (condFrame and condFrame.leaderCB)
-      if not currentKey then
-        if cb then
-          cb:SetChecked(false)
-        end
-        return
-      end
-      local data = DoiteAurasDB.spells[currentKey]
-      if not data or not data.group then
-        if cb then
-          cb:SetChecked(false)
-          cb:Hide()
-        end
-        return
-      end
+    condFrame.InitGrowthDropdown = InitGrowthDropdown
+    condFrame.InitNumAurasDropdown = InitNumAurasDropdown
 
-      if cb and cb:GetChecked() then
-        local leaders = BuildGroupLeaders()
-        local prev = leaders[data.group]
-        if prev and prev ~= currentKey and DoiteAurasDB.spells[prev] then
-          DoiteAurasDB.spells[prev].isLeader = false
-        end
-        data.isLeader = true
-        cb:SetChecked(true)
-        cb:Disable()
-
-        if condFrame.growthDD then
-          condFrame.growthDD:Show()
-          InitGrowthDropdown(condFrame.growthDD, data)
-          UIDropDownMenu_SetSelectedValue(condFrame.growthDD, data.growth or "Horizontal Right")
-          UIDropDownMenu_SetText(data.growth or "Horizontal Right", condFrame.growthDD)
-        end
-        if condFrame.numAurasLabel and condFrame.numAurasDD then
-          condFrame.numAurasLabel:Show()
-          condFrame.numAurasDD:Show()
-          InitNumAurasDropdown(condFrame.numAurasDD, data)
-          UIDropDownMenu_SetSelectedValue(condFrame.numAurasDD, data.numAuras or 5)
-          UIDropDownMenu_SetText(tostring(data.numAuras or 5), condFrame.numAurasDD)
-        end
-
-        if condFrame.spacingLabel and condFrame.spacingEdit then
-          condFrame.spacingLabel:Show()
-          condFrame.spacingEdit:Show()
-          local s = data.spacing
-          if not s then
-            local settings = (DoiteAurasDB and DoiteAurasDB.settings)
-            s = (settings and settings.spacing) or 8
-          end
-          condFrame.spacingEdit:SetText(tostring(s))
-        end
-      end
-
-      SafeRefresh()
-      SafeEvaluate()
-      UpdateCondFrameForKey(currentKey)
-    end)
+    if DoiteGroup and DoiteGroup.AttachEditGroupUI then
+      DoiteGroup.AttachEditGroupUI(condFrame, {
+        Ensure = EnsureDBEntry,
+        SafeRefresh = SafeRefresh,
+        SafeEvaluate = SafeEvaluate,
+        ListRefresh = DoiteAuras_RefreshList,
+        UpdateEditor = UpdateCondFrameForKey,
+      })
+    end
 
     condFrame.groupTitle2 = condFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     condFrame.groupTitle2:SetPoint("TOPLEFT", condFrame, "TOPLEFT", 20, -155)
