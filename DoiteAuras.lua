@@ -2985,8 +2985,7 @@ local function RefreshList()
 
 	                -- Group mode dropdown (group-only; replaces sort/fixed/disable checks)
 	                hdr.groupModeDropdown = CreateFrame("Frame", nil, hdr, "UIDropDownMenuTemplate")
-	                UIDropDownMenu_SetWidth(hdr.groupModeDropdown, 80)
-	                UIDropDownMenu_JustifyText(hdr.groupModeDropdown, "LEFT")
+	                UIDropDownMenu_SetWidth(80, hdr.groupModeDropdown)
 
 	                hdr.groupModeLabels = {
 	                    prio = "Sort by prio",
@@ -3028,7 +3027,7 @@ local function RefreshList()
 	                    end
 
 	                    UIDropDownMenu_SetSelectedValue(parent.groupModeDropdown, selectedMode)
-	                    UIDropDownMenu_SetText(parent.groupModeDropdown, parent.groupModeLabels[selectedMode] or parent.groupModeLabels.prio)
+	                    UIDropDownMenu_SetText(parent.groupModeLabels[selectedMode] or parent.groupModeLabels.prio, parent.groupModeDropdown)
 
 	                    if DoiteAuras_RefreshIcons then
 	                        pcall(DoiteAuras_RefreshIcons)
@@ -3111,7 +3110,7 @@ local function RefreshList()
 				hdr.groupModeDropdown:ClearAllPoints()
 				hdr.groupModeDropdown:SetPoint("RIGHT", hdr, "RIGHT", 8, -2)
 				UIDropDownMenu_SetSelectedValue(hdr.groupModeDropdown, selectedMode)
-				UIDropDownMenu_SetText(hdr.groupModeDropdown, hdr.groupModeLabels[selectedMode] or hdr.groupModeLabels.prio)
+				UIDropDownMenu_SetText(hdr.groupModeLabels[selectedMode] or hdr.groupModeLabels.prio, hdr.groupModeDropdown)
 				hdr.groupModeDropdown:Show()
             else
 				hdr.disableCheck:Show()
