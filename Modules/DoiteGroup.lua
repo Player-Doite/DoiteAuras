@@ -952,11 +952,21 @@ local function _EnsureUniqueLeader(groupName)
     end
   end
   if leaderKey then return end
-  for _, d in pairs(db.spells) do
+
+  local bestKey = nil
+  local bestOrder = nil
+  for k, d in pairs(db.spells) do
     if d.group == groupName then
-      d.isLeader = true
-      return
+      local ord = tonumber(d.order) or 999
+      if (not bestKey) or ord < bestOrder or (ord == bestOrder and tostring(k) < tostring(bestKey)) then
+        bestKey = k
+        bestOrder = ord
+      end
     end
+  end
+
+  if bestKey and db.spells[bestKey] then
+    db.spells[bestKey].isLeader = true
   end
 end
 
@@ -1038,6 +1048,7 @@ function DoiteGroup._DG_UI_RefreshAll(ctx)
   if ctx.api.SafeRefresh then ctx.api.SafeRefresh() end
   if ctx.api.SafeEvaluate then ctx.api.SafeEvaluate() end
   if ctx.api.ListRefresh then pcall(ctx.api.ListRefresh) end
+  if ctx.api.UpdateEditor and ctx.state and ctx.state.key then pcall(ctx.api.UpdateEditor, ctx.state.key) end
 end
 
 function DoiteGroup._DG_UI_HideAll(ctx)
@@ -1169,6 +1180,7 @@ end
 
 function DoiteGroup._DG_UI_InitExistingDD(ctx)
   local w = ctx.w
+  if DoiteGroup.CleanupDanglingGroupData then pcall(DoiteGroup.CleanupDanglingGroupData) end
   if UIDropDownMenu_Initialize then
   UIDropDownMenu_Initialize(w.groupDD, function()
     local arr = _BuildNames("group")
@@ -1227,10 +1239,14 @@ function DoiteGroup._DG_UI_Refresh(ctx)
   local detectedMode = nil
   if d.group and d.group ~= "" then
     detectedMode = "group"
-    state.step = (state.step == "settings") and "settings" or "ingroup"
+    if state.step ~= "settings" and state.step ~= "newname" and state.step ~= "confirmleave" and state.step ~= "existing" and state.step ~= "newkind" then
+      state.step = "ingroup"
+    end
   elseif d.category and d.category ~= "" then
     detectedMode = "category"
-    state.step = "incategory"
+    if state.step ~= "newname" and state.step ~= "confirmleave" and state.step ~= "existing" and state.step ~= "newkind" then
+      state.step = "incategory"
+    end
   elseif state.step ~= "newkind" and state.step ~= "newname" and state.step ~= "existing" then
     state.step = "pick"
   end

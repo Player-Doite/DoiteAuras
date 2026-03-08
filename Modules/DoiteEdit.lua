@@ -11262,6 +11262,7 @@ function DoiteConditions_Show(key)
         SafeRefresh = SafeRefresh,
         SafeEvaluate = SafeEvaluate,
         ListRefresh = DoiteAuras_RefreshList,
+        UpdateEditor = UpdateCondFrameForKey,
       })
     end
 
