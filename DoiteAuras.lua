@@ -2984,7 +2984,7 @@ local function RefreshList()
                 end)
 
 	                -- Group mode dropdown (group-only; replaces sort/fixed/disable checks)
-	                hdr.groupModeDropdown = CreateFrame("Frame", nil, hdr, "UIDropDownMenuTemplate")
+	                hdr.groupModeDropdown = CreateFrame("Frame", "DoiteAurasGroupModeDropdown" .. tostring(headerIndex), hdr, "UIDropDownMenuTemplate")
 	                UIDropDownMenu_SetWidth(80, hdr.groupModeDropdown)
 
 	                hdr.groupModeLabels = {
