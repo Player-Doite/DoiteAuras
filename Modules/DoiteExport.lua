@@ -970,7 +970,7 @@ local function DE_RebuildExportList()
     local _, m
     for _, m in ipairs(members) do
       local d = m.data or {}
-      local baseName = d.displayName or d.name or m.key
+      local baseName = d.shownName or d.displayName or d.name or m.key
       local labelIcon = baseName
       if d.type and d.type ~= "" then
         labelIcon = labelIcon .. " |cffaaaaaa[" .. d.type .. "]|r"
@@ -1000,7 +1000,7 @@ local function DE_RebuildExportList()
     local _, cm
     for _, cm in ipairs(catMembers) do
       local d = cm.data or {}
-      local baseName = d.displayName or d.name or cm.key
+      local baseName = d.shownName or d.displayName or d.name or cm.key
       local labelIcon = baseName
       if d.type and d.type ~= "" then
         labelIcon = labelIcon .. " |cffaaaaaa[" .. d.type .. "]|r"
@@ -1028,7 +1028,7 @@ local function DE_RebuildExportList()
     local _, ue
     for _, ue in ipairs(ungroupedIcons) do
       local d = ue.data or {}
-      local baseName = d.displayName or d.name or ue.key
+      local baseName = d.shownName or d.displayName or d.name or ue.key
       local labelIcon = baseName
       if d.type and d.type ~= "" then
         labelIcon = labelIcon .. " |cffaaaaaa[" .. d.type .. "]|r"
