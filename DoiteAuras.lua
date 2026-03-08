@@ -20,6 +20,12 @@ if DoiteAurasDB.showtooltip == nil then
 end
 DoiteAuras = DoiteAuras or {}
 
+local renameState
+local DA_GetSpellIdShownName
+local DA_ClearRenameState
+local DA_CancelRename
+local DA_IsRenameNameDuplicate
+
 -- Always return a valid name->texture cache table
 local function DA_Cache()
   DoiteAurasDB = DoiteAurasDB or {}
