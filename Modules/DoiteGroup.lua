@@ -1316,7 +1316,7 @@ function DoiteGroup._DG_UI_Refresh(ctx)
     w.groupDD:Show(); w.catDD:Show(); w.bBackD:Show()
     DoiteGroup._DG_UI_InitExistingDD(ctx)
   elseif state.step == "settings" then
-    w.line:SetText("Group settings")
+    w.line:SetText("Group settings:")
     w.growthLabel:Show(); if w.growthDD then w.growthDD:Show() end
     w.numLbl:Show(); if w.numDD then w.numDD:Show() end
     if w.spaceLbl then w.spaceLbl:Show() end
@@ -1458,11 +1458,11 @@ function DoiteGroup.AttachEditGroupUI(frame, api)
   w.nameLbl = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
   w.nameLbl:SetPoint("TOPLEFT", w.line, "BOTTOMLEFT", 0, -10)
   w.nameIn = CreateFrame("EditBox", nil, frame, "InputBoxTemplate")
-  w.nameIn:SetWidth(120); w.nameIn:SetHeight(18); w.nameIn:SetAutoFocus(false); w.nameIn:SetPoint("LEFT", w.nameLbl, "RIGHT", 8, 0)
+  w.nameIn:SetWidth(110); w.nameIn:SetHeight(18); w.nameIn:SetAutoFocus(false); w.nameIn:SetPoint("LEFT", w.nameLbl, "RIGHT", 8, 0)
   w.bAdd = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-  w.bAdd:SetWidth(60); w.bAdd:SetHeight(20); w.bAdd:SetPoint("LEFT", w.nameIn, "RIGHT", 6, 0); w.bAdd:SetText("Add")
+  w.bAdd:SetWidth(35); w.bAdd:SetHeight(20); w.bAdd:SetPoint("LEFT", w.nameIn, "RIGHT", 6, 0); w.bAdd:SetText("Add")
   w.bBackB = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-  w.bBackB:SetWidth(60); w.bBackB:SetHeight(20); w.bBackB:SetPoint("LEFT", w.bAdd, "RIGHT", 6, 0); w.bBackB:SetText("Back")
+  w.bBackB:SetWidth(40); w.bBackB:SetHeight(20); w.bBackB:SetPoint("LEFT", w.bAdd, "RIGHT", 6, 0); w.bBackB:SetText("Back")
 
   w.bRename = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
   w.bRename:SetWidth(70); w.bRename:SetHeight(20); w.bRename:SetPoint("TOPLEFT", w.line, "BOTTOMLEFT", 0, -6); w.bRename:SetText("Rename")
@@ -1484,24 +1484,24 @@ function DoiteGroup.AttachEditGroupUI(frame, api)
 
   w.groupDD = CreateFrame("Frame", "DoiteConditions_GroupPickDD", frame, "UIDropDownMenuTemplate")
   w.groupDD:SetPoint("TOPLEFT", w.line, "BOTTOMLEFT", -16, -4)
-  if UIDropDownMenu_SetWidth then UIDropDownMenu_SetWidth(120, w.groupDD) end
+  if UIDropDownMenu_SetWidth then UIDropDownMenu_SetWidth(110, w.groupDD) end
   w.catDD = CreateFrame("Frame", "DoiteConditions_CategoryPickDD", frame, "UIDropDownMenuTemplate")
-  w.catDD:SetPoint("LEFT", w.groupDD, "RIGHT", 6, 0)
-  if UIDropDownMenu_SetWidth then UIDropDownMenu_SetWidth(120, w.catDD) end
+  w.catDD:SetPoint("LEFT", w.groupDD, "RIGHT", -30, 0)
+  if UIDropDownMenu_SetWidth then UIDropDownMenu_SetWidth(110, w.catDD) end
   w.bBackD = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-  w.bBackD:SetWidth(60); w.bBackD:SetHeight(20); w.bBackD:SetPoint("LEFT", w.catDD, "RIGHT", -4, 2); w.bBackD:SetText("Back")
+  w.bBackD:SetWidth(40); w.bBackD:SetHeight(20); w.bBackD:SetPoint("LEFT", w.catDD, "RIGHT", -10, 2); w.bBackD:SetText("Back")
 
   w.growthLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
   w.growthLabel:SetPoint("TOPLEFT", w.line, "BOTTOMLEFT", 0, -6)
   w.growthLabel:SetText("Group expand direction:")
   w.growthDD = frame.growthDD
-  if w.growthDD then w.growthDD:ClearAllPoints(); w.growthDD:SetPoint("LEFT", w.growthLabel, "RIGHT", -6, -2) end
+  if w.growthDD then w.growthDD:ClearAllPoints(); w.growthDD:SetPoint("LEFT", w.growthLabel, "RIGHT", -6, -1) end
 
   w.numLbl = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
   w.numLbl:SetPoint("TOPLEFT", w.growthLabel, "BOTTOMLEFT", 0, -10)
   w.numLbl:SetText("# of icons visible:")
   w.numDD = frame.numAurasDD
-  if w.numDD then w.numDD:ClearAllPoints(); w.numDD:SetPoint("LEFT", w.numLbl, "RIGHT", -6, -2) end
+  if w.numDD then w.numDD:ClearAllPoints(); w.numDD:SetPoint("LEFT", w.numLbl, "RIGHT", -6, -4) end
 
   w.spaceLbl = frame.spacingLabel
   if w.spaceLbl then w.spaceLbl:ClearAllPoints(); w.spaceLbl:SetPoint("TOPLEFT", w.numLbl, "BOTTOMLEFT", 0, -12); w.spaceLbl:SetText("Spacing between icons:") end
@@ -1511,7 +1511,7 @@ function DoiteGroup.AttachEditGroupUI(frame, api)
   if w.spaceE then w.spaceE:ClearAllPoints(); w.spaceE:SetPoint("LEFT", w.spaceS, "RIGHT", 8, 0) end
 
   w.bBackSettings = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-  w.bBackSettings:SetWidth(60); w.bBackSettings:SetHeight(20); w.bBackSettings:SetPoint("LEFT", w.spaceE, "RIGHT", 8, 0); w.bBackSettings:SetText("Back")
+  w.bBackSettings:SetWidth(40); w.bBackSettings:SetHeight(20); w.bBackSettings:SetPoint("LEFT", w.line, "RIGHT", -230, 0); w.bBackSettings:SetText("Back")
 
   w._all = {
     w.bNew, w.bExisting, w.bGroup, w.bCat, w.bBackA,
