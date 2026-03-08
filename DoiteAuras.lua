@@ -3219,7 +3219,9 @@ local function RefreshList()
                     btn.renameInput = CreateFrame("EditBox", nil, btn, "InputBoxTemplate")
                     btn.renameInput:SetWidth(80); btn.renameInput:SetHeight(18)
                     btn.renameInput:SetAutoFocus(false)
-                    btn.renameInput:SetPoint("BOTTOMLEFT", btn.fontString, "TOPLEFT", 0, 4)
+                    -- Rename-controls row anchor: one slot below the action-buttons row.
+                    -- Tweak this point/offset to fine-tune the whole rename controls line.
+                    btn.renameInput:SetPoint("TOPLEFT", btn, "TOPLEFT", 15, -49)
 
                     btn.renameAddBtn = CreateFrame("Button", nil, btn, "UIPanelButtonTemplate")
                     btn.renameAddBtn:SetWidth(40); btn.renameAddBtn:SetHeight(18)
