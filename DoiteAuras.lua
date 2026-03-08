@@ -3143,7 +3143,7 @@ local function RefreshList()
                 local btn = spellButtons[key]
                 if not btn then
                     btn = CreateFrame("Frame", nil, listContent)
-                    btn:SetWidth(320); btn:SetHeight(78)
+                    btn:SetWidth(320); btn:SetHeight(53)
 
                     btn.fontString = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                     btn.fontString:SetPoint("TOPLEFT", btn, "TOPLEFT", 15, -2)
@@ -3406,6 +3406,7 @@ local function RefreshList()
                     btn.renameAddBtn:Show()
                     btn.renameResetBtn:Show()
                     btn.renameBackBtn:Show()
+                    btn:SetHeight(78)
                     local currentShown = data.shownName or data.displayName or data.name or ""
                     if btn.renameInput:GetText() ~= currentShown and not btn.renameInput:HasFocus() then
                         btn.renameInput:SetText(currentShown)
@@ -3416,6 +3417,7 @@ local function RefreshList()
                     btn.renameAddBtn:Hide()
                     btn.renameResetBtn:Hide()
                     btn.renameBackBtn:Hide()
+                    btn:SetHeight(53)
                 end
 
                 -- Position row (ClearAllPoints is important when reusing frames)
