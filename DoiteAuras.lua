@@ -3034,17 +3034,20 @@ local function RefreshList()
 	                    end
 	                end
 
-	                UIDropDownMenu_Initialize(hdr.groupModeDropdown, function(self, level)
-	                    local p = self:GetParent()
+	                UIDropDownMenu_Initialize(hdr.groupModeDropdown, function(level)
+	                    local p = (this and this:GetParent()) or nil
+	                    if not p or not p.groupModeLabels then return end
+
 	                    local function addOption(modeValue)
 	                        local info = UIDropDownMenu_CreateInfo()
-	                        info.text = p.groupModeLabels[modeValue]
+	                        info.text = p.groupModeLabels[modeValue] or "Sort by prio"
 	                        info.value = modeValue
-	                        info.func = function(btn)
-	                            DA_ApplyGroupModeSelection(p, btn.value)
+	                        info.func = function()
+	                            local selected = (this and this.value) or modeValue
+	                            DA_ApplyGroupModeSelection(p, selected)
 	                        end
 	                        info.checked = (UIDropDownMenu_GetSelectedValue(p.groupModeDropdown) == modeValue)
-	                        UIDropDownMenu_AddButton(info, level)
+	                        UIDropDownMenu_AddButton(info, level or 1)
 	                    end
 
 	                    addOption("prio")
