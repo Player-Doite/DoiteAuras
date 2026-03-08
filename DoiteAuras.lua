@@ -3210,13 +3210,16 @@ local function RefreshList()
 
                     btn.renameBtn = CreateFrame("Button", nil, btn, "UIPanelButtonTemplate")
                     btn.renameBtn:SetWidth(55); btn.renameBtn:SetHeight(18)
-                    btn.renameBtn:SetPoint("RIGHT", btn.upBtn, "LEFT", -5, 0)
+                    btn.renameBtn:SetPoint("RIGHT", btn.editBtn, "LEFT", -5, 0)
                     btn.renameBtn:SetText("Rename")
+
+                    btn.downBtn:ClearAllPoints()
+                    btn.downBtn:SetPoint("RIGHT", btn.renameBtn, "LEFT", -5, 0)
 
                     btn.renameInput = CreateFrame("EditBox", nil, btn, "InputBoxTemplate")
                     btn.renameInput:SetWidth(80); btn.renameInput:SetHeight(18)
                     btn.renameInput:SetAutoFocus(false)
-                    btn.renameInput:SetPoint("TOPLEFT", btn, "TOPLEFT", 15, -29)
+                    btn.renameInput:SetPoint("BOTTOMLEFT", btn.fontString, "TOPLEFT", 0, 4)
 
                     btn.renameAddBtn = CreateFrame("Button", nil, btn, "UIPanelButtonTemplate")
                     btn.renameAddBtn:SetWidth(40); btn.renameAddBtn:SetHeight(18)
