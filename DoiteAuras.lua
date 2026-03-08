@@ -1509,6 +1509,100 @@ DA_IsRenameNameDuplicate = function(currentKey, txt)
     return false
 end
 
+function DA_RenameTrim(txt)
+    txt = txt or ""
+    txt = string.gsub(txt, "^%s+", "")
+    txt = string.gsub(txt, "%s+$", "")
+    return txt
+end
+
+function DA_RenameUpdateAddState(row)
+    if not row or not row.renameInput or not row.renameAddBtn then return end
+    local key = row.daKey
+    local txt = DA_RenameTrim(row.renameInput:GetText() or "")
+    if txt == "" or DA_IsRenameNameDuplicate(key, txt) then
+        row.renameAddBtn:Disable()
+    else
+        row.renameAddBtn:Enable()
+    end
+end
+
+function DA_RenameOnTextChanged()
+    local row = this and this:GetParent()
+    DA_RenameUpdateAddState(row)
+end
+
+function DA_RenameStart()
+    local row = this and this:GetParent()
+    if not row then return end
+    local key = row.daKey
+    if not key or not DoiteAurasDB or not DoiteAurasDB.spells then return end
+    local data = DoiteAurasDB.spells[key]
+    if not data then return end
+
+    DA_CancelRename()
+    renameState.key = key
+    renameState.original = data.shownName
+
+    if row.renameInput then
+        row.renameInput:SetText(data.shownName or data.displayName or data.name or "")
+        row.renameInput:Show()
+        row.renameInput:SetFocus()
+    end
+    if row.renameAddBtn then row.renameAddBtn:Show() end
+    if row.renameResetBtn then row.renameResetBtn:Show() end
+    if row.renameBackBtn then row.renameBackBtn:Show() end
+
+    DA_RenameUpdateAddState(row)
+    if DoiteAuras_RefreshList then pcall(DoiteAuras_RefreshList) end
+end
+
+function DA_RenameBack()
+    DA_CancelRename()
+    if DoiteAuras_RefreshList then pcall(DoiteAuras_RefreshList) end
+end
+
+function DA_RenameReset()
+    local row = this and this:GetParent()
+    if not row then return end
+    local key = row.daKey
+    local data = key and DoiteAurasDB and DoiteAurasDB.spells and DoiteAurasDB.spells[key]
+    if not data then return end
+
+    if data.Addedviaspellid == true and data.spellid and data.spellid ~= "" then
+        data.shownName = DA_GetSpellIdShownName(tostring(data.spellid))
+    else
+        data.shownName = nil
+    end
+
+    DA_ClearRenameState()
+    if DoiteAuras_RefreshList then pcall(DoiteAuras_RefreshList) end
+    if DoiteAuras_RefreshIcons then pcall(DoiteAuras_RefreshIcons, true) end
+    if DoiteConditions_RequestEvaluate then
+        DoiteConditions_RequestEvaluate()
+    end
+end
+
+function DA_RenameAdd()
+    local row = this and this:GetParent()
+    if not row then return end
+    local key = row.daKey
+    local data = key and DoiteAurasDB and DoiteAurasDB.spells and DoiteAurasDB.spells[key]
+    if not data then return end
+
+    local txt = DA_RenameTrim(row.renameInput and row.renameInput:GetText() or "")
+    if txt == "" then return end
+    if DA_IsRenameNameDuplicate(key, txt) then return end
+
+    data.shownName = txt
+    DA_ClearRenameState()
+    if DoiteAuras_RefreshList then pcall(DoiteAuras_RefreshList) end
+    if DoiteAuras_RefreshIcons then pcall(DoiteAuras_RefreshIcons, true) end
+    if DoiteConditions_RequestEvaluate then
+        DoiteConditions_RequestEvaluate()
+    end
+end
+
 function DoiteAuras_GetIconFrame(key)
     if not key then return nil end
     local f = icons and icons[key]
@@ -3149,6 +3243,7 @@ local function RefreshList()
                 end
 
                 btn._daInList = true
+                btn.daKey = key
 
                 -- Update row visuals
                 btn.fontString:SetText(display)
@@ -3331,69 +3426,11 @@ local function RefreshList()
                     end
                 end)
 
-                local function DA_UpdateRenameAddStateForRow()
-                    local txt = btn.renameInput:GetText() or ""
-                    txt = string.gsub(txt, "^%s+", "")
-                    txt = string.gsub(txt, "%s+$", "")
-                    if txt == "" or DA_IsRenameNameDuplicate(key, txt) then
-                        btn.renameAddBtn:Disable()
-                    else
-                        btn.renameAddBtn:Enable()
-                    end
-                end
-
-                btn.renameInput:SetScript("OnTextChanged", function()
-                    DA_UpdateRenameAddStateForRow()
-                end)
-
-                btn.renameBtn:SetScript("OnClick", function()
-                    DA_CancelRename()
-                    renameState.key = key
-                    renameState.original = data.shownName
-                    btn.renameInput:SetText(data.shownName or data.displayName or data.name or "")
-                    btn.renameInput:Show()
-                    btn.renameAddBtn:Show()
-                    btn.renameResetBtn:Show()
-                    btn.renameBackBtn:Show()
-                    btn.renameInput:SetFocus()
-                    DA_UpdateRenameAddStateForRow()
-                    RefreshList()
-                end)
-
-                btn.renameBackBtn:SetScript("OnClick", function()
-                    DA_CancelRename()
-                    RefreshList()
-                end)
-
-                btn.renameResetBtn:SetScript("OnClick", function()
-                    if data.Addedviaspellid == true and data.spellid and data.spellid ~= "" then
-                        data.shownName = DA_GetSpellIdShownName(tostring(data.spellid))
-                    else
-                        data.shownName = nil
-                    end
-                    DA_ClearRenameState()
-                    RefreshList()
-                    RefreshIcons(true)
-                    if DoiteConditions_RequestEvaluate then
-                        DoiteConditions_RequestEvaluate()
-                    end
-                end)
-
-                btn.renameAddBtn:SetScript("OnClick", function()
-                    local txt = btn.renameInput:GetText() or ""
-                    txt = string.gsub(txt, "^%s+", "")
-                    txt = string.gsub(txt, "%s+$", "")
-                    if txt == "" then return end
-                    if DA_IsRenameNameDuplicate(key, txt) then return end
-
-                    data.shownName = txt
-                    DA_ClearRenameState()
-                    RefreshList()
-                    RefreshIcons(true)
-                    if DoiteConditions_RequestEvaluate then
-                        DoiteConditions_RequestEvaluate()
-                    end
-                end)
+                btn.renameInput:SetScript("OnTextChanged", DA_RenameOnTextChanged)
+                btn.renameBtn:SetScript("OnClick", DA_RenameStart)
+                btn.renameBackBtn:SetScript("OnClick", DA_RenameBack)
+                btn.renameResetBtn:SetScript("OnClick", DA_RenameReset)
+                btn.renameAddBtn:SetScript("OnClick", DA_RenameAdd)
 
                 if renameState.key == key then
                     btn.renameInput:Show()
@@ -3404,7 +3441,7 @@ local function RefreshList()
                     if btn.renameInput:GetText() ~= currentShown and not btn.renameInput:HasFocus() then
                         btn.renameInput:SetText(currentShown)
                     end
-                    DA_UpdateRenameAddStateForRow()
+                    DA_RenameUpdateAddState(btn)
                 else
                     btn.renameInput:Hide()
                     btn.renameAddBtn:Hide()
