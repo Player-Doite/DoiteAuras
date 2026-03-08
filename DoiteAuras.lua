@@ -3035,7 +3035,7 @@ local function RefreshList()
 	                end
 
 	                UIDropDownMenu_Initialize(hdr.groupModeDropdown, function(level)
-	                    local p = (this and this:GetParent()) or nil
+	                    local p = hdr
 	                    if not p or not p.groupModeLabels then return end
 
 	                    local function addOption(modeValue)
@@ -3078,6 +3078,7 @@ local function RefreshList()
 				hdr.disableCheck:ClearAllPoints()
 				hdr.disableCheck:SetPoint("RIGHT", hdr, "RIGHT", -45, 0)
 				hdr.disableCheck:SetChecked(DoiteAurasDB.bucketDisabled[hdr.bucketKey] == true)
+				if hdr.disableCheck.text then hdr.disableCheck.text:Show() end
 
 				-- Accordion toggle text
 				if hdr.toggleBtn then
@@ -3090,6 +3091,7 @@ local function RefreshList()
 				end
 			else
 				hdr.disableCheck:Hide()
+				if hdr.disableCheck.text then hdr.disableCheck.text:Hide() end
 				if hdr.toggleBtn then hdr.toggleBtn:Hide() end
 			end
 
@@ -3100,6 +3102,7 @@ local function RefreshList()
                 local fixed = DoiteAurasDB.groupFixed[hdr.groupName] == true
 
 				hdr.disableCheck:Hide()
+				if hdr.disableCheck.text then hdr.disableCheck.text:Hide() end
 
 				local selectedMode = "prio"
 				if hdr.bucketKey and DoiteAurasDB.bucketDisabled[hdr.bucketKey] == true then
@@ -3115,10 +3118,11 @@ local function RefreshList()
 				UIDropDownMenu_SetSelectedValue(hdr.groupModeDropdown, selectedMode)
 				UIDropDownMenu_SetText(hdr.groupModeLabels[selectedMode] or hdr.groupModeLabels.prio, hdr.groupModeDropdown)
 				hdr.groupModeDropdown:Show()
-            else
+	            else
 				hdr.disableCheck:Show()
+				if hdr.disableCheck.text then hdr.disableCheck.text:Show() end
 				hdr.groupModeDropdown:Hide()
-            end
+	            end
 
             -- Position header
             hdr:ClearAllPoints()
