@@ -769,6 +769,7 @@ end
 
 -- Public API: request a group reflow (preferred over directly setting the global flag)
 function DoiteGroup.RequestReflow()
+  if DoiteGroup.CleanupDanglingGroupData then pcall(DoiteGroup.CleanupDanglingGroupData) end
   _G["DoiteGroup_NeedReflow"] = true
   if DoiteGroup._reflowQueued then
     return
@@ -888,3 +889,672 @@ _watch:RegisterEvent("ADDON_LOADED")
 _watch:SetScript("OnEvent", function()
   _HookApplyVisualsIfPresent()
 end)
+
+---------------------------------------------------------------
+-- Edit UI helpers for dynamic Group/Category management
+---------------------------------------------------------------
+local function _DA_DB()
+  DoiteAurasDB = DoiteAurasDB or {}
+  DoiteAurasDB.spells = DoiteAurasDB.spells or {}
+  DoiteAurasDB.categories = DoiteAurasDB.categories or {}
+  return DoiteAurasDB
+end
+
+local function _TrimName(v)
+  if not v then return "" end
+  return (string.gsub(v, "^%s*(.-)%s*$", "%1"))
+end
+
+local function _BuildNames(kind)
+  local db = _DA_DB()
+  local out = {}
+  local seen = {}
+
+  if kind == "category" then
+    local i = 1
+    while i <= table.getn(db.categories) do
+      local c = db.categories[i]
+      if c and c ~= "" and not seen[c] then
+        seen[c] = true
+        table.insert(out, c)
+      end
+      i = i + 1
+    end
+  end
+
+  for _, d in pairs(db.spells) do
+    local n = nil
+    if kind == "group" then
+      n = d.group
+    else
+      n = d.category
+    end
+    if n and n ~= "" and not seen[n] then
+      seen[n] = true
+      table.insert(out, n)
+    end
+  end
+
+  table.sort(out, function(a, b)
+    return string.upper(a) < string.upper(b)
+  end)
+  return out
+end
+
+local function _EnsureUniqueLeader(groupName)
+  if not groupName or groupName == "" then return end
+  local db = _DA_DB()
+  local leaderKey = nil
+  for k, d in pairs(db.spells) do
+    if d.group == groupName and d.isLeader then
+      leaderKey = k
+      break
+    end
+  end
+  if leaderKey then return end
+
+  local bestKey = nil
+  local bestOrder = nil
+  for k, d in pairs(db.spells) do
+    if d.group == groupName then
+      local ord = tonumber(d.order) or 999
+      if (not bestKey) or ord < bestOrder or (ord == bestOrder and tostring(k) < tostring(bestKey)) then
+        bestKey = k
+        bestOrder = ord
+      end
+    end
+  end
+
+  if bestKey and db.spells[bestKey] then
+    db.spells[bestKey].isLeader = true
+  end
+end
+
+local function _CleanupCategoryIfEmpty(name)
+  local db = _DA_DB()
+  if not name or name == "" then return end
+  for _, d in pairs(db.spells) do
+    if d.category == name then return end
+  end
+  local i = 1
+  while i <= table.getn(db.categories) do
+    if db.categories[i] == name then
+      table.remove(db.categories, i)
+    else
+      i = i + 1
+    end
+  end
+end
+
+local function _CleanupGroupIfEmpty(name)
+  local db = _DA_DB()
+  if not name or name == "" then return end
+  for _, d in pairs(db.spells) do
+    if d.group == name then
+      _EnsureUniqueLeader(name)
+      return
+    end
+  end
+  if db.groupSort then db.groupSort[name] = nil end
+  if db.groupFixed then db.groupFixed[name] = nil end
+  if db.bucketCollapsed then db.bucketCollapsed[name] = nil end
+  if db.bucketDisabled then db.bucketDisabled[name] = nil end
+end
+
+function DoiteGroup.CleanupDanglingGroupData()
+  local db = _DA_DB()
+  local usedGroups = {}
+  local usedCategories = {}
+
+  for _, d in pairs(db.spells) do
+    if d.group and d.group ~= "" then usedGroups[d.group] = true end
+    if d.category and d.category ~= "" then usedCategories[d.category] = true end
+  end
+
+  local i = 1
+  while i <= table.getn(db.categories) do
+    local c = db.categories[i]
+    if c and c ~= "" and not usedCategories[c] then
+      table.remove(db.categories, i)
+    else
+      i = i + 1
+    end
+  end
+
+  local function pruneMap(t)
+    if not t then return end
+    for k in pairs(t) do
+      if not usedGroups[k] then t[k] = nil end
+    end
+  end
+  pruneMap(db.groupSort)
+  pruneMap(db.groupFixed)
+  pruneMap(db.bucketCollapsed)
+  pruneMap(db.bucketDisabled)
+
+  for g in pairs(usedGroups) do
+    _EnsureUniqueLeader(g)
+  end
+end
+
+function DoiteGroup._DG_UI_GetData(ctx)
+  if not ctx or not ctx.api or not ctx.api.Ensure then return nil end
+  local key = ctx.state and ctx.state.key
+  if not key or key == "" then return nil end
+  return ctx.api.Ensure(key)
+end
+
+function DoiteGroup._DG_UI_RefreshAll(ctx)
+  if ctx.api.SafeRefresh then ctx.api.SafeRefresh() end
+  if ctx.api.SafeEvaluate then ctx.api.SafeEvaluate() end
+  if ctx.api.ListRefresh then pcall(ctx.api.ListRefresh) end
+  if ctx.api.UpdateEditor and ctx.state and ctx.state.key then pcall(ctx.api.UpdateEditor, ctx.state.key) end
+end
+
+function DoiteGroup._DG_UI_ResetStepForKey(ctx, key)
+  local state = ctx.state
+  state.rename = false
+  state.renameFrom = nil
+  state.mode = nil
+
+  if not key or key == "" then
+    state.step = "pick"
+    return
+  end
+
+  local d = nil
+  if ctx.api and ctx.api.Ensure then
+    d = ctx.api.Ensure(key)
+  end
+
+  if d and d.group and d.group ~= "" then
+    state.mode = "group"
+    state.step = "ingroup"
+  elseif d and d.category and d.category ~= "" then
+    state.mode = "category"
+    state.step = "incategory"
+  else
+    state.step = "pick"
+  end
+end
+
+
+function DoiteGroup._DG_UI_HideAll(ctx)
+  local w = ctx.w
+  local i = 1
+  while i <= table.getn(w._all) do
+    w._all[i]:Hide()
+    i = i + 1
+  end
+  if w.growthDD then w.growthDD:Hide() end
+  if w.numDD then w.numDD:Hide() end
+  if w.spaceLbl then w.spaceLbl:Hide() end
+  if w.spaceS then w.spaceS:Hide() end
+  if w.spaceE then w.spaceE:Hide() end
+end
+
+function DoiteGroup._DG_UI_SetAddState(ctx)
+  local w = ctx.w
+  local state = ctx.state
+  local txt = _TrimName(w.nameIn:GetText() or "")
+  local list = _BuildNames(state.mode)
+  local dup = false
+  local i = 1
+  while i <= table.getn(list) do
+    if string.upper(list[i]) == string.upper(txt) and list[i] ~= state.renameFrom then
+      dup = true
+      break
+    end
+    i = i + 1
+  end
+  if txt == "" or dup then w.bAdd:Disable() else w.bAdd:Enable() end
+end
+
+function DoiteGroup._DG_UI_Join(ctx, kind, name)
+  local d = DoiteGroup._DG_UI_GetData(ctx); if not d then return end
+  local state = ctx.state
+  if kind == "group" then
+    d.category = nil
+    d.group = name
+    d.isLeader = false
+    _EnsureUniqueLeader(name)
+    local hasLeader = false
+    for _, s in pairs(_DA_DB().spells) do
+      if s.group == name and s.isLeader then hasLeader = true break end
+    end
+    if not hasLeader then d.isLeader = true end
+    state.step = "ingroup"
+  else
+    d.group = nil
+    d.isLeader = false
+    d.category = name
+    local db = _DA_DB()
+    local found = false
+    local i = 1
+    while i <= table.getn(db.categories) do
+      if db.categories[i] == name then found = true break end
+      i = i + 1
+    end
+    if not found then table.insert(db.categories, name) end
+    state.step = "incategory"
+  end
+  DoiteGroup._DG_UI_RefreshAll(ctx)
+end
+
+function DoiteGroup._DG_UI_LeaveCurrent(ctx)
+  local d = DoiteGroup._DG_UI_GetData(ctx); if not d then return end
+  local state = ctx.state
+  if state.mode == "category" then
+    local old = d.category
+    d.category = nil
+    _CleanupCategoryIfEmpty(old)
+    state.step = "pick"
+  else
+    local old = d.group
+    local wasLeader = d.isLeader
+    d.group = nil
+    d.isLeader = false
+    if wasLeader and old then _EnsureUniqueLeader(old) end
+    _CleanupGroupIfEmpty(old)
+    state.step = "pick"
+  end
+  DoiteGroup._DG_UI_RefreshAll(ctx)
+end
+
+function DoiteGroup._DG_UI_RenameAll(ctx, newName)
+  local d = DoiteGroup._DG_UI_GetData(ctx); if not d then return end
+  local state = ctx.state
+  local from = state.renameFrom
+  if not from or from == "" then return end
+
+  if state.mode == "category" then
+    for _, s in pairs(_DA_DB().spells) do
+      if s.category == from then s.category = newName end
+    end
+    local db = _DA_DB()
+    local found = false
+    local i = 1
+    while i <= table.getn(db.categories) do
+      if db.categories[i] == from then
+        db.categories[i] = newName
+        found = true
+      end
+      i = i + 1
+    end
+    if not found then table.insert(db.categories, newName) end
+    _CleanupCategoryIfEmpty(from)
+    d.category = newName
+    state.step = "incategory"
+  else
+    for _, s in pairs(_DA_DB().spells) do
+      if s.group == from then s.group = newName end
+    end
+    local db = _DA_DB()
+    if db.groupSort and db.groupSort[from] ~= nil then
+      db.groupSort[newName] = db.groupSort[from]
+      db.groupSort[from] = nil
+    end
+    if db.groupFixed and db.groupFixed[from] ~= nil then
+      db.groupFixed[newName] = db.groupFixed[from]
+      db.groupFixed[from] = nil
+    end
+    d.group = newName
+    _CleanupGroupIfEmpty(from)
+    _EnsureUniqueLeader(newName)
+    state.step = "ingroup"
+  end
+  DoiteGroup._DG_UI_RefreshAll(ctx)
+end
+
+function DoiteGroup._DG_UI_InitExistingDD(ctx)
+  local w = ctx.w
+  if DoiteGroup.CleanupDanglingGroupData then pcall(DoiteGroup.CleanupDanglingGroupData) end
+  if UIDropDownMenu_Initialize then
+  UIDropDownMenu_Initialize(w.groupDD, function()
+    local arr = _BuildNames("group")
+    local i = 1
+    while i <= table.getn(arr) do
+      local n = arr[i]
+      local info = UIDropDownMenu_CreateInfo()
+      info.text = n
+      info.value = n
+      info.func = function() DoiteGroup._DG_UI_Join(ctx, "group", n); DoiteGroup._DG_UI_Refresh(ctx) end
+      UIDropDownMenu_AddButton(info)
+      i = i + 1
+    end
+  end)
+  end
+  if UIDropDownMenu_SetText then UIDropDownMenu_SetText("Group", w.groupDD) end
+
+  if UIDropDownMenu_Initialize then
+  UIDropDownMenu_Initialize(w.catDD, function()
+    local arr = _BuildNames("category")
+    local i = 1
+    while i <= table.getn(arr) do
+      local n = arr[i]
+      local info = UIDropDownMenu_CreateInfo()
+      info.text = n
+      info.value = n
+      info.func = function() DoiteGroup._DG_UI_Join(ctx, "category", n); DoiteGroup._DG_UI_Refresh(ctx) end
+      UIDropDownMenu_AddButton(info)
+      i = i + 1
+    end
+  end)
+  end
+  if UIDropDownMenu_SetText then UIDropDownMenu_SetText("Category", w.catDD) end
+end
+
+function DoiteGroup._DG_UI_Refresh(ctx)
+  local w = ctx.w
+  local state = ctx.state
+  DoiteGroup._DG_UI_HideAll(ctx)
+
+  if not state.key or state.key == "" then
+    state.step = "pick"
+    w.line:SetText("If you want to Group or Categorize this icon, select an option below:")
+    w.bNew:Show(); w.bExisting:Show()
+    return
+  end
+
+  local d = DoiteGroup._DG_UI_GetData(ctx)
+  if not d then
+    state.step = "pick"
+    w.line:SetText("If you want to Group or Categorize this icon, select an option below:")
+    w.bNew:Show(); w.bExisting:Show()
+    return
+  end
+
+  local detectedMode = nil
+  if d.group and d.group ~= "" then
+    detectedMode = "group"
+    if state.step ~= "settings" and state.step ~= "newname" and state.step ~= "confirmleave" and state.step ~= "existing" and state.step ~= "newkind" then
+      state.step = "ingroup"
+    end
+  elseif d.category and d.category ~= "" then
+    detectedMode = "category"
+    if state.step ~= "newname" and state.step ~= "confirmleave" and state.step ~= "existing" and state.step ~= "newkind" then
+      state.step = "incategory"
+    end
+  elseif state.step ~= "newkind" and state.step ~= "newname" and state.step ~= "existing" then
+    state.step = "pick"
+  end
+
+  if detectedMode then
+    state.mode = detectedMode
+  elseif state.step == "pick" then
+    state.mode = nil
+  end
+
+  if state.step == "pick" then
+    w.line:SetText("If you want to Group or Categorize this icon, select an option below:")
+    w.bNew:Show(); w.bExisting:Show()
+  elseif state.step == "newkind" then
+    w.line:SetText("Would you like to place the icon in a new Group or Category?")
+    w.bGroup:Show(); w.bCat:Show(); w.bBackA:Show()
+  elseif state.step == "newname" then
+    w.line:SetText("Please select a unique name below:")
+    w.nameLbl:SetText(state.mode == "group" and "New Group name:" or "New Category name:")
+    w.nameLbl:Show(); w.nameIn:Show(); w.bAdd:Show(); w.bBackB:Show()
+    DoiteGroup._DG_UI_SetAddState(ctx)
+  elseif state.step == "incategory" then
+    w.line:SetText("Included in Category: " .. tostring(d.category or ""))
+    w.bRename:Show(); w.bLeave:Show()
+  elseif state.step == "ingroup" then
+    w.line:SetText("Included in Group: " .. tostring(d.group or ""))
+    w.bRename:Show(); w.bLeave:Show(); w.leaderCB:Show(); w.bSettings:Show()
+    w.leaderCB:SetChecked(d.isLeader and true or false)
+    if d.isLeader then w.leaderCB:Disable(); w.bSettings:Enable() else w.leaderCB:Enable(); w.bSettings:Disable() end
+  elseif state.step == "confirmleave" then
+    if state.mode == "group" then
+      w.line:SetText("Are you sure you want the icon to leave the group?")
+    else
+      w.line:SetText("Are you sure you want the icon to leave the category?")
+    end
+    w.bYes:Show(); w.bBackC:Show()
+  elseif state.step == "existing" then
+    w.line:SetText("Select what existing Group or Category you want to place the icon in:")
+    w.groupDD:Show(); w.catDD:Show(); w.bBackD:Show()
+    DoiteGroup._DG_UI_InitExistingDD(ctx)
+  elseif state.step == "settings" then
+    w.line:SetText("Group settings")
+    w.growthLabel:Show(); if w.growthDD then w.growthDD:Show() end
+    w.numLbl:Show(); if w.numDD then w.numDD:Show() end
+    if w.spaceLbl then w.spaceLbl:Show() end
+    if w.spaceS then w.spaceS:Show() end
+    if w.spaceE then w.spaceE:Show() end
+
+    if w.growthDD and ctx.frame.InitGrowthDropdown then
+      ctx.frame.InitGrowthDropdown(w.growthDD, d)
+      if UIDropDownMenu_SetText then UIDropDownMenu_SetText(d.growth or "Horizontal Right", w.growthDD) end
+    end
+    if w.numDD and ctx.frame.InitNumAurasDropdown then
+      ctx.frame.InitNumAurasDropdown(w.numDD, d)
+      if UIDropDownMenu_SetText then UIDropDownMenu_SetText(tostring(d.numAuras or 5), w.numDD) end
+    end
+
+    local settings = (DoiteAurasDB and DoiteAurasDB.settings)
+    local s = d.spacing
+    if not s then s = (settings and settings.spacing) or 8 end
+    if w.spaceS then w.spaceS:SetValue(s) end
+    if w.spaceE then w.spaceE:SetText(tostring(s)) end
+    w.bBackSettings:Show()
+  end
+end
+
+function DoiteGroup._DG_UI_WireHandlers(ctx)
+  local w = ctx.w
+
+  w.bNew:SetScript("OnClick", function() ctx.state.step = "newkind"; DoiteGroup._DG_UI_Refresh(ctx) end)
+  w.bExisting:SetScript("OnClick", function() ctx.state.step = "existing"; DoiteGroup._DG_UI_Refresh(ctx) end)
+  w.bGroup:SetScript("OnClick", function() ctx.state.mode = "group"; ctx.state.step = "newname"; ctx.state.rename = false; ctx.state.renameFrom = nil; w.nameIn:SetText(""); DoiteGroup._DG_UI_Refresh(ctx) end)
+  w.bCat:SetScript("OnClick", function() ctx.state.mode = "category"; ctx.state.step = "newname"; ctx.state.rename = false; ctx.state.renameFrom = nil; w.nameIn:SetText(""); DoiteGroup._DG_UI_Refresh(ctx) end)
+  w.bBackA:SetScript("OnClick", function() ctx.state.step = "pick"; DoiteGroup._DG_UI_Refresh(ctx) end)
+  w.bBackB:SetScript("OnClick", function()
+    if ctx.state.rename then
+      ctx.state.step = (ctx.state.mode == "group") and "ingroup" or "incategory"
+    else
+      ctx.state.step = "newkind"
+    end
+    DoiteGroup._DG_UI_Refresh(ctx)
+  end)
+  w.bRename:SetScript("OnClick", function()
+    local d = DoiteGroup._DG_UI_GetData(ctx)
+    if not d then return end
+    if d.group and d.group ~= "" then
+      ctx.state.mode = "group"
+      ctx.state.renameFrom = d.group
+    elseif d.category and d.category ~= "" then
+      ctx.state.mode = "category"
+      ctx.state.renameFrom = d.category
+    else
+      return
+    end
+    ctx.state.rename = true
+    w.nameIn:SetText(ctx.state.renameFrom or "")
+    ctx.state.step = "newname"
+    DoiteGroup._DG_UI_Refresh(ctx)
+  end)
+  w.bLeave:SetScript("OnClick", function()
+    local d = DoiteGroup._DG_UI_GetData(ctx)
+    if not d then return end
+    if d.group and d.group ~= "" then
+      ctx.state.mode = "group"
+    elseif d.category and d.category ~= "" then
+      ctx.state.mode = "category"
+    else
+      return
+    end
+    ctx.state.step = "confirmleave"
+    DoiteGroup._DG_UI_Refresh(ctx)
+  end)
+  w.bYes:SetScript("OnClick", function() DoiteGroup._DG_UI_LeaveCurrent(ctx); DoiteGroup._DG_UI_Refresh(ctx) end)
+  w.bBackC:SetScript("OnClick", function() ctx.state.step = (ctx.state.mode == "group") and "ingroup" or "incategory"; DoiteGroup._DG_UI_Refresh(ctx) end)
+  w.bBackD:SetScript("OnClick", function() ctx.state.step = "pick"; DoiteGroup._DG_UI_Refresh(ctx) end)
+  w.bSettings:SetScript("OnClick", function() ctx.state.step = "settings"; DoiteGroup._DG_UI_Refresh(ctx) end)
+  w.bBackSettings:SetScript("OnClick", function() ctx.state.step = "ingroup"; DoiteGroup._DG_UI_Refresh(ctx) end)
+
+  w.leaderCB:SetScript("OnClick", function(self)
+    local cb = self or this or w.leaderCB
+    local d = DoiteGroup._DG_UI_GetData(ctx)
+    if not d or not d.group then cb:SetChecked(false); return end
+    if cb:GetChecked() then
+      for k, s in pairs(_DA_DB().spells) do
+        if s.group == d.group and k ~= ctx.state.key then
+          s.isLeader = false
+        end
+      end
+      d.isLeader = true
+      cb:SetChecked(true)
+      cb:Disable()
+      w.bSettings:Enable()
+      DoiteGroup._DG_UI_RefreshAll(ctx)
+    else
+      cb:SetChecked(d.isLeader and true or false)
+    end
+  end)
+
+  w.nameIn:SetScript("OnTextChanged", function() DoiteGroup._DG_UI_SetAddState(ctx) end)
+  w.bAdd:SetScript("OnClick", function()
+    local picked = _TrimName(w.nameIn:GetText() or "")
+    if picked == "" then return end
+    if ctx.state.rename then DoiteGroup._DG_UI_RenameAll(ctx, picked) else DoiteGroup._DG_UI_Join(ctx, ctx.state.mode, picked) end
+    w.nameIn:SetText("")
+    DoiteGroup._DG_UI_Refresh(ctx)
+  end)
+end
+
+function DoiteGroup.AttachEditGroupUI(frame, api)
+  if not frame or frame._dgEditorBuilt then return end
+  frame._dgEditorBuilt = true
+
+  local ctx = {
+    frame = frame,
+    api = api or {},
+    state = { step = "pick", mode = nil, rename = false, renameFrom = nil, key = nil },
+    w = {}
+  }
+  local w = ctx.w
+
+  if frame.groupLabel then frame.groupLabel:Hide() end
+
+  w.line = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  w.line:SetPoint("TOPLEFT", frame, "TOPLEFT", 20, -68)
+  w.line:SetWidth(318)
+  w.line:SetJustifyH("LEFT")
+  frame.dgLine = w.line
+
+  w.bNew = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+  w.bNew:SetWidth(70); w.bNew:SetHeight(20); w.bNew:SetPoint("TOPLEFT", w.line, "BOTTOMLEFT", 0, -6); w.bNew:SetText("New")
+  w.bExisting = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+  w.bExisting:SetWidth(70); w.bExisting:SetHeight(20); w.bExisting:SetPoint("LEFT", w.bNew, "RIGHT", 6, 0); w.bExisting:SetText("Existing")
+
+  w.bGroup = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+  w.bGroup:SetWidth(70); w.bGroup:SetHeight(20); w.bGroup:SetPoint("TOPLEFT", w.line, "BOTTOMLEFT", 0, -6); w.bGroup:SetText("Group")
+  w.bCat = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+  w.bCat:SetWidth(70); w.bCat:SetHeight(20); w.bCat:SetPoint("LEFT", w.bGroup, "RIGHT", 6, 0); w.bCat:SetText("Category")
+  w.bBackA = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+  w.bBackA:SetWidth(70); w.bBackA:SetHeight(20); w.bBackA:SetPoint("LEFT", w.bCat, "RIGHT", 6, 0); w.bBackA:SetText("Back")
+
+  w.nameLbl = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  w.nameLbl:SetPoint("TOPLEFT", w.line, "BOTTOMLEFT", 0, -10)
+  w.nameIn = CreateFrame("EditBox", nil, frame, "InputBoxTemplate")
+  w.nameIn:SetWidth(120); w.nameIn:SetHeight(18); w.nameIn:SetAutoFocus(false); w.nameIn:SetPoint("LEFT", w.nameLbl, "RIGHT", 8, 0)
+  w.bAdd = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+  w.bAdd:SetWidth(60); w.bAdd:SetHeight(20); w.bAdd:SetPoint("LEFT", w.nameIn, "RIGHT", 6, 0); w.bAdd:SetText("Add")
+  w.bBackB = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+  w.bBackB:SetWidth(60); w.bBackB:SetHeight(20); w.bBackB:SetPoint("LEFT", w.bAdd, "RIGHT", 6, 0); w.bBackB:SetText("Back")
+
+  w.bRename = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+  w.bRename:SetWidth(70); w.bRename:SetHeight(20); w.bRename:SetPoint("TOPLEFT", w.line, "BOTTOMLEFT", 0, -6); w.bRename:SetText("Rename")
+  w.bLeave = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+  w.bLeave:SetWidth(70); w.bLeave:SetHeight(20); w.bLeave:SetPoint("LEFT", w.bRename, "RIGHT", 6, 0); w.bLeave:SetText("Leave")
+  w.leaderCB = CreateFrame("CheckButton", nil, frame, "UICheckButtonTemplate")
+  w.leaderCB:SetWidth(20); w.leaderCB:SetHeight(20); w.leaderCB:SetPoint("LEFT", w.bLeave, "RIGHT", 8, 0)
+  w.leaderCB.text = w.leaderCB:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  w.leaderCB.text:SetPoint("LEFT", w.leaderCB, "RIGHT", 2, 0)
+  w.leaderCB.text:SetText("Group Leader")
+
+  w.bSettings = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+  w.bSettings:SetWidth(90); w.bSettings:SetHeight(20); w.bSettings:SetPoint("TOPLEFT", w.bRename, "BOTTOMLEFT", 0, -4); w.bSettings:SetText("Settings")
+
+  w.bYes = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+  w.bYes:SetWidth(70); w.bYes:SetHeight(20); w.bYes:SetPoint("TOPLEFT", w.line, "BOTTOMLEFT", 0, -6); w.bYes:SetText("Yes")
+  w.bBackC = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+  w.bBackC:SetWidth(70); w.bBackC:SetHeight(20); w.bBackC:SetPoint("LEFT", w.bYes, "RIGHT", 6, 0); w.bBackC:SetText("Back")
+
+  w.groupDD = CreateFrame("Frame", "DoiteConditions_GroupPickDD", frame, "UIDropDownMenuTemplate")
+  w.groupDD:SetPoint("TOPLEFT", w.line, "BOTTOMLEFT", -16, -4)
+  if UIDropDownMenu_SetWidth then UIDropDownMenu_SetWidth(120, w.groupDD) end
+  w.catDD = CreateFrame("Frame", "DoiteConditions_CategoryPickDD", frame, "UIDropDownMenuTemplate")
+  w.catDD:SetPoint("LEFT", w.groupDD, "RIGHT", 6, 0)
+  if UIDropDownMenu_SetWidth then UIDropDownMenu_SetWidth(120, w.catDD) end
+  w.bBackD = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+  w.bBackD:SetWidth(60); w.bBackD:SetHeight(20); w.bBackD:SetPoint("LEFT", w.catDD, "RIGHT", -4, 2); w.bBackD:SetText("Back")
+
+  w.growthLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  w.growthLabel:SetPoint("TOPLEFT", w.line, "BOTTOMLEFT", 0, -6)
+  w.growthLabel:SetText("Group expand direction:")
+  w.growthDD = frame.growthDD
+  if w.growthDD then w.growthDD:ClearAllPoints(); w.growthDD:SetPoint("LEFT", w.growthLabel, "RIGHT", -6, -2) end
+
+  w.numLbl = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  w.numLbl:SetPoint("TOPLEFT", w.growthLabel, "BOTTOMLEFT", 0, -10)
+  w.numLbl:SetText("# of icons visible:")
+  w.numDD = frame.numAurasDD
+  if w.numDD then w.numDD:ClearAllPoints(); w.numDD:SetPoint("LEFT", w.numLbl, "RIGHT", -6, -2) end
+
+  w.spaceLbl = frame.spacingLabel
+  if w.spaceLbl then w.spaceLbl:ClearAllPoints(); w.spaceLbl:SetPoint("TOPLEFT", w.numLbl, "BOTTOMLEFT", 0, -12); w.spaceLbl:SetText("Spacing between icons:") end
+  w.spaceS = frame.spacingSlider
+  if w.spaceS then w.spaceS:ClearAllPoints(); w.spaceS:SetPoint("LEFT", w.spaceLbl, "RIGHT", 10, 0) end
+  w.spaceE = frame.spacingEdit
+  if w.spaceE then w.spaceE:ClearAllPoints(); w.spaceE:SetPoint("LEFT", w.spaceS, "RIGHT", 8, 0) end
+
+  w.bBackSettings = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+  w.bBackSettings:SetWidth(60); w.bBackSettings:SetHeight(20); w.bBackSettings:SetPoint("LEFT", w.spaceE, "RIGHT", 8, 0); w.bBackSettings:SetText("Back")
+
+  w._all = {
+    w.bNew, w.bExisting, w.bGroup, w.bCat, w.bBackA,
+    w.nameLbl, w.nameIn, w.bAdd, w.bBackB,
+    w.bRename, w.bLeave, w.leaderCB, w.bSettings,
+    w.bYes, w.bBackC, w.groupDD, w.catDD, w.bBackD,
+    w.growthLabel, w.numLbl, w.bBackSettings
+  }
+
+  DoiteGroup._DG_UI_WireHandlers(ctx)
+
+  frame.DoiteGroupUIRefresh = function(_, key)
+    local changed = (ctx.state.key ~= key)
+    ctx.state.key = key
+    if changed then
+      DoiteGroup._DG_UI_ResetStepForKey(ctx, key)
+    end
+    DoiteGroup._DG_UI_Refresh(ctx)
+  end
+
+  frame.DoiteGroupUIIsLeaderOrFree = function()
+    local d = DoiteGroup._DG_UI_GetData(ctx)
+    if not d then return true end
+    if not d.group or d.group == "" then return true end
+    return d.isLeader == true
+  end
+
+  local function _dgOnHideReset()
+    ctx.state.key = nil
+    DoiteGroup._DG_UI_ResetStepForKey(ctx, nil)
+  end
+
+  if frame.HookScript then
+    frame:HookScript("OnHide", _dgOnHideReset)
+  else
+    local prevOnHide = frame.GetScript and frame:GetScript("OnHide")
+    frame:SetScript("OnHide", function()
+      if prevOnHide then prevOnHide() end
+      _dgOnHideReset()
+    end)
+  end
+
+  ctx.state.key = editingKey()
+  DoiteGroup._DG_UI_ResetStepForKey(ctx, ctx.state.key)
+  DoiteGroup._DG_UI_Refresh(ctx)
+end
