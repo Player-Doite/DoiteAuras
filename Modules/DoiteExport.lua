@@ -1633,9 +1633,173 @@ local function DE_CreateImportFrame()
     return false
   end
 
+  local function DE_CollectNameSets(pkg)
+    local dbCats = {}
+    local dbGroups = {}
+    local importCats = {}
+    local importGroups = {}
+
+    DoiteAurasDB = DoiteAurasDB or {}
+    DoiteAurasDB.spells = DoiteAurasDB.spells or {}
+    DoiteAurasDB.categories = DoiteAurasDB.categories or {}
+    DoiteAurasDB.groupSort = DoiteAurasDB.groupSort or {}
+    DoiteAurasDB.bucketDisabled = DoiteAurasDB.bucketDisabled or {}
+
+    local categories = DoiteAurasDB.categories
+    local i
+    for i = 1, table.getn(categories) do
+      local name = categories[i]
+      if name and name ~= "" then
+        dbCats[name] = true
+      end
+    end
+
+    local key, data
+    for key, data in pairs(DoiteAurasDB.spells) do
+      if type(data) == "table" and data.group and data.group ~= "" and data.group ~= "no" then
+        dbGroups[data.group] = true
+      end
+    end
+    for key in pairs(DoiteAurasDB.groupSort) do
+      dbGroups[key] = true
+    end
+    for key in pairs(DoiteAurasDB.bucketDisabled) do
+      if not dbCats[key] then
+        dbGroups[key] = true
+      end
+    end
+
+    if pkg and pkg.categories then
+      for key in pairs(pkg.categories) do
+        if key and key ~= "" then
+          importCats[key] = true
+        end
+      end
+    end
+    if pkg and pkg.groups then
+      for key in pairs(pkg.groups) do
+        if key and key ~= "" then
+          importGroups[key] = true
+        end
+      end
+    end
+
+    local icons = (pkg and pkg.icons) or {}
+    for i = 1, table.getn(icons) do
+      local rec = icons[i]
+      if rec and rec.data then
+        if rec.data.category and rec.data.category ~= "" and rec.data.category ~= "no" then
+          importCats[rec.data.category] = true
+        end
+        if rec.data.group and rec.data.group ~= "" and rec.data.group ~= "no" then
+          importGroups[rec.data.group] = true
+        end
+      end
+    end
+
+    return {
+      db = {
+        group = dbGroups,
+        category = dbCats,
+      },
+      importAll = {
+        group = importGroups,
+        category = importCats,
+      },
+    }
+  end
+
+  local function DE_FindDuplicateNames(pkg)
+    local sets = DE_CollectNameSets(pkg)
+    local duplicates = {}
+    local nonDuplicates = {
+      group = {},
+      category = {},
+    }
+
+    local kind, name
+    for kind in pairs(sets.importAll) do
+      for name in pairs(sets.importAll[kind]) do
+        if sets.db[kind][name] then
+          table.insert(duplicates, {
+            kind = kind,
+            oldName = name,
+          })
+        else
+          nonDuplicates[kind][name] = true
+        end
+      end
+    end
+
+    table.sort(duplicates, function(a, b)
+      if a.kind == b.kind then
+        return tostring(a.oldName) < tostring(b.oldName)
+      end
+      return a.kind < b.kind
+    end)
+
+    return duplicates, sets.db, nonDuplicates
+  end
+
+  local function DE_ApplyDuplicateRenames(pkg, duplicates)
+    if not pkg or not duplicates then
+      return pkg
+    end
+
+    local mapGroup = {}
+    local mapCategory = {}
+    local i
+
+    for i = 1, table.getn(duplicates) do
+      local entry = duplicates[i]
+      if entry and entry.savedName and entry.savedName ~= "" then
+        if entry.kind == "group" then
+          mapGroup[entry.oldName] = entry.savedName
+        elseif entry.kind == "category" then
+          mapCategory[entry.oldName] = entry.savedName
+        end
+      end
+    end
+
+    if next(mapGroup) and pkg.groups then
+      local newGroups = {}
+      local name, info
+      for name, info in pairs(pkg.groups) do
+        newGroups[mapGroup[name] or name] = info
+      end
+      pkg.groups = newGroups
+    end
+
+    if next(mapCategory) and pkg.categories then
+      local newCategories = {}
+      local name, info
+      for name, info in pairs(pkg.categories) do
+        newCategories[mapCategory[name] or name] = info
+      end
+      pkg.categories = newCategories
+    end
+
+    local icons = pkg.icons or {}
+    for i = 1, table.getn(icons) do
+      local rec = icons[i]
+      if rec and rec.data then
+        if rec.data.group and mapGroup[rec.data.group] then
+          rec.data.group = mapGroup[rec.data.group]
+        end
+        if rec.data.category and mapCategory[rec.data.category] then
+          rec.data.category = mapCategory[rec.data.category]
+        end
+      end
+    end
+
+    return pkg
+  end
+
   -- Custom-code import confirmation dialog (created once, reused).
   local importConfirmFrame
   local importConfirmPkg  -- stashed package awaiting user decision
+  local duplicateFrame
+  local duplicateState
 
   local function DE_EnsureImportConfirmFrame()
     if importConfirmFrame then
@@ -1709,6 +1873,249 @@ local function DE_CreateImportFrame()
     end)
   end
 
+  local function DE_EnsureDuplicateFrame()
+    if duplicateFrame then
+      return
+    end
+
+    duplicateFrame = CreateFrame("Frame", "DoiteExport_ImportDuplicateFrame", UIParent)
+    duplicateFrame:SetWidth(500)
+    duplicateFrame:SetHeight(180)
+    duplicateFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    duplicateFrame:SetBackdrop({
+      bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+      edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+      tile = true, tileSize = 16, edgeSize = 32,
+      insets = { left = 11, right = 12, top = 12, bottom = 11 }
+    })
+    duplicateFrame:SetBackdropColor(0, 0, 0, 1)
+    duplicateFrame:SetBackdropBorderColor(1, 1, 1, 1)
+    duplicateFrame:SetFrameStrata("TOOLTIP")
+    if UIParent and UIParent.GetFrameLevel and duplicateFrame.SetFrameLevel then
+      duplicateFrame:SetFrameLevel((UIParent:GetFrameLevel() or 0) + 1200)
+    end
+    duplicateFrame:Hide()
+
+    local close = CreateFrame("Button", nil, duplicateFrame, "UIPanelCloseButton")
+    close:SetPoint("TOPRIGHT", duplicateFrame, "TOPRIGHT", -5, -5)
+    close:SetScript("OnClick", function()
+      duplicateState = nil
+      duplicateFrame:Hide()
+    end)
+
+    local title = duplicateFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("TOPLEFT", duplicateFrame, "TOPLEFT", 20, -15)
+    title:SetText("|cff6FA8DCDoiteImport - Group/Category Duplicate Found!|r")
+
+    local sep = duplicateFrame:CreateTexture(nil, "ARTWORK")
+    sep:SetHeight(1)
+    sep:SetPoint("TOPLEFT", duplicateFrame, "TOPLEFT", 20, -35)
+    sep:SetPoint("TOPRIGHT", duplicateFrame, "TOPRIGHT", -20, -35)
+    sep:SetTexture(1, 1, 1)
+    if sep.SetVertexColor then
+      sep:SetVertexColor(1, 1, 1, 0.25)
+    end
+
+    duplicateFrame.rowsContainer = CreateFrame("Frame", nil, duplicateFrame)
+    duplicateFrame.rowsContainer:SetPoint("TOPLEFT", duplicateFrame, "TOPLEFT", 20, -45)
+    duplicateFrame.rowsContainer:SetPoint("TOPRIGHT", duplicateFrame, "TOPRIGHT", -20, -45)
+    duplicateFrame.rowsContainer:SetHeight(80)
+
+    local importBtn = CreateFrame("Button", nil, duplicateFrame, "UIPanelButtonTemplate")
+    importBtn:SetWidth(50)
+    importBtn:SetHeight(22)
+    importBtn:SetText("Import")
+    importBtn:SetPoint("BOTTOMRIGHT", duplicateFrame, "BOTTOM", -8, 15)
+    importBtn:Disable()
+    duplicateFrame.importBtn = importBtn
+
+    local cancelBtn = CreateFrame("Button", nil, duplicateFrame, "UIPanelButtonTemplate")
+    cancelBtn:SetWidth(50)
+    cancelBtn:SetHeight(22)
+    cancelBtn:SetText("Cancel")
+    cancelBtn:SetPoint("BOTTOMLEFT", duplicateFrame, "BOTTOM", 8, 15)
+    cancelBtn:SetScript("OnClick", function()
+      duplicateState = nil
+      duplicateFrame:Hide()
+    end)
+
+    local function DE_DuplicateAllSaved()
+      if not duplicateState or not duplicateState.duplicates then
+        return false
+      end
+      local i
+      for i = 1, table.getn(duplicateState.duplicates) do
+        if not duplicateState.duplicates[i].savedName then
+          return false
+        end
+      end
+      return true
+    end
+
+    local function DE_DuplicateNameIsUnique(entry, candidate)
+      if not duplicateState or not entry then
+        return false
+      end
+      if not candidate or candidate == "" then
+        return false
+      end
+
+      if duplicateState.dbNames[entry.kind][candidate] then
+        return false
+      end
+      if duplicateState.nonDuplicateNames[entry.kind][candidate] then
+        return false
+      end
+
+      local i
+      for i = 1, table.getn(duplicateState.duplicates) do
+        local other = duplicateState.duplicates[i]
+        if other ~= entry then
+          local reserved = other.savedName or other.oldName
+          if reserved == candidate then
+            return false
+          end
+        end
+      end
+
+      return true
+    end
+
+    local function DE_UpdateDuplicateImportButton()
+      if not duplicateFrame.importBtn then
+        return
+      end
+      if DE_DuplicateAllSaved() then
+        duplicateFrame.importBtn:Enable()
+      else
+        duplicateFrame.importBtn:Disable()
+      end
+    end
+
+    importBtn:SetScript("OnClick", function()
+      if not duplicateState or not DE_DuplicateAllSaved() then
+        return
+      end
+      local pkg = DE_ApplyDuplicateRenames(duplicateState.pkg, duplicateState.duplicates)
+      local continueFn = duplicateState.continueFn
+      duplicateState = nil
+      duplicateFrame:Hide()
+      if continueFn then
+        continueFn(pkg)
+      end
+    end)
+
+    duplicateFrame.Build = function(state)
+      local i
+      if duplicateFrame.rowWidgets then
+        for i = 1, table.getn(duplicateFrame.rowWidgets) do
+          local row = duplicateFrame.rowWidgets[i]
+          if row.label then
+            row.label:Hide()
+          end
+          if row.input then
+            row.input:Hide()
+          end
+          if row.saveBtn then
+            row.saveBtn:Hide()
+          end
+          if row.savedText then
+            row.savedText:Hide()
+          end
+        end
+      end
+      duplicateFrame.rowWidgets = {}
+
+      local total = table.getn(state.duplicates)
+      local y = -4
+      for i = 1, total do
+        local entry = state.duplicates[i]
+        local row = {}
+        local kindLabel = (entry.kind == "group") and "Group" or "Category"
+        local prefix = ""
+        if total > 1 then
+          prefix = "Match #" .. i .. " - "
+        end
+
+        local label = duplicateFrame.rowsContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        label:SetPoint("TOPLEFT", duplicateFrame.rowsContainer, "TOPLEFT", 0, y)
+        label:SetText(prefix .. kindLabel .. ":")
+        row.label = label
+
+        local input = CreateFrame("EditBox", nil, duplicateFrame.rowsContainer, "InputBoxTemplate")
+        input:SetAutoFocus(false)
+        input:SetWidth(120)
+        input:SetHeight(20)
+        input:SetPoint("LEFT", label, "RIGHT", 8, 0)
+        input:SetText(entry.oldName or "")
+        row.input = input
+
+        local savedText = duplicateFrame.rowsContainer:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        savedText:SetPoint("LEFT", label, "RIGHT", 8, 0)
+        savedText:SetText("")
+        savedText:Hide()
+        row.savedText = savedText
+
+        local saveBtn = CreateFrame("Button", nil, duplicateFrame.rowsContainer, "UIPanelButtonTemplate")
+        saveBtn:SetWidth(40)
+        saveBtn:SetHeight(20)
+        saveBtn:SetPoint("LEFT", input, "RIGHT", 6, 0)
+        saveBtn:SetText("Save")
+        saveBtn:Disable()
+        row.saveBtn = saveBtn
+
+        input:SetScript("OnTextChanged", function()
+          local value = this:GetText() or ""
+          if DE_DuplicateNameIsUnique(entry, value) then
+            saveBtn:Enable()
+          else
+            saveBtn:Disable()
+          end
+        end)
+
+        saveBtn:SetScript("OnClick", function()
+          local value = input:GetText() or ""
+          if not DE_DuplicateNameIsUnique(entry, value) then
+            return
+          end
+          entry.savedName = value
+          input:Hide()
+          saveBtn:Hide()
+          savedText:SetText(value)
+          savedText:Show()
+          DE_UpdateDuplicateImportButton()
+        end)
+
+        table.insert(duplicateFrame.rowWidgets, row)
+        y = y - 24
+      end
+
+      duplicateFrame.rowsContainer:SetHeight((total * 24) + 8)
+      duplicateFrame:SetHeight(110 + (total * 24))
+      DE_UpdateDuplicateImportButton()
+    end
+  end
+
+  local function DE_CheckDuplicateNamesBeforeImport(pkg, continueFn)
+    local duplicates, dbNames, nonDuplicateNames = DE_FindDuplicateNames(pkg)
+    if table.getn(duplicates) <= 0 then
+      continueFn(pkg)
+      return
+    end
+
+    DE_EnsureDuplicateFrame()
+    duplicateState = {
+      pkg = pkg,
+      duplicates = duplicates,
+      dbNames = dbNames,
+      nonDuplicateNames = nonDuplicateNames,
+      continueFn = continueFn,
+    }
+    duplicateFrame.Build(duplicateState)
+    duplicateFrame:Show()
+    DE_MakeTopMost(duplicateFrame)
+  end
+
   importBtn:SetScript("OnClick", function()
     local text = importEditBox:GetText() or ""
     local chat = DEFAULT_CHAT_FRAME or ChatFrame1
@@ -1728,13 +2135,15 @@ local function DE_CreateImportFrame()
       return
     end
 
-    if DE_PackageHasCustomCode(pkg) then
-      DE_EnsureImportConfirmFrame()
-      importConfirmPkg = pkg
-      importConfirmFrame:Show()
-    else
-      DE_DoImport(pkg)
-    end
+    DE_CheckDuplicateNamesBeforeImport(pkg, function(updatedPkg)
+      if DE_PackageHasCustomCode(updatedPkg) then
+        DE_EnsureImportConfirmFrame()
+        importConfirmPkg = updatedPkg
+        importConfirmFrame:Show()
+      else
+        DE_DoImport(updatedPkg)
+      end
+    end)
   end)
 
   local hint = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -1752,6 +2161,13 @@ local function DE_CreateImportFrame()
     end
     if importScrollFrame and importScrollFrame.SetVerticalScroll then
       importScrollFrame:SetVerticalScroll(0)
+    end
+  end)
+
+  f:SetScript("OnHide", function()
+    if duplicateFrame and duplicateFrame.Hide then
+      duplicateState = nil
+      duplicateFrame:Hide()
     end
   end)
 
