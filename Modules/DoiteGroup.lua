@@ -970,35 +970,48 @@ local function _EnsureUniqueLeader(groupName)
   end
 end
 
-local function _CleanupCategoryIfEmpty(name)
+local function _CleanupNameDataIfUnused(name)
   local db = _DA_DB()
   if not name or name == "" then return end
+
+  local usedAsGroup = false
+  local usedAsCategory = false
   for _, d in pairs(db.spells) do
-    if d.category == name then return end
+    if d.group == name then usedAsGroup = true end
+    if d.category == name then usedAsCategory = true end
+    if usedAsGroup and usedAsCategory then break end
   end
-  local i = 1
-  while i <= table.getn(db.categories) do
-    if db.categories[i] == name then
-      table.remove(db.categories, i)
-    else
-      i = i + 1
+
+  if not usedAsCategory then
+    local i = 1
+    while i <= table.getn(db.categories) do
+      if db.categories[i] == name then
+        table.remove(db.categories, i)
+      else
+        i = i + 1
+      end
     end
+  end
+
+  if usedAsGroup then
+    _EnsureUniqueLeader(name)
+  else
+    if db.groupSort then db.groupSort[name] = nil end
+    if db.groupFixed then db.groupFixed[name] = nil end
+    if db.bucketCollapsed then db.bucketCollapsed[name] = nil end
+  end
+
+  if not usedAsGroup and not usedAsCategory and db.bucketDisabled then
+    db.bucketDisabled[name] = nil
   end
 end
 
+local function _CleanupCategoryIfEmpty(name)
+  _CleanupNameDataIfUnused(name)
+end
+
 local function _CleanupGroupIfEmpty(name)
-  local db = _DA_DB()
-  if not name or name == "" then return end
-  for _, d in pairs(db.spells) do
-    if d.group == name then
-      _EnsureUniqueLeader(name)
-      return
-    end
-  end
-  if db.groupSort then db.groupSort[name] = nil end
-  if db.groupFixed then db.groupFixed[name] = nil end
-  if db.bucketCollapsed then db.bucketCollapsed[name] = nil end
-  if db.bucketDisabled then db.bucketDisabled[name] = nil end
+  _CleanupNameDataIfUnused(name)
 end
 
 function DoiteGroup.CleanupDanglingGroupData()
@@ -1021,16 +1034,23 @@ function DoiteGroup.CleanupDanglingGroupData()
     end
   end
 
-  local function pruneMap(t)
+  local function pruneGroupMap(t)
     if not t then return end
     for k in pairs(t) do
       if not usedGroups[k] then t[k] = nil end
     end
   end
-  pruneMap(db.groupSort)
-  pruneMap(db.groupFixed)
-  pruneMap(db.bucketCollapsed)
-  pruneMap(db.bucketDisabled)
+  pruneGroupMap(db.groupSort)
+  pruneGroupMap(db.groupFixed)
+  pruneGroupMap(db.bucketCollapsed)
+
+  if db.bucketDisabled then
+    for k in pairs(db.bucketDisabled) do
+      if not usedGroups[k] and not usedCategories[k] then
+        db.bucketDisabled[k] = nil
+      end
+    end
+  end
 
   for g in pairs(usedGroups) do
     _EnsureUniqueLeader(g)

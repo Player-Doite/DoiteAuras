@@ -3279,6 +3279,11 @@ local function RefreshList()
 					-- Remove from DoiteAuras DB
 					DoiteAurasDB.spells[key] = nil
 
+					-- Keep group/category metadata maps in sync when last icon is deleted.
+					if DoiteGroup and DoiteGroup.CleanupDanglingGroupData then
+						pcall(DoiteGroup.CleanupDanglingGroupData)
+					end
+
 					-- Also drop any legacy DoiteDB entry so evaluation stops touching this key
 					if DoiteDB and DoiteDB.icons and DoiteDB.icons[key] then
 						DoiteDB.icons[key] = nil
@@ -3303,6 +3308,9 @@ local function RefreshList()
 
                     -- Rebuild ordering + UI (force icon refresh so delete is always visible instantly)
                     RebuildOrder()
+                    if DoiteGroup and DoiteGroup.InvalidateSortCache then
+                        DoiteGroup.InvalidateSortCache()
+                    end
                     RefreshList()
                     RefreshIcons(true)
 
