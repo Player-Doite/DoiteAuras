@@ -7210,7 +7210,7 @@ do
         end
         if row.fadeSlider then
           row.fadeSlider:ClearAllPoints()
-          row.fadeSlider:SetPoint("LEFT", row.fadeCB, "RIGHT", 10, 0)
+          row.fadeSlider:SetPoint("LEFT", row.fadeCB, "RIGHT", 20, 0)
         end
   
         row.glowCB:Show()
