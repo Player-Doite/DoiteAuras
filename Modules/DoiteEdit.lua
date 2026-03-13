@@ -7898,6 +7898,14 @@ local function UpdateConditionsUI(data)
   end
   _HideSoundControls()
 
+  -- Reset fade controls upfront to prevent visual leakage between icon categories.
+  if condFrame.cond_ability_fade then condFrame.cond_ability_fade:Hide() end
+  if condFrame.cond_ability_fade_slider then condFrame.cond_ability_fade_slider:Hide() end
+  if condFrame.cond_aura_fade then condFrame.cond_aura_fade:Hide() end
+  if condFrame.cond_aura_fade_slider then condFrame.cond_aura_fade_slider:Hide() end
+  if condFrame.cond_item_fade then condFrame.cond_item_fade:Hide() end
+  if condFrame.cond_item_fade_slider then condFrame.cond_item_fade_slider:Hide() end
+
   -- Custom controls are hidden by default; shown only for Custom type.
   if condFrame.cond_custom_function_edit then
     condFrame.cond_custom_function_edit:Hide()
@@ -8473,6 +8481,12 @@ local function UpdateConditionsUI(data)
     end
     if condFrame.cond_item_greyscale then
       condFrame.cond_item_greyscale:Hide()
+    end
+    if condFrame.cond_item_fade then
+      condFrame.cond_item_fade:Hide()
+    end
+    if condFrame.cond_item_fade_slider then
+      condFrame.cond_item_fade_slider:Hide()
     end
     if condFrame.cond_item_text_time then
       condFrame.cond_item_text_time:Hide()
@@ -10489,6 +10503,12 @@ local ic = c.item or {}
     end
     if condFrame.cond_item_greyscale then
       condFrame.cond_item_greyscale:Hide()
+    end
+    if condFrame.cond_item_fade then
+      condFrame.cond_item_fade:Hide()
+    end
+    if condFrame.cond_item_fade_slider then
+      condFrame.cond_item_fade_slider:Hide()
     end
     if condFrame.cond_item_text_time then
       condFrame.cond_item_text_time:Hide()
