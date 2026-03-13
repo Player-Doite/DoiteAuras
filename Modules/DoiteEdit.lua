@@ -1579,6 +1579,22 @@ local function CreateConditionsUI()
     return eb
   end
 
+  local function MakeMiniFadeSlider(name, x, y)
+    local parent = _Parent()
+    local s = CreateFrame("Slider", name, parent, "OptionsSliderTemplate")
+    s:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
+    s:SetWidth(70)
+    s:SetHeight(12)
+    s:SetMinMaxValues(10, 100)
+    s:SetValueStep(5)
+    if s.SetObeyStepOnDrag then s:SetObeyStepOnDrag(true) end
+
+    if _G[name .. "Low"] then _G[name .. "Low"]:SetText("") end
+    if _G[name .. "High"] then _G[name .. "High"]:SetText("") end
+    if _G[name .. "Text"] then _G[name .. "Text"]:SetText("") end
+    return s
+  end
+
   -- renders a small bold white title with a "split" separator line that does not pass under the text
   local function MakeSeparatorRow(parent, y, title, drawLine)
     drawLine = (drawLine ~= false)
@@ -1801,6 +1817,8 @@ local function CreateConditionsUI()
 
   condFrame.cond_ability_glow = MakeCheck("DoiteCond_Ability_Glow", "Glow", 0, row5_y)
   condFrame.cond_ability_greyscale = MakeCheck("DoiteCond_Ability_Greyscale", "Grey", 70, row5_y)
+  condFrame.cond_ability_fade = MakeCheck("DoiteCond_Ability_Fade", "Fade", 140, row5_y)
+  condFrame.cond_ability_fade_slider = MakeMiniFadeSlider("DoiteCond_Ability_FadeSlider", 190, row5_y - 2)
   condFrame.cond_ability_slider_glow = MakeCheck("DoiteCond_Ability_SliderGlow", "CD Glow", 140, row5_y)
   condFrame.cond_ability_slider_grey = MakeCheck("DoiteCond_Ability_SliderGrey", "CD Grey", 220, row5_y)
   SetSeparator("ability", 5, "VISUAL EFFECTS", true, true)
@@ -2023,6 +2041,8 @@ local function CreateConditionsUI()
 
   condFrame.cond_aura_glow = MakeCheck("DoiteCond_Aura_Glow", "Glow", 0, row5_y)
   condFrame.cond_aura_greyscale = MakeCheck("DoiteCond_Aura_Greyscale", "Grey", 70, row5_y)
+  condFrame.cond_aura_fade = MakeCheck("DoiteCond_Aura_Fade", "Fade", 140, row5_y)
+  condFrame.cond_aura_fade_slider = MakeMiniFadeSlider("DoiteCond_Aura_FadeSlider", 190, row5_y - 2)
   SetSeparator("aura", 5, "VISUAL EFFECTS", true, true)
 
   -- AURA ROW: TARGET DISTANCE & TYPE
@@ -2291,6 +2311,8 @@ local function CreateConditionsUI()
   -- VISUAL EFFECTS
   condFrame.cond_item_glow = MakeCheck("DoiteCond_Item_Glow", "Glow", 0, row7_y)
   condFrame.cond_item_greyscale = MakeCheck("DoiteCond_Item_Greyscale", "Grey", 70, row7_y)
+  condFrame.cond_item_fade = MakeCheck("DoiteCond_Item_Fade", "Fade", 140, row7_y)
+  condFrame.cond_item_fade_slider = MakeMiniFadeSlider("DoiteCond_Item_FadeSlider", 190, row7_y - 2)
   SetSeparator("item", 7, "VISUAL EFFECTS", true, true)
 
   -- ITEM ROW: TARGET DISTANCE & TYPE
@@ -3676,6 +3698,35 @@ function UpdateItemStacksForMissing()
     SafeEvaluate()
   end)
 
+  condFrame.cond_aura_fade:SetScript("OnClick", function()
+    if not currentKey then
+      this:SetChecked(false)
+      return
+    end
+    local d = EnsureDBEntry(currentKey)
+    d.conditions = d.conditions or {}
+    d.conditions.aura = d.conditions.aura or {}
+    d.conditions.aura.fade = this:GetChecked() and true or false
+    if d.conditions.aura.fade and not d.conditions.aura.fadeAlpha then
+      d.conditions.aura.fadeAlpha = 0.5
+    end
+    UpdateCondFrameForKey(currentKey)
+    SafeRefresh()
+    SafeEvaluate()
+  end)
+
+  condFrame.cond_aura_fade_slider:SetScript("OnValueChanged", function()
+    if not currentKey then
+      return
+    end
+    local d = EnsureDBEntry(currentKey)
+    d.conditions = d.conditions or {}
+    d.conditions.aura = d.conditions.aura or {}
+    d.conditions.aura.fadeAlpha = ((this:GetValue() or 100) / 100)
+    SafeRefresh()
+    SafeEvaluate()
+  end)
+
   -- === Combo points enable toggles ===
   condFrame.cond_ability_cp_cb:SetScript("OnClick", function()
     if not currentKey then
@@ -4000,6 +4051,33 @@ function UpdateItemStacksForMissing()
     SafeRefresh();
     SafeEvaluate()
   end)
+  condFrame.cond_item_fade:SetScript("OnClick", function()
+    if not currentKey then
+      this:SetChecked(false)
+      return
+    end
+    local d = EnsureDBEntry(currentKey);
+    d.conditions.item = d.conditions.item or {}
+    d.conditions.item.fade = this:GetChecked() and true or false
+    if d.conditions.item.fade and not d.conditions.item.fadeAlpha then
+      d.conditions.item.fadeAlpha = 0.5
+    end
+    UpdateCondFrameForKey(currentKey);
+    SafeRefresh();
+    SafeEvaluate()
+  end)
+
+  condFrame.cond_item_fade_slider:SetScript("OnValueChanged", function()
+    if not currentKey then
+      return
+    end
+    local d = EnsureDBEntry(currentKey);
+    d.conditions.item = d.conditions.item or {}
+    d.conditions.item.fadeAlpha = ((this:GetValue() or 100) / 100)
+    SafeRefresh();
+    SafeEvaluate()
+  end)
+
 
   -- Item text: remaining time
   condFrame.cond_item_text_time:SetScript("OnClick", function()
@@ -4991,6 +5069,34 @@ function UpdateItemStacksForMissing()
     SafeRefresh()
     SafeEvaluate()
   end)
+  condFrame.cond_ability_fade:SetScript("OnClick", function()
+    if not currentKey then
+      this:SetChecked(false)
+      return
+    end
+    local d = EnsureDBEntry(currentKey)
+    d.conditions = d.conditions or {}
+    d.conditions.ability = d.conditions.ability or {}
+    d.conditions.ability.fade = this:GetChecked() and true or false
+    if d.conditions.ability.fade and not d.conditions.ability.fadeAlpha then
+      d.conditions.ability.fadeAlpha = 0.5
+    end
+    UpdateCondFrameForKey(currentKey)
+    SafeRefresh()
+    SafeEvaluate()
+  end)
+
+  condFrame.cond_ability_fade_slider:SetScript("OnValueChanged", function()
+    if not currentKey then
+      return
+    end
+    local d = EnsureDBEntry(currentKey)
+    d.conditions = d.conditions or {}
+    d.conditions.ability = d.conditions.ability or {}
+    d.conditions.ability.fadeAlpha = ((this:GetValue() or 100) / 100)
+    SafeRefresh()
+    SafeEvaluate()
+  end)
 
   -- Form dropdowns are initialized/updated from UpdateConditionsUI
   condFrame.cond_ability_formDD:Hide()
@@ -5021,6 +5127,8 @@ function UpdateItemStacksForMissing()
   condFrame.cond_ability_remaining_val:Hide()
   condFrame.cond_ability_remaining_val_enter:Hide()
   condFrame.cond_ability_greyscale:Hide()
+  condFrame.cond_ability_fade:Hide()
+  condFrame.cond_ability_fade_slider:Hide()
   condFrame.cond_ability_cp_cb:Hide()
   condFrame.cond_ability_cp_comp:Hide()
   condFrame.cond_ability_cp_val:Hide()
@@ -5083,6 +5191,8 @@ function UpdateItemStacksForMissing()
   condFrame.cond_aura_stacks_val:Hide()
   condFrame.cond_aura_stacks_val_enter:Hide()
   condFrame.cond_aura_greyscale:Hide()
+  condFrame.cond_aura_fade:Hide()
+  condFrame.cond_aura_fade_slider:Hide()
   condFrame.cond_aura_mine:Hide()
   if condFrame.cond_aura_others then
     condFrame.cond_aura_others:Hide()
@@ -5118,6 +5228,8 @@ function UpdateItemStacksForMissing()
   condFrame.cond_item_target_self:Hide()
   condFrame.cond_item_glow:Hide()
   condFrame.cond_item_greyscale:Hide()
+  condFrame.cond_item_fade:Hide()
+  condFrame.cond_item_fade_slider:Hide()
   condFrame.cond_item_text_time:Hide()
   condFrame.cond_item_power:Hide()
   condFrame.cond_item_power_comp:Hide()
@@ -6918,6 +7030,8 @@ do
     if row.abilityDD then row.abilityDD:Hide() end
     if row.glowCB then row.glowCB:Hide() end
     if row.greyCB then row.greyCB:Hide() end
+    if row.fadeCB then row.fadeCB:Hide() end
+    if row.fadeSlider then row.fadeSlider:Hide() end
   
     if row.stacksLabel then row.stacksLabel:Hide() end
     if row.stacksCB then row.stacksCB:Hide() end
@@ -7090,9 +7204,23 @@ do
         row.greyCB:ClearAllPoints()
         row.glowCB:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -14)
         row.greyCB:SetPoint("LEFT", row.glowCB, "RIGHT", 40, 0)
+        if row.fadeCB then
+          row.fadeCB:ClearAllPoints()
+          row.fadeCB:SetPoint("LEFT", row.greyCB, "RIGHT", 40, 0)
+        end
+        if row.fadeSlider then
+          row.fadeSlider:ClearAllPoints()
+          row.fadeSlider:SetPoint("LEFT", row.fadeCB, "RIGHT", 10, 0)
+        end
   
         row.glowCB:Show()
         row.greyCB:Show()
+        if row.fadeCB then
+          row.fadeCB:Show()
+          if row.fadeCB:GetChecked() and row.fadeSlider then
+            row.fadeSlider:Show()
+          end
+        end
       end
     end
   end
@@ -7201,6 +7329,34 @@ do
         end)
       end
 
+      if row.fadeCB then
+        row.fadeCB:SetChecked(entry and entry.fade)
+        row.fadeCB:SetScript("OnClick", function()
+          local list = VfxCond_GetListForType(typeKey)
+          if list and list[row._entryIndex] then
+            list[row._entryIndex].fade = this:GetChecked() and true or nil
+            if list[row._entryIndex].fade and not list[row._entryIndex].fadeAlpha then
+              list[row._entryIndex].fadeAlpha = 0.5
+            end
+            SafeRefresh(); SafeEvaluate()
+            UpdateCondFrameForKey(currentKey)
+          end
+        end)
+      end
+      if row.fadeSlider then
+        local fadeAlpha = tonumber(entry and entry.fadeAlpha) or 0.5
+        if fadeAlpha < 0.1 then fadeAlpha = 0.1 end
+        if fadeAlpha > 1 then fadeAlpha = 1 end
+        row.fadeSlider:SetValue(fadeAlpha * 100)
+        row.fadeSlider:SetScript("OnValueChanged", function()
+          local list = VfxCond_GetListForType(typeKey)
+          if list and list[row._entryIndex] then
+            list[row._entryIndex].fadeAlpha = ((this:GetValue() or 100) / 100)
+            SafeRefresh(); SafeEvaluate()
+          end
+        end)
+      end
+
       VfxCond_SetRowState(row, "SAVED")
       row:Show()
     end
@@ -7283,6 +7439,8 @@ do
 	  mode = mode,
 	  unit = unit,
 	  name = VfxCond_TitleCase(text),
+	  fade = nil,
+	  fadeAlpha = 0.5,
 	}
 
 	-- only for aura (buff/debuff), store optional stack settings
@@ -7460,6 +7618,19 @@ do
 
     row.glowCB = CreateMiniCheck("Glow")
     row.greyCB = CreateMiniCheck("Grey")
+    row.fadeCB = CreateMiniCheck("Fade")
+    row.fadeSlider = CreateFrame("Slider", nil, row, "OptionsSliderTemplate")
+    row.fadeSlider:SetWidth(55)
+    row.fadeSlider:SetHeight(10)
+    row.fadeSlider:SetMinMaxValues(10, 100)
+    row.fadeSlider:SetValueStep(5)
+    if row.fadeSlider.SetObeyStepOnDrag then row.fadeSlider:SetObeyStepOnDrag(true) end
+    if row.fadeSlider:GetName() then
+      local sn = row.fadeSlider:GetName()
+      if _G[sn .. "Low"] then _G[sn .. "Low"]:SetText("") end
+      if _G[sn .. "High"] then _G[sn .. "High"]:SetText("") end
+      if _G[sn .. "Text"] then _G[sn .. "Text"]:SetText("") end
+    end
 
     row.closeBtn:SetText("X")
 
@@ -7658,7 +7829,7 @@ do
       label:SetPoint("TOPLEFT", anchorFrame, "TOPLEFT", 0, -15)
       label:SetJustifyH("LEFT")
       label:SetTextColor(1, 0.82, 0)
-      label:SetText("Add visual effect conditions for glow/grey:")
+      label:SetText("Add visual effect conditions for glow/grey/fade:")
       mgr.label = label
     end
 
@@ -7779,6 +7950,7 @@ local function UpdateConditionsUI(data)
     condFrame.cond_ability_power:Show()
     condFrame.cond_ability_glow:Show()
     condFrame.cond_ability_greyscale:Show()
+    condFrame.cond_ability_fade:Show()
     condFrame.cond_ability_slider:Show()
     condFrame.cond_ability_remaining_cb:Show()
 
@@ -7950,6 +8122,16 @@ local function UpdateConditionsUI(data)
     -- glow & greyscale states
     condFrame.cond_ability_glow:SetChecked((c.ability and c.ability.glow) or false)
     condFrame.cond_ability_greyscale:SetChecked((c.ability and c.ability.greyscale) or false)
+    condFrame.cond_ability_fade:SetChecked((c.ability and c.ability.fade) or false)
+    if (c.ability and c.ability.fade) then
+      local fadeAlpha = tonumber(c.ability.fadeAlpha) or 0.5
+      if fadeAlpha < 0.1 then fadeAlpha = 0.1 end
+      if fadeAlpha > 1 then fadeAlpha = 1 end
+      condFrame.cond_ability_fade_slider:SetValue(fadeAlpha * 100)
+      condFrame.cond_ability_fade_slider:Show()
+    else
+      condFrame.cond_ability_fade_slider:Hide()
+    end
 
     -- slider vs remaining
     local slidEnabled = (c.ability and c.ability.slider) and true or false
@@ -8871,9 +9053,20 @@ local ic = c.item or {}
     -- VISUAL EFFECTS
     condFrame.cond_item_glow:Show()
     condFrame.cond_item_greyscale:Show()
+    condFrame.cond_item_fade:Show()
     condFrame.cond_item_text_time:Show()
     condFrame.cond_item_glow:SetChecked(ic.glow == true)
     condFrame.cond_item_greyscale:SetChecked(ic.greyscale == true)
+    condFrame.cond_item_fade:SetChecked(ic.fade == true)
+    if ic.fade == true then
+      local fadeAlpha = tonumber(ic.fadeAlpha) or 0.5
+      if fadeAlpha < 0.1 then fadeAlpha = 0.1 end
+      if fadeAlpha > 1 then fadeAlpha = 1 end
+      condFrame.cond_item_fade_slider:SetValue(fadeAlpha * 100)
+      condFrame.cond_item_fade_slider:Show()
+    else
+      condFrame.cond_item_fade_slider:Hide()
+    end
 
     -- Keep item text-time label constant
     do
@@ -9372,6 +9565,8 @@ local ic = c.item or {}
     _Hide(condFrame.cond_ability_target_dead)
     _Hide(condFrame.cond_ability_glow)
     _Hide(condFrame.cond_ability_greyscale)
+    _Hide(condFrame.cond_ability_fade)
+    _Hide(condFrame.cond_ability_fade_slider)
     _Hide(condFrame.cond_ability_slider)
     _Hide(condFrame.cond_ability_slider_dir)
     _Hide(condFrame.cond_ability_slider_glow)
@@ -9413,6 +9608,8 @@ local ic = c.item or {}
     _Hide(condFrame.cond_aura_target_dead)
     _Hide(condFrame.cond_aura_glow)
     _Hide(condFrame.cond_aura_greyscale)
+    _Hide(condFrame.cond_aura_fade)
+    _Hide(condFrame.cond_aura_fade_slider)
     _Hide(condFrame.cond_aura_distanceDD)
     _Hide(condFrame.cond_aura_unitTypeDD)
     _Hide(condFrame.cond_aura_power)
@@ -9470,6 +9667,8 @@ local ic = c.item or {}
     _Hide(condFrame.cond_item_target_dead)
     _Hide(condFrame.cond_item_glow)
     _Hide(condFrame.cond_item_greyscale)
+    _Hide(condFrame.cond_item_fade)
+    _Hide(condFrame.cond_item_fade_slider)
     _Hide(condFrame.cond_item_text_time)
     _Hide(condFrame.cond_item_text_time_override)
     _Hide(condFrame.cond_item_text_override_note)
@@ -9554,6 +9753,7 @@ local ic = c.item or {}
     condFrame.cond_aura_sound_onfade_dd:Show()
     condFrame.cond_aura_glow:Show()
     condFrame.cond_aura_greyscale:Show()
+    condFrame.cond_aura_fade:Show()
 
     -- mode
     local amode = (c.aura and c.aura.mode) or nil
@@ -9699,6 +9899,16 @@ local ic = c.item or {}
 
     condFrame.cond_aura_glow:SetChecked((c.aura and c.aura.glow) or false)
     condFrame.cond_aura_greyscale:SetChecked((c.aura and c.aura.greyscale) or false)
+    condFrame.cond_aura_fade:SetChecked((c.aura and c.aura.fade) or false)
+    if (c.aura and c.aura.fade) then
+      local fadeAlpha = tonumber(c.aura.fadeAlpha) or 0.5
+      if fadeAlpha < 0.1 then fadeAlpha = 0.1 end
+      if fadeAlpha > 1 then fadeAlpha = 1 end
+      condFrame.cond_aura_fade_slider:SetValue(fadeAlpha * 100)
+      condFrame.cond_aura_fade_slider:Show()
+    else
+      condFrame.cond_aura_fade_slider:Hide()
+    end
 
     local auraSoundGainOn = (c.aura and c.aura.soundOnGainEnabled) == true
     local auraSoundFadeOn = (c.aura and c.aura.soundOnFadeEnabled) == true
