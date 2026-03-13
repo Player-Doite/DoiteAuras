@@ -1581,18 +1581,20 @@ local function CreateConditionsUI()
 
   local function MakeMiniFadeSlider(name, x, y)
     local parent = _Parent()
-    local s = CreateFrame("Slider", name, parent, "OptionsSliderTemplate")
-    s:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
-    s:SetWidth(70)
-    s:SetHeight(12)
-    s:SetMinMaxValues(10, 100)
-    s:SetValueStep(5)
-    if s.SetObeyStepOnDrag then s:SetObeyStepOnDrag(true) end
+    local eb = CreateFrame("EditBox", name, parent, "InputBoxTemplate")
+    eb:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
+    eb:SetWidth(26)
+    eb:SetHeight(16)
+    eb:SetAutoFocus(false)
+    eb:SetJustifyH("CENTER")
+    eb:SetFontObject("GameFontNormalSmall")
+    eb:SetNumeric(true)
 
-    if _G[name .. "Low"] then _G[name .. "Low"]:SetText("") end
-    if _G[name .. "High"] then _G[name .. "High"]:SetText("") end
-    if _G[name .. "Text"] then _G[name .. "Text"]:SetText("") end
-    return s
+    local pct = eb:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    pct:SetPoint("LEFT", eb, "RIGHT", 4, 0)
+    pct:SetText("|cffffd000%|r")
+    eb._pct = pct
+    return eb
   end
 
   -- renders a small bold white title with a "split" separator line that does not pass under the text
@@ -3669,6 +3671,25 @@ function UpdateItemStacksForMissing()
     SafeEvaluate()
   end)
 
+
+  local function _ParseFadeAlphaFromBox(box, fallback)
+    local pct = tonumber(box and box:GetText())
+    if not pct then
+      return fallback or 0.5
+    end
+    if pct < 10 then pct = 10 end
+    if pct > 100 then pct = 100 end
+    return pct / 100
+  end
+
+  local function _NormalizeFadeBox(box, alpha)
+    if not box then return end
+    local pct = math.floor(((alpha or 0.5) * 100) + 0.5)
+    if pct < 10 then pct = 10 end
+    if pct > 100 then pct = 100 end
+    box:SetText(tostring(pct))
+  end
+
   -- Aura glow / greyscale
   condFrame.cond_aura_glow:SetScript("OnClick", function()
     if not currentKey then
@@ -3715,17 +3736,19 @@ function UpdateItemStacksForMissing()
     SafeEvaluate()
   end)
 
-  condFrame.cond_aura_fade_slider:SetScript("OnValueChanged", function()
-    if not currentKey then
-      return
-    end
+  local function SaveAuraFadeAlpha()
+    if not currentKey then return end
     local d = EnsureDBEntry(currentKey)
     d.conditions = d.conditions or {}
     d.conditions.aura = d.conditions.aura or {}
-    d.conditions.aura.fadeAlpha = ((this:GetValue() or 100) / 100)
+    d.conditions.aura.fadeAlpha = _ParseFadeAlphaFromBox(condFrame.cond_aura_fade_slider, tonumber(d.conditions.aura.fadeAlpha) or 0.5)
+    _NormalizeFadeBox(condFrame.cond_aura_fade_slider, d.conditions.aura.fadeAlpha)
     SafeRefresh()
     SafeEvaluate()
-  end)
+  end
+  condFrame.cond_aura_fade_slider:SetScript("OnEnterPressed", function() SaveAuraFadeAlpha(); this:ClearFocus() end)
+  condFrame.cond_aura_fade_slider:SetScript("OnEditFocusLost", SaveAuraFadeAlpha)
+  condFrame.cond_aura_fade_slider:SetScript("OnEscapePressed", function() this:ClearFocus() end)
 
   -- === Combo points enable toggles ===
   condFrame.cond_ability_cp_cb:SetScript("OnClick", function()
@@ -4067,16 +4090,18 @@ function UpdateItemStacksForMissing()
     SafeEvaluate()
   end)
 
-  condFrame.cond_item_fade_slider:SetScript("OnValueChanged", function()
-    if not currentKey then
-      return
-    end
-    local d = EnsureDBEntry(currentKey);
+  local function SaveItemFadeAlpha()
+    if not currentKey then return end
+    local d = EnsureDBEntry(currentKey)
     d.conditions.item = d.conditions.item or {}
-    d.conditions.item.fadeAlpha = ((this:GetValue() or 100) / 100)
-    SafeRefresh();
+    d.conditions.item.fadeAlpha = _ParseFadeAlphaFromBox(condFrame.cond_item_fade_slider, tonumber(d.conditions.item.fadeAlpha) or 0.5)
+    _NormalizeFadeBox(condFrame.cond_item_fade_slider, d.conditions.item.fadeAlpha)
+    SafeRefresh()
     SafeEvaluate()
-  end)
+  end
+  condFrame.cond_item_fade_slider:SetScript("OnEnterPressed", function() SaveItemFadeAlpha(); this:ClearFocus() end)
+  condFrame.cond_item_fade_slider:SetScript("OnEditFocusLost", SaveItemFadeAlpha)
+  condFrame.cond_item_fade_slider:SetScript("OnEscapePressed", function() this:ClearFocus() end)
 
 
   -- Item text: remaining time
@@ -5086,17 +5111,19 @@ function UpdateItemStacksForMissing()
     SafeEvaluate()
   end)
 
-  condFrame.cond_ability_fade_slider:SetScript("OnValueChanged", function()
-    if not currentKey then
-      return
-    end
+  local function SaveAbilityFadeAlpha()
+    if not currentKey then return end
     local d = EnsureDBEntry(currentKey)
     d.conditions = d.conditions or {}
     d.conditions.ability = d.conditions.ability or {}
-    d.conditions.ability.fadeAlpha = ((this:GetValue() or 100) / 100)
+    d.conditions.ability.fadeAlpha = _ParseFadeAlphaFromBox(condFrame.cond_ability_fade_slider, tonumber(d.conditions.ability.fadeAlpha) or 0.5)
+    _NormalizeFadeBox(condFrame.cond_ability_fade_slider, d.conditions.ability.fadeAlpha)
     SafeRefresh()
     SafeEvaluate()
-  end)
+  end
+  condFrame.cond_ability_fade_slider:SetScript("OnEnterPressed", function() SaveAbilityFadeAlpha(); this:ClearFocus() end)
+  condFrame.cond_ability_fade_slider:SetScript("OnEditFocusLost", SaveAbilityFadeAlpha)
+  condFrame.cond_ability_fade_slider:SetScript("OnEscapePressed", function() this:ClearFocus() end)
 
   -- Form dropdowns are initialized/updated from UpdateConditionsUI
   condFrame.cond_ability_formDD:Hide()
@@ -7032,6 +7059,7 @@ do
     if row.greyCB then row.greyCB:Hide() end
     if row.fadeCB then row.fadeCB:Hide() end
     if row.fadeSlider then row.fadeSlider:Hide() end
+    if row.fadeSliderPct then row.fadeSliderPct:Hide() end
   
     if row.stacksLabel then row.stacksLabel:Hide() end
     if row.stacksCB then row.stacksCB:Hide() end
@@ -7211,6 +7239,10 @@ do
         if row.fadeSlider then
           row.fadeSlider:ClearAllPoints()
           row.fadeSlider:SetPoint("LEFT", row.fadeCB, "RIGHT", 20, 0)
+          if row.fadeSliderPct then
+            row.fadeSliderPct:ClearAllPoints()
+            row.fadeSliderPct:SetPoint("LEFT", row.fadeSlider, "RIGHT", 4, 0)
+          end
         end
   
         row.glowCB:Show()
@@ -7219,6 +7251,7 @@ do
           row.fadeCB:Show()
           if row.fadeCB:GetChecked() and row.fadeSlider then
             row.fadeSlider:Show()
+            if row.fadeSliderPct then row.fadeSliderPct:Show() end
           end
         end
       end
@@ -7347,14 +7380,18 @@ do
         local fadeAlpha = tonumber(entry and entry.fadeAlpha) or 0.5
         if fadeAlpha < 0.1 then fadeAlpha = 0.1 end
         if fadeAlpha > 1 then fadeAlpha = 1 end
-        row.fadeSlider:SetValue(fadeAlpha * 100)
-        row.fadeSlider:SetScript("OnValueChanged", function()
+        row.fadeSlider:SetText(tostring(math.floor((fadeAlpha * 100) + 0.5)))
+        local function SaveRowFadeAlpha()
           local list = VfxCond_GetListForType(typeKey)
           if list and list[row._entryIndex] then
-            list[row._entryIndex].fadeAlpha = ((this:GetValue() or 100) / 100)
+            list[row._entryIndex].fadeAlpha = _ParseFadeAlphaFromBox(row.fadeSlider, tonumber(list[row._entryIndex].fadeAlpha) or 0.5)
+            _NormalizeFadeBox(row.fadeSlider, list[row._entryIndex].fadeAlpha)
             SafeRefresh(); SafeEvaluate()
           end
-        end)
+        end
+        row.fadeSlider:SetScript("OnEnterPressed", function() SaveRowFadeAlpha(); this:ClearFocus() end)
+        row.fadeSlider:SetScript("OnEditFocusLost", SaveRowFadeAlpha)
+        row.fadeSlider:SetScript("OnEscapePressed", function() this:ClearFocus() end)
       end
 
       VfxCond_SetRowState(row, "SAVED")
@@ -7619,18 +7656,15 @@ do
     row.glowCB = CreateMiniCheck("Glow")
     row.greyCB = CreateMiniCheck("Grey")
     row.fadeCB = CreateMiniCheck("Fade")
-    row.fadeSlider = CreateFrame("Slider", nil, row, "OptionsSliderTemplate")
-    row.fadeSlider:SetWidth(55)
-    row.fadeSlider:SetHeight(10)
-    row.fadeSlider:SetMinMaxValues(10, 100)
-    row.fadeSlider:SetValueStep(5)
-    if row.fadeSlider.SetObeyStepOnDrag then row.fadeSlider:SetObeyStepOnDrag(true) end
-    if row.fadeSlider:GetName() then
-      local sn = row.fadeSlider:GetName()
-      if _G[sn .. "Low"] then _G[sn .. "Low"]:SetText("") end
-      if _G[sn .. "High"] then _G[sn .. "High"]:SetText("") end
-      if _G[sn .. "Text"] then _G[sn .. "Text"]:SetText("") end
-    end
+    row.fadeSlider = CreateFrame("EditBox", nil, row, "InputBoxTemplate")
+    row.fadeSlider:SetWidth(24)
+    row.fadeSlider:SetHeight(16)
+    row.fadeSlider:SetAutoFocus(false)
+    row.fadeSlider:SetJustifyH("CENTER")
+    row.fadeSlider:SetFontObject("GameFontNormalSmall")
+    row.fadeSlider:SetNumeric(true)
+    row.fadeSliderPct = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    row.fadeSliderPct:SetText("|cffffd000%|r")
 
     row.closeBtn:SetText("X")
 
@@ -8135,7 +8169,7 @@ local function UpdateConditionsUI(data)
       local fadeAlpha = tonumber(c.ability.fadeAlpha) or 0.5
       if fadeAlpha < 0.1 then fadeAlpha = 0.1 end
       if fadeAlpha > 1 then fadeAlpha = 1 end
-      condFrame.cond_ability_fade_slider:SetValue(fadeAlpha * 100)
+      condFrame.cond_ability_fade_slider:SetText(tostring(math.floor((fadeAlpha * 100) + 0.5)))
       condFrame.cond_ability_fade_slider:Show()
     else
       condFrame.cond_ability_fade_slider:Hide()
@@ -9078,7 +9112,7 @@ local ic = c.item or {}
       local fadeAlpha = tonumber(ic.fadeAlpha) or 0.5
       if fadeAlpha < 0.1 then fadeAlpha = 0.1 end
       if fadeAlpha > 1 then fadeAlpha = 1 end
-      condFrame.cond_item_fade_slider:SetValue(fadeAlpha * 100)
+      condFrame.cond_item_fade_slider:SetText(tostring(math.floor((fadeAlpha * 100) + 0.5)))
       condFrame.cond_item_fade_slider:Show()
     else
       condFrame.cond_item_fade_slider:Hide()
@@ -9924,7 +9958,7 @@ local ic = c.item or {}
       local fadeAlpha = tonumber(c.aura.fadeAlpha) or 0.5
       if fadeAlpha < 0.1 then fadeAlpha = 0.1 end
       if fadeAlpha > 1 then fadeAlpha = 1 end
-      condFrame.cond_aura_fade_slider:SetValue(fadeAlpha * 100)
+      condFrame.cond_aura_fade_slider:SetText(tostring(math.floor((fadeAlpha * 100) + 0.5)))
       condFrame.cond_aura_fade_slider:Show()
     else
       condFrame.cond_aura_fade_slider:Hide()
