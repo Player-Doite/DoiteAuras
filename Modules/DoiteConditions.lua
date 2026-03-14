@@ -6918,7 +6918,11 @@ function DoiteConditions:ApplyVisuals(key, show, glow, grey, fadeAlpha)
           if slideActive then
             frame:ClearAllPoints()
             frame:SetPoint("CENTER", UIParent, "CENTER", baseX + dx, baseY + dy)
-            frame:SetAlpha(slideAlpha)
+            local baseAlpha = (dataTbl and dataTbl.alpha) or 1
+            if frame._daUseFade and frame._daFadeAlpha then
+              baseAlpha = baseAlpha * frame._daFadeAlpha
+            end
+            frame:SetAlpha(baseAlpha * (slideAlpha or 1))
           else
             -- When not sliding: do NOT force followers' points here.
             if not (isGrouped and not isLeader) then

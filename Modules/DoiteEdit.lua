@@ -35,6 +35,24 @@ local VfxCond_RegisterManager
 local VfxCond_RefreshFromDB
 local VfxCond_ResetEditing
 
+local function _ParseFadeAlphaFromBox(box, fallback)
+  local pct = tonumber(box and box:GetText())
+  if not pct then
+    return fallback or 0.5
+  end
+  if pct < 10 then pct = 10 end
+  if pct > 100 then pct = 100 end
+  return pct / 100
+end
+
+local function _NormalizeFadeBox(box, alpha)
+  if not box then return end
+  local pct = math.floor(((alpha or 0.5) * 100) + 0.5)
+  if pct < 10 then pct = 10 end
+  if pct > 100 then pct = 100 end
+  box:SetText(tostring(pct))
+end
+
 local SOUND_FILES = {
   "JDO - Dont move, Shackles.ogg", "JDO - Loot banned.ogg", "Trend - Uwu.ogg",
   "MPOWA - Aggro.ogg", "MPOWA - Arrow Swoosh.ogg", "MPOWA - Bam.ogg", "MPOWA - Bigkiss.ogg", "MPOWA - Bite.ogg", "MPOWA - Burp.ogg", "MPOWA - Cat.ogg", "MPOWA - Chant (1).ogg", "MPOWA - Chant (2).ogg", "MPOWA - Chimes.ogg", "MPOWA - Cookie.ogg", "MPOWA - ESpark.ogg", "MPOWA - Fireball.ogg", "MPOWA - Gasp.ogg",
@@ -3672,24 +3690,6 @@ function UpdateItemStacksForMissing()
   end)
 
 
-  local function _ParseFadeAlphaFromBox(box, fallback)
-    local pct = tonumber(box and box:GetText())
-    if not pct then
-      return fallback or 0.5
-    end
-    if pct < 10 then pct = 10 end
-    if pct > 100 then pct = 100 end
-    return pct / 100
-  end
-
-  local function _NormalizeFadeBox(box, alpha)
-    if not box then return end
-    local pct = math.floor(((alpha or 0.5) * 100) + 0.5)
-    if pct < 10 then pct = 10 end
-    if pct > 100 then pct = 100 end
-    box:SetText(tostring(pct))
-  end
-
   -- Aura glow / greyscale
   condFrame.cond_aura_glow:SetScript("OnClick", function()
     if not currentKey then
@@ -7238,10 +7238,10 @@ do
         end
         if row.fadeSlider then
           row.fadeSlider:ClearAllPoints()
-          row.fadeSlider:SetPoint("LEFT", row.fadeCB, "RIGHT", 20, 0)
+          row.fadeSlider:SetPoint("LEFT", row.fadeCB, "RIGHT", 30, 0)
           if row.fadeSliderPct then
             row.fadeSliderPct:ClearAllPoints()
-            row.fadeSliderPct:SetPoint("LEFT", row.fadeSlider, "RIGHT", 4, 0)
+            row.fadeSliderPct:SetPoint("LEFT", row.fadeSlider, "RIGHT", 8, 0)
           end
         end
   
