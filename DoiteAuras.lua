@@ -2688,7 +2688,13 @@ local function RefreshIcons(force)
 
 
         f:SetScale((data and data.scale) or 1)
-        f:SetAlpha((data and data.alpha) or 1)
+        do
+            local a = (data and data.alpha) or 1
+            if f._daUseFade and f._daFadeAlpha then
+                a = a * f._daFadeAlpha
+            end
+            f:SetAlpha(a)
+        end
         f:SetWidth(size); f:SetHeight(size)
 
         -- Do not re-anchor while a slide preview owns the frame for this tick AND do not re-anchor if this frame is currently being dragged (prevents snapping back)
