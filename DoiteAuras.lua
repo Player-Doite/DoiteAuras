@@ -2690,9 +2690,35 @@ local function RefreshIcons(force)
         f:SetScale((data and data.scale) or 1)
         do
             local a = (data and data.alpha) or 1
+
+            -- Primary source: runtime-evaluated fade from DoiteConditions.
+            local fadeAlpha = nil
             if f._daUseFade and f._daFadeAlpha then
-                a = a * f._daFadeAlpha
+                fadeAlpha = f._daFadeAlpha
             end
+
+            -- Fallback: static per-icon fade from saved conditions,
+            -- so RefreshIcons won't wipe fade before/without an evaluation tick.
+            if (not fadeAlpha) and data and data.conditions then
+                local bucket = nil
+                if data.type == "Ability" then
+                    bucket = data.conditions.ability
+                elseif data.type == "Item" then
+                    bucket = data.conditions.item
+                elseif data.type == "Buff" or data.type == "Debuff" then
+                    bucket = data.conditions.aura
+                end
+                if bucket and bucket.fade then
+                    fadeAlpha = tonumber(bucket.fadeAlpha) or 0.5
+                end
+            end
+
+            if fadeAlpha then
+                if fadeAlpha < 0.1 then fadeAlpha = 0.1 end
+                if fadeAlpha > 1 then fadeAlpha = 1 end
+                a = a * fadeAlpha
+            end
+
             f:SetAlpha(a)
         end
         f:SetWidth(size); f:SetHeight(size)
