@@ -6176,6 +6176,53 @@ local function _DA_NumToStr(n)
   return s
 end
 
+
+local function _SetTextureVertexAlpha(tex, alpha)
+  if not tex or not tex.SetVertexColor then
+    return
+  end
+  local r, g, b = 1, 1, 1
+  if tex.GetVertexColor then
+    local tr, tg, tb = tex:GetVertexColor()
+    if tr then r = tr end
+    if tg then g = tg end
+    if tb then b = tb end
+  end
+  tex:SetVertexColor(r, g, b, alpha)
+end
+
+local function _ApplyFadeAlphaToBackdrop(frame, alpha)
+  if not frame or not frame.backdrop then
+    return
+  end
+
+  local bd = frame.backdrop
+
+  -- pfUI backdrops are usually texture regions parented to frame.backdrop.
+  if bd.GetRegions then
+    local regions = { bd:GetRegions() }
+    local i, reg
+    for i, reg in ipairs(regions) do
+      if reg and reg.SetVertexColor then
+        _SetTextureVertexAlpha(reg, alpha)
+      end
+    end
+  end
+
+  -- Defensive: some backdrops expose direct texture handles.
+  _SetTextureVertexAlpha(bd.bg, alpha)
+  _SetTextureVertexAlpha(bd.border, alpha)
+  _SetTextureVertexAlpha(bd.backdrop, alpha)
+  _SetTextureVertexAlpha(bd.Top, alpha)
+  _SetTextureVertexAlpha(bd.Bottom, alpha)
+  _SetTextureVertexAlpha(bd.Left, alpha)
+  _SetTextureVertexAlpha(bd.Right, alpha)
+  _SetTextureVertexAlpha(bd.top, alpha)
+  _SetTextureVertexAlpha(bd.bottom, alpha)
+  _SetTextureVertexAlpha(bd.left, alpha)
+  _SetTextureVertexAlpha(bd.right, alpha)
+end
+
 local function _Doite_UpdateOverlayForFrame(frame, key, dataTbl, slideActive)
   if not frame or not dataTbl then
     return
@@ -6969,8 +7016,8 @@ function DoiteConditions:ApplyVisuals(key, show, glow, grey, fade, fadeAlpha)
       end
     end
 
-    -- FADE (SetVertexColor alpha only on icon texture for broad GPU compatibility)
-    if frame.icon and frame.icon.SetVertexColor then
+    -- FADE (SetVertexColor alpha path for icon + border/backdrop)
+    do
       local wantFade = (frame._daUseFade == true) and showForSlide
       local wantedAlpha = 1
       if wantFade then
@@ -6980,7 +7027,8 @@ function DoiteConditions:ApplyVisuals(key, show, glow, grey, fade, fadeAlpha)
       end
       if frame._daLastFadeAlpha ~= wantedAlpha then
         frame._daLastFadeAlpha = wantedAlpha
-        frame.icon:SetVertexColor(1, 1, 1, wantedAlpha)
+        _SetTextureVertexAlpha(frame.icon, wantedAlpha)
+        _ApplyFadeAlphaToBackdrop(frame, wantedAlpha)
       end
     end
 
