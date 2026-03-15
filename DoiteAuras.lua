@@ -2344,6 +2344,7 @@ local function RefreshIcons(force)
     local editFrame = _G["DoiteEdit_Frame"] or _G["DoiteEditMain"] or _G["DoiteEdit"]
     local editOpen  = (editFrame and editFrame.IsShown and editFrame:IsShown() == 1)
     local testAll   = (_G["DoiteAuras_TestAll"] == true)
+    local editIcons = (DoiteDB and DoiteDB.icons) or nil
     -- Build a sorted key list by "order" without allocating {key,data,order} tables each refresh.
     local keyList = DoiteAuras._orderedKeyList
     if not keyList then
@@ -2424,7 +2425,7 @@ local function RefreshIcons(force)
 
     for i = 1, total do
         local key  = keyList[i]
-        local data = DoiteAurasDB.spells[key]
+        local data = (editIcons and editIcons[key]) or DoiteAurasDB.spells[key]
         if data and data.group and data.group ~= "" and data.group ~= "no" and data.isLeader == true then
             leaderSizeByGroup[data.group] = (data.iconSize or data.size) or 36
 
@@ -2441,7 +2442,7 @@ local function RefreshIcons(force)
         -- Ensure defaults exist so condition checks don't fail on nil tables
         EnsureDefaults(key)
 
-        local data = DoiteAurasDB.spells[key]
+        local data = (editIcons and editIcons[key]) or DoiteAurasDB.spells[key]
         local typ  = data and data.type or "Ability"
 
         local displayName = (data and (data.displayName or data.name)) or key
