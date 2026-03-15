@@ -34,19 +34,39 @@ local VfxCond_Managers = {}
 local VfxCond_RegisterManager
 local VfxCond_RefreshFromDB
 local VfxCond_ResetEditing
+local _NormalizeFadeAlphaForUI
 
 local function _ParseFadeAlphaFromBox(box, fallback)
+  fallback = _NormalizeFadeAlphaForUI and _NormalizeFadeAlphaForUI(fallback, 0.5) or (fallback or 0.5)
   local pct = tonumber(box and box:GetText())
   if not pct then
-    return fallback or 0.5
+    return fallback
+  end
+  -- Accept both percentage input (50) and fractional input (0.5).
+  if pct <= 1 then
+    pct = pct * 100
   end
   if pct < 10 then pct = 10 end
   if pct > 100 then pct = 100 end
   return pct / 100
 end
 
+_NormalizeFadeAlphaForUI = function(raw, fallback)
+  local v = tonumber(raw)
+  if not v then
+    v = fallback or 0.5
+  end
+  if v > 1 then
+    v = v / 100
+  end
+  if v < 0.1 then v = 0.1 end
+  if v > 1 then v = 1 end
+  return v
+end
+
 local function _NormalizeFadeBox(box, alpha)
   if not box then return end
+  alpha = _NormalizeFadeAlphaForUI(alpha, 0.5)
   local pct = math.floor(((alpha or 0.5) * 100) + 0.5)
   if pct < 10 then pct = 10 end
   if pct > 100 then pct = 100 end
@@ -3741,7 +3761,7 @@ function UpdateItemStacksForMissing()
     local d = EnsureDBEntry(currentKey)
     d.conditions = d.conditions or {}
     d.conditions.aura = d.conditions.aura or {}
-    d.conditions.aura.fadeAlpha = _ParseFadeAlphaFromBox(condFrame.cond_aura_fade_slider, tonumber(d.conditions.aura.fadeAlpha) or 0.5)
+    d.conditions.aura.fadeAlpha = _ParseFadeAlphaFromBox(condFrame.cond_aura_fade_slider, _NormalizeFadeAlphaForUI(d.conditions.aura.fadeAlpha, 0.5))
     _NormalizeFadeBox(condFrame.cond_aura_fade_slider, d.conditions.aura.fadeAlpha)
     SafeRefresh()
     SafeEvaluate()
@@ -4094,7 +4114,7 @@ function UpdateItemStacksForMissing()
     if not currentKey then return end
     local d = EnsureDBEntry(currentKey)
     d.conditions.item = d.conditions.item or {}
-    d.conditions.item.fadeAlpha = _ParseFadeAlphaFromBox(condFrame.cond_item_fade_slider, tonumber(d.conditions.item.fadeAlpha) or 0.5)
+    d.conditions.item.fadeAlpha = _ParseFadeAlphaFromBox(condFrame.cond_item_fade_slider, _NormalizeFadeAlphaForUI(d.conditions.item.fadeAlpha, 0.5))
     _NormalizeFadeBox(condFrame.cond_item_fade_slider, d.conditions.item.fadeAlpha)
     SafeRefresh()
     SafeEvaluate()
@@ -5116,7 +5136,7 @@ function UpdateItemStacksForMissing()
     local d = EnsureDBEntry(currentKey)
     d.conditions = d.conditions or {}
     d.conditions.ability = d.conditions.ability or {}
-    d.conditions.ability.fadeAlpha = _ParseFadeAlphaFromBox(condFrame.cond_ability_fade_slider, tonumber(d.conditions.ability.fadeAlpha) or 0.5)
+    d.conditions.ability.fadeAlpha = _ParseFadeAlphaFromBox(condFrame.cond_ability_fade_slider, _NormalizeFadeAlphaForUI(d.conditions.ability.fadeAlpha, 0.5))
     _NormalizeFadeBox(condFrame.cond_ability_fade_slider, d.conditions.ability.fadeAlpha)
     SafeRefresh()
     SafeEvaluate()
@@ -7377,14 +7397,12 @@ do
         end)
       end
       if row.fadeSlider then
-        local fadeAlpha = tonumber(entry and entry.fadeAlpha) or 0.5
-        if fadeAlpha < 0.1 then fadeAlpha = 0.1 end
-        if fadeAlpha > 1 then fadeAlpha = 1 end
+        local fadeAlpha = _NormalizeFadeAlphaForUI(entry and entry.fadeAlpha, 0.5)
         row.fadeSlider:SetText(tostring(math.floor((fadeAlpha * 100) + 0.5)))
         local function SaveRowFadeAlpha()
           local list = VfxCond_GetListForType(typeKey)
           if list and list[row._entryIndex] then
-            list[row._entryIndex].fadeAlpha = _ParseFadeAlphaFromBox(row.fadeSlider, tonumber(list[row._entryIndex].fadeAlpha) or 0.5)
+            list[row._entryIndex].fadeAlpha = _ParseFadeAlphaFromBox(row.fadeSlider, _NormalizeFadeAlphaForUI(list[row._entryIndex].fadeAlpha, 0.5))
             _NormalizeFadeBox(row.fadeSlider, list[row._entryIndex].fadeAlpha)
             SafeRefresh(); SafeEvaluate()
           end
@@ -8166,9 +8184,7 @@ local function UpdateConditionsUI(data)
     condFrame.cond_ability_greyscale:SetChecked((c.ability and c.ability.greyscale) or false)
     condFrame.cond_ability_fade:SetChecked((c.ability and c.ability.fade) or false)
     if (c.ability and c.ability.fade) then
-      local fadeAlpha = tonumber(c.ability.fadeAlpha) or 0.5
-      if fadeAlpha < 0.1 then fadeAlpha = 0.1 end
-      if fadeAlpha > 1 then fadeAlpha = 1 end
+      local fadeAlpha = _NormalizeFadeAlphaForUI(c.ability.fadeAlpha, 0.5)
       condFrame.cond_ability_fade_slider:SetText(tostring(math.floor((fadeAlpha * 100) + 0.5)))
       condFrame.cond_ability_fade_slider:Show()
     else
@@ -9109,9 +9125,7 @@ local ic = c.item or {}
     condFrame.cond_item_greyscale:SetChecked(ic.greyscale == true)
     condFrame.cond_item_fade:SetChecked(ic.fade == true)
     if ic.fade == true then
-      local fadeAlpha = tonumber(ic.fadeAlpha) or 0.5
-      if fadeAlpha < 0.1 then fadeAlpha = 0.1 end
-      if fadeAlpha > 1 then fadeAlpha = 1 end
+      local fadeAlpha = _NormalizeFadeAlphaForUI(ic.fadeAlpha, 0.5)
       condFrame.cond_item_fade_slider:SetText(tostring(math.floor((fadeAlpha * 100) + 0.5)))
       condFrame.cond_item_fade_slider:Show()
     else
@@ -9955,9 +9969,7 @@ local ic = c.item or {}
     condFrame.cond_aura_greyscale:SetChecked((c.aura and c.aura.greyscale) or false)
     condFrame.cond_aura_fade:SetChecked((c.aura and c.aura.fade) or false)
     if (c.aura and c.aura.fade) then
-      local fadeAlpha = tonumber(c.aura.fadeAlpha) or 0.5
-      if fadeAlpha < 0.1 then fadeAlpha = 0.1 end
-      if fadeAlpha > 1 then fadeAlpha = 1 end
+      local fadeAlpha = _NormalizeFadeAlphaForUI(c.aura.fadeAlpha, 0.5)
       condFrame.cond_aura_fade_slider:SetText(tostring(math.floor((fadeAlpha * 100) + 0.5)))
       condFrame.cond_aura_fade_slider:Show()
     else
