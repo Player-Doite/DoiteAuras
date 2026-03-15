@@ -7241,7 +7241,7 @@ do
           row.fadeSlider:SetPoint("LEFT", row.fadeCB, "RIGHT", 45, 0)
           if row.fadeSliderPct then
             row.fadeSliderPct:ClearAllPoints()
-            row.fadeSliderPct:SetPoint("LEFT", row.fadeSlider, "RIGHT", 12, 0)
+            row.fadeSliderPct:SetPoint("LEFT", row.fadeSlider, "RIGHT", 5, 0)
           end
         end
   
