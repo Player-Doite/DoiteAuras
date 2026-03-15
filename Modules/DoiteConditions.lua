@@ -5023,28 +5023,34 @@ local function CheckAbilityConditions(data)
 
   onCdNow = _IsSpellOnCooldown(spellIndex, bookType) and true or false
 
-  if c.mode == "usable" and spellIndex then
-    local _, cls = UnitClass("player");
+  local mode = c.mode or "notcd"
+  local usablePass = nil
+
+  if mode == "usable" or mode == "usableoncd" then
+    usablePass = true
+
+    local _, cls = UnitClass("player")
     cls = cls and string.upper(cls) or ""
+
     if cls == "WARRIOR" and (spellName == "Overpower" or spellName == "Revenge") then
       if onCdNow then
-        data._daModeOk = false
+        usablePass = false
       else
         local rage = UnitMana("player") or 0
         if rage < 5 then
-          data._daModeOk = false
+          usablePass = false
         else
           if spellName == "Overpower" then
-            data._daModeOk = _Warrior_Overpower_OK() and true or false
+            usablePass = _Warrior_Overpower_OK() and true or false
           else
-            data._daModeOk = _Warrior_Revenge_OK() and true or false
+            usablePass = _Warrior_Revenge_OK() and true or false
           end
         end
       end
     else
       local usable, noMana = _SafeSpellUsable(spellName, spellIndex, bookType)
       if (usable ~= 1) or (noMana == 1) or onCdNow then
-        data._daModeOk = false
+        usablePass = false
       else
         if cls == "DRUID" and spellName == "Swiftmend" then
           local needs = _DA_SWIFTMEND_NEEDS
@@ -5088,21 +5094,24 @@ local function CheckAbilityConditions(data)
           end
 
           if not ok then
-            data._daModeOk = false
+            usablePass = false
           end
         end
       end
     end
+  end
 
-  elseif c.mode == "notcd" and spellIndex then
-    if onCdNow then
-      data._daModeOk = false
-    end
-
-  elseif c.mode == "oncd" and spellIndex then
-    if not onCdNow then
-      data._daModeOk = false
-    end
+  if mode == "usable" then
+    data._daModeOk = usablePass and true or false
+  elseif mode == "notcd" then
+    data._daModeOk = (not onCdNow) and true or false
+  elseif mode == "oncd" then
+    data._daModeOk = onCdNow and true or false
+  elseif mode == "usableoncd" then
+    data._daModeOk = ((usablePass == true) or onCdNow) and true or false
+  elseif mode == "nocdoncd" then
+    -- NotCD OR OnCD is always true once the ability exists in spellbook.
+    data._daModeOk = true
   end
 
   -- === Combat state (NON-MODE) ===
@@ -5797,6 +5806,8 @@ local function CheckAuraConditions(data)
   -- MODE-ONLY visibility
   if c.mode == "missing" then
     data._daModeOk = (not found) and true or false
+  elseif c.mode == "both" then
+    data._daModeOk = true
   else
     data._daModeOk = found and true or false
   end
@@ -6297,7 +6308,7 @@ local function _Doite_UpdateOverlayForFrame(frame, key, dataTbl, slideActive)
     dur = dur or 0
 
     -- 1) ON COOLDOWN: always show for the entire real cooldown.
-    if ca.mode == "oncd" then
+    if ca.mode == "oncd" or ca.mode == "usableoncd" or ca.mode == "nocdoncd" then
       return (dur > 0)
     end
 

@@ -1183,6 +1183,16 @@ local function SetExclusiveAbilityMode(mode)
   local d = EnsureDBEntry(currentKey)
   d.conditions = d.conditions or {}
   d.conditions.ability = d.conditions.ability or {}
+
+  if mode ~= nil
+      and mode ~= "usable"
+      and mode ~= "notcd"
+      and mode ~= "oncd"
+      and mode ~= "usableoncd"
+      and mode ~= "nocdoncd" then
+    mode = "notcd"
+  end
+
   d.conditions.ability.mode = mode
   UpdateCondFrameForKey(currentKey)
   SafeRefresh()
@@ -1326,6 +1336,11 @@ local function SetExclusiveAuraFoundMode(mode)
   local d = EnsureDBEntry(currentKey)
   d.conditions = d.conditions or {}
   d.conditions.aura = d.conditions.aura or {}
+
+  if mode ~= nil and mode ~= "found" and mode ~= "missing" and mode ~= "both" then
+    mode = "found"
+  end
+
   d.conditions.aura.mode = mode
   UpdateCondFrameForKey(currentKey)
   SafeRefresh()
@@ -2508,34 +2523,74 @@ local function CreateConditionsUI()
   ----------------------------------------------------------------
 
   -- Ability row1 scripts (Usable / NotCD / OnCD)
+  -- Rules:
+  --  * At least one must stay checked.
+  --  * Usable and NotCD are mutually exclusive.
+  --  * Either Usable or NotCD can be combined with OnCD.
+  local function _SaveAbilityModeFromUI()
+    local usable = condFrame.cond_ability_usable:GetChecked() and true or false
+    local notcd = condFrame.cond_ability_notcd:GetChecked() and true or false
+    local oncd = condFrame.cond_ability_oncd:GetChecked() and true or false
+
+    local mode
+    if usable and oncd then
+      mode = "usableoncd"
+    elseif notcd and oncd then
+      mode = "nocdoncd"
+    elseif oncd then
+      mode = "oncd"
+    elseif usable then
+      mode = "usable"
+    else
+      mode = "notcd"
+    end
+
+    SetExclusiveAbilityMode(mode)
+  end
+
   condFrame.cond_ability_usable:SetScript("OnClick", function()
+    if not currentKey then
+      this:SetChecked(false)
+      return
+    end
+
     if this:GetChecked() then
       condFrame.cond_ability_notcd:SetChecked(false)
-      condFrame.cond_ability_oncd:SetChecked(false)
-      SetExclusiveAbilityMode("usable")
-    else
-      SetExclusiveAbilityMode(nil)
+    elseif not condFrame.cond_ability_notcd:GetChecked() and not condFrame.cond_ability_oncd:GetChecked() then
+      this:SetChecked(true)
     end
+
+    _SaveAbilityModeFromUI()
   end)
 
   condFrame.cond_ability_notcd:SetScript("OnClick", function()
+    if not currentKey then
+      this:SetChecked(false)
+      return
+    end
+
     if this:GetChecked() then
       condFrame.cond_ability_usable:SetChecked(false)
-      condFrame.cond_ability_oncd:SetChecked(false)
-      SetExclusiveAbilityMode("notcd")
-    else
-      SetExclusiveAbilityMode(nil)
+    elseif not condFrame.cond_ability_usable:GetChecked() and not condFrame.cond_ability_oncd:GetChecked() then
+      this:SetChecked(true)
     end
+
+    _SaveAbilityModeFromUI()
   end)
 
   condFrame.cond_ability_oncd:SetScript("OnClick", function()
-    if this:GetChecked() then
-      condFrame.cond_ability_usable:SetChecked(false)
-      condFrame.cond_ability_notcd:SetChecked(false)
-      SetExclusiveAbilityMode("oncd")
-    else
-      SetExclusiveAbilityMode(nil)
+    if not currentKey then
+      this:SetChecked(false)
+      return
     end
+
+    if (not this:GetChecked())
+        and (not condFrame.cond_ability_usable:GetChecked())
+        and (not condFrame.cond_ability_notcd:GetChecked()) then
+      this:SetChecked(true)
+    end
+
+    _SaveAbilityModeFromUI()
   end)
 
   -- Item Usability & Cooldown (NotCD / OnCD can be combined; at least one must be checked)
@@ -3316,19 +3371,34 @@ function UpdateItemStacksForMissing()
   end)
 
 
-  -- Aura exclusivity (found / missing)
+  -- Aura mode (found / missing; both allowed). At least one must stay checked.
+  local function _SaveAuraModeFromUI()
+    local found = condFrame.cond_aura_found:GetChecked() and true or false
+    local missing = condFrame.cond_aura_missing:GetChecked() and true or false
+
+    local mode
+    if found and missing then
+      mode = "both"
+    elseif missing then
+      mode = "missing"
+    else
+      mode = "found"
+    end
+
+    SetExclusiveAuraFoundMode(mode)
+  end
+
   condFrame.cond_aura_found:SetScript("OnClick", function()
     if not currentKey then
       this:SetChecked(false)
       return
     end
 
-    if this:GetChecked() then
-      condFrame.cond_aura_missing:SetChecked(false)
-      SetExclusiveAuraFoundMode("found")
-    else
-      SetExclusiveAuraFoundMode(nil)
+    if (not this:GetChecked()) and (not condFrame.cond_aura_missing:GetChecked()) then
+      this:SetChecked(true)
     end
+
+    _SaveAuraModeFromUI()
 
     -- Keep DB/UI logic in sync (needed later when greying out owner on "missing")
     if UpdateCondFrameForKey then
@@ -3344,12 +3414,11 @@ function UpdateItemStacksForMissing()
       return
     end
 
-    if this:GetChecked() then
-      condFrame.cond_aura_found:SetChecked(false)
-      SetExclusiveAuraFoundMode("missing")
-    else
-      SetExclusiveAuraFoundMode(nil)
+    if (not this:GetChecked()) and (not condFrame.cond_aura_found:GetChecked()) then
+      this:SetChecked(true)
     end
+
+    _SaveAuraModeFromUI()
 
     if UpdateCondFrameForKey then
       UpdateCondFrameForKey(currentKey)
@@ -5715,7 +5784,7 @@ do
       local typePart = typeColor .. "Ability" .. "|r"
   
       local modeWord
-      if mode == "oncd" then
+      if mode == "oncd" or mode == "usableoncd" or mode == "nocdoncd" then
         modeWord = "On CD"
       else
         modeWord = "Not on CD"
@@ -7998,9 +8067,9 @@ local function UpdateConditionsUI(data)
 
     -- exclusives
     local mode = (c.ability and c.ability.mode) or nil
-    condFrame.cond_ability_usable:SetChecked(mode == "usable")
-    condFrame.cond_ability_notcd:SetChecked(mode == "notcd")
-    condFrame.cond_ability_oncd:SetChecked(mode == "oncd")
+    condFrame.cond_ability_usable:SetChecked(mode == "usable" or mode == "usableoncd")
+    condFrame.cond_ability_notcd:SetChecked(mode == "notcd" or mode == "nocdoncd")
+    condFrame.cond_ability_oncd:SetChecked(mode == "oncd" or mode == "usableoncd" or mode == "nocdoncd")
 
     -- combat -> now independent booleans, with fallback to legacy string 'combat'
     local inC, outC
@@ -8181,7 +8250,7 @@ local function UpdateConditionsUI(data)
     local remEnabled = (c.ability and c.ability.remainingEnabled) and true or false
     condFrame.cond_ability_remaining_cb:SetChecked(remEnabled)
 
-    if mode == "oncd" then
+    if mode == "oncd" or mode == "usableoncd" or mode == "nocdoncd" then
       condFrame.cond_ability_slider:Disable()
       condFrame.cond_ability_slider:Hide()
       condFrame.cond_ability_slider_dir:Hide()
@@ -8312,7 +8381,7 @@ local function UpdateConditionsUI(data)
     -- Row 10: Text flag (time remaining only; abilities never have a stack text)
 
     -- Time remaining behaves as before (gated by slider when mode is usable/notcd; shown on 'oncd')
-    if mode == "oncd" then
+    if mode == "oncd" or mode == "usableoncd" or mode == "nocdoncd" then
       condFrame.cond_ability_text_time:Show()
       DoiteEdit_EnableCheck(condFrame.cond_ability_text_time)
       condFrame.cond_ability_text_time:SetChecked((c.ability and c.ability.textTimeRemaining) or false)
@@ -9810,9 +9879,9 @@ local ic = c.item or {}
     condFrame.cond_aura_fade:Show()
 
     -- mode
-    local amode = (c.aura and c.aura.mode) or nil
-    condFrame.cond_aura_found:SetChecked(amode == "found")
-    condFrame.cond_aura_missing:SetChecked(amode == "missing")
+    local amode = (c.aura and c.aura.mode) or "found"
+    condFrame.cond_aura_found:SetChecked(amode == "found" or amode == "both")
+    condFrame.cond_aura_missing:SetChecked(amode == "missing" or amode == "both")
 
     -- combat flags (independent)
     local aIn, aOut
@@ -10101,7 +10170,7 @@ local ic = c.item or {}
       lockOwnerOnSelf = true
     end
 
-    if amode == "found" then
+    if amode == "found" or amode == "both" then
       if lockOwnerOnSelf then
         -- Grey out / unselectable / uncheck "My Aura" + "Others Aura"
         if condFrame.cond_aura_mine then
@@ -10168,7 +10237,7 @@ local ic = c.item or {}
     end
 
     -- Row 10: Text flags (Text: stack + Text: remaining)
-    if amode == "found" then
+    if amode == "found" or amode == "both" then
       -- === Text: Stack counter ===
       condFrame.cond_aura_text_stack:Show()
       DoiteEdit_EnableCheck(condFrame.cond_aura_text_stack)
@@ -10314,7 +10383,7 @@ local ic = c.item or {}
     -- Remaining (Row 8): behavior depends on target + "My Aura"
     local aRemEnabled = (c.aura and c.aura.remainingEnabled) and true or false
 
-    if amode == "found" then
+    if amode == "found" or amode == "both" then
       condFrame.cond_aura_remaining_cb:Show()
       if condFrame.cond_aura_remaining_cb.text then
         condFrame.cond_aura_remaining_cb.text:SetText("Remaining")
@@ -10387,7 +10456,7 @@ local ic = c.item or {}
     -- Stacks row: enabled only when FOUND, greyed when MISSING
     local aStacksEnabled = (c.aura and c.aura.stacksEnabled) and true or false
     condFrame.cond_aura_stacks_cb:SetChecked(aStacksEnabled)
-    if amode == "found" then
+    if amode == "found" or amode == "both" then
       condFrame.cond_aura_stacks_cb:Show()
       DoiteEdit_EnableCheck(condFrame.cond_aura_stacks_cb)
       if aStacksEnabled then

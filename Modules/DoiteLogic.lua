@@ -453,6 +453,8 @@ local function _BuildLabelForEntry(entry, index)
     modeText = "Not on CD"
   elseif mode == "missing" then
     modeText = "Missing"
+  elseif mode == "both" then
+    modeText = "Found or missing"
   elseif mode == "found" or mode == "" or mode == nil then
     modeText = "Found"
   else
