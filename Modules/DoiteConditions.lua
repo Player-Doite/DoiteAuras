@@ -4887,12 +4887,27 @@ end
 
 local _DA_SWIFTMEND_NEEDS = { "Rejuvenation", "Regrowth" }
 
+local function _ClampFadeAlpha(v)
+  local n = tonumber(v)
+  if not n then
+    return 0
+  end
+  if n < 0 then
+    return 0
+  end
+  if n > 1 then
+    return 1
+  end
+  return n
+end
+
 local function _EvaluateVfxConditions(data)
   if not data or not data.conditions then
-    return false, false
+    return false, false, false, 0
   end
 
   local glowOut, greyOut = false, false
+  local fadeOut, fadeAlphaOut = false, 0
 
   local types = { "ability", "aura", "item" }
   local tIdx, typeKey
@@ -4905,12 +4920,19 @@ local function _EvaluateVfxConditions(data)
         if _AuraConditions_CheckEntry(entry) then
           if entry.glow then glowOut = true end
           if entry.grey then greyOut = true end
+          if entry.fade then
+            fadeOut = true
+            local entryFadeAlpha = _ClampFadeAlpha(entry.fadeAlpha)
+            if entryFadeAlpha > fadeAlphaOut then
+              fadeAlphaOut = entryFadeAlpha
+            end
+          end
         end
       end
     end
   end
 
-  return glowOut, greyOut
+  return glowOut, greyOut, fadeOut, fadeAlphaOut
 end
 
 -- ============================================================
@@ -4918,7 +4940,7 @@ end
 -- ============================================================
 local function CheckAbilityConditions(data)
   if not data or not data.conditions or not data.conditions.ability then
-    return true -- if no conditions, always show
+    return true, false, false, false, 0 -- if no conditions, always show
   end
   local c = data.conditions.ability
   -- Consolidated context table: keeps local count lower while avoiding per-eval allocations.
@@ -4938,7 +4960,9 @@ local function CheckAbilityConditions(data)
   if _IsKeyUnderEdit(data.key) then
     local glow = (c.glow and true) or false
     local grey = (c.greyscale and true) or false
-    return true, glow, grey
+    local fade = (c.fade and true) or false
+    local fadeAlpha = fade and _ClampFadeAlpha(c.fadeAlpha) or 0
+    return true, glow, grey, fade, fadeAlpha
   end
 
   -- "show" now represents ALL NON-MODE conditions.
@@ -5299,16 +5323,26 @@ local function CheckAbilityConditions(data)
       (data._daSoundGate and c.soundOffCDEnabled == true),
       c.soundOffCD)
 
-  local vGlow, vGrey = _EvaluateVfxConditions(data)
+  local vGlow, vGrey, vFade, vFadeAlpha = _EvaluateVfxConditions(data)
   local glow = (c.glow or vGlow) and true or false
   local grey = (c.greyscale or vGrey) and true or false
+  local fade = (c.fade or vFade) and true or false
+  local fadeAlpha = 0
+  if c.fade then
+    fadeAlpha = _ClampFadeAlpha(c.fadeAlpha)
+  end
+  if vFade and vFadeAlpha > fadeAlpha then
+    fadeAlpha = vFadeAlpha
+  end
 
   if not show then
     glow = false
     grey = false
+    fade = false
+    fadeAlpha = 0
   end
 
-  return show, glow, grey
+  return show, glow, grey, fade, fadeAlpha
 end
 
 -- ============================================================
@@ -5316,14 +5350,16 @@ end
 -- ============================================================
 local function CheckItemConditions(data)
   if not data or not data.conditions or not data.conditions.item then
-    return true, false, false
+    return true, false, false, false, 0
   end
   local c = data.conditions.item
 
   if _IsKeyUnderEdit(data.key) then
     local glow = (c.glow and true) or false
     local grey = (c.greyscale and true) or false
-    return true, glow, grey
+    local fade = (c.fade and true) or false
+    local fadeAlpha = fade and _ClampFadeAlpha(c.fadeAlpha) or 0
+    return true, glow, grey, fade, fadeAlpha
   end
 
   local show = true
@@ -5344,7 +5380,9 @@ local function CheckItemConditions(data)
     data._daSoundGate = false
     local glow = c.glow and true or false
     local grey = c.greyscale and true or false
-    return false, glow, grey
+    local fade = c.fade and true or false
+    local fadeAlpha = fade and _ClampFadeAlpha(c.fadeAlpha) or 0
+    return false, glow, grey, fade, fadeAlpha
   end
 
   if state.modeMatches == false then
@@ -5559,16 +5597,26 @@ local function CheckItemConditions(data)
       (data._daSoundGate and c.soundOffCDEnabled == true),
       c.soundOffCD)
 
-  local vGlow, vGrey = _EvaluateVfxConditions(data)
+  local vGlow, vGrey, vFade, vFadeAlpha = _EvaluateVfxConditions(data)
   local glow = (c.glow or vGlow) and true or false
   local grey = (c.greyscale or vGrey) and true or false
+  local fade = (c.fade or vFade) and true or false
+  local fadeAlpha = 0
+  if c.fade then
+    fadeAlpha = _ClampFadeAlpha(c.fadeAlpha)
+  end
+  if vFade and vFadeAlpha > fadeAlpha then
+    fadeAlpha = vFadeAlpha
+  end
 
   if not show then
     glow = false
     grey = false
+    fade = false
+    fadeAlpha = 0
   end
 
-  return show, glow, grey
+  return show, glow, grey, fade, fadeAlpha
 end
 
 -- ============================================================
@@ -5576,14 +5624,16 @@ end
 -- ============================================================
 local function CheckAuraConditions(data)
   if not data or not data.conditions or not data.conditions.aura then
-    return true, false, false
+    return true, false, false, false, 0
   end
   local c = data.conditions.aura
 
   if _IsKeyUnderEdit(data.key) then
     local glow = (c.glow and true) or false
     local grey = (c.greyscale and true) or false
-    return true, glow, grey
+    local fade = (c.fade and true) or false
+    local fadeAlpha = fade and _ClampFadeAlpha(c.fadeAlpha) or 0
+    return true, glow, grey, fade, fadeAlpha
   end
 
   local name = data.displayName or data.name
@@ -5592,12 +5642,12 @@ local function CheckAuraConditions(data)
 
   if useSpellIdOnly and auraSpellId <= 0 then
     data._daSoundGate = false
-    return false, false, false
+    return false, false, false, false, 0
   end
 
   if (not useSpellIdOnly) and (not name) then
     data._daSoundGate = false
-    return false, false, false
+    return false, false, false, false, 0
   end
 
   local wantBuff = (data.type == "Buff")
@@ -6020,16 +6070,26 @@ local function CheckAuraConditions(data)
     end
   end
 
-  local vGlow, vGrey = _EvaluateVfxConditions(data)
+  local vGlow, vGrey, vFade, vFadeAlpha = _EvaluateVfxConditions(data)
   local glow = (c.glow or vGlow) and true or false
   local grey = (c.greyscale or vGrey) and true or false
+  local fade = (c.fade or vFade) and true or false
+  local fadeAlpha = 0
+  if c.fade then
+    fadeAlpha = _ClampFadeAlpha(c.fadeAlpha)
+  end
+  if vFade and vFadeAlpha > fadeAlpha then
+    fadeAlpha = vFadeAlpha
+  end
 
   if not show then
     glow = false
     grey = false
+    fade = false
+    fadeAlpha = 0
   end
 
-  return show, glow, grey
+  return show, glow, grey, fade, fadeAlpha
 end
 
 ---------------------------------------------------------------
@@ -6056,17 +6116,17 @@ function DoiteConditions:EvaluateAll()
         data.key = key
 
         if data.type == "Ability" or data.type == "Item" then
-          local show, glow, grey
+          local show, glow, grey, fade, fadeAlpha
           if data.type == "Ability" then
-            show, glow, grey = CheckAbilityConditions(data)
+            show, glow, grey, fade, fadeAlpha = CheckAbilityConditions(data)
           else
-            show, glow, grey = CheckItemConditions(data)
+            show, glow, grey, fade, fadeAlpha = CheckItemConditions(data)
           end
-          DoiteConditions:ApplyVisuals(key, show, glow, grey)
+          DoiteConditions:ApplyVisuals(key, show, glow, grey, fade, fadeAlpha)
 
         elseif data.type == "Buff" or data.type == "Debuff" then
-          local show, glow, grey = CheckAuraConditions(data)
-          DoiteConditions:ApplyVisuals(key, show, glow, grey)
+          local show, glow, grey, fade, fadeAlpha = CheckAuraConditions(data)
+          DoiteConditions:ApplyVisuals(key, show, glow, grey, fade, fadeAlpha)
         end
       end
     end
@@ -6082,17 +6142,17 @@ function DoiteConditions:EvaluateAll()
           data.key = key
 
           if data.type == "Ability" or data.type == "Item" then
-            local show, glow, grey
+            local show, glow, grey, fade, fadeAlpha
             if data.type == "Ability" then
-              show, glow, grey = CheckAbilityConditions(data)
+              show, glow, grey, fade, fadeAlpha = CheckAbilityConditions(data)
             else
-              show, glow, grey = CheckItemConditions(data)
+              show, glow, grey, fade, fadeAlpha = CheckItemConditions(data)
             end
-            DoiteConditions:ApplyVisuals(key, show, glow, grey)
+            DoiteConditions:ApplyVisuals(key, show, glow, grey, fade, fadeAlpha)
 
           elseif data.type == "Buff" or data.type == "Debuff" then
-            local show, glow, grey = CheckAuraConditions(data)
-            DoiteConditions:ApplyVisuals(key, show, glow, grey)
+            local show, glow, grey, fade, fadeAlpha = CheckAuraConditions(data)
+            DoiteConditions:ApplyVisuals(key, show, glow, grey, fade, fadeAlpha)
           end
         end
       end
@@ -6628,7 +6688,7 @@ end
 ---------------------------------------------------------------
 -- Apply visuals to icons
 ---------------------------------------------------------------
-function DoiteConditions:ApplyVisuals(key, show, glow, grey)
+function DoiteConditions:ApplyVisuals(key, show, glow, grey, fade, fadeAlpha)
   local frame = _GetIconFrame(key)
   if not frame then
     -- If icons rebuilt, forget any stale cached ref for this key and retry.
@@ -6799,6 +6859,8 @@ function DoiteConditions:ApplyVisuals(key, show, glow, grey)
     frame._daUseGlow = useGlow and true or false
     frame._daUseGlow = useGlow and true or false
     frame._daUseGreyscale = useGrey and true or false
+    frame._daUseFade = (fade == true) and true or false
+    frame._daFadeAlpha = _ClampFadeAlpha(fadeAlpha)
     -- Sync with DoiteAuras.lua expectation
     frame._daGreyscale = frame._daUseGreyscale
   end
@@ -6907,6 +6969,21 @@ function DoiteConditions:ApplyVisuals(key, show, glow, grey)
       end
     end
 
+    -- FADE (SetVertexColor alpha only on icon texture for broad GPU compatibility)
+    if frame.icon and frame.icon.SetVertexColor then
+      local wantFade = (frame._daUseFade == true) and showForSlide
+      local wantedAlpha = 1
+      if wantFade then
+        wantedAlpha = 1 - (frame._daFadeAlpha or 0)
+        if wantedAlpha < 0 then wantedAlpha = 0 end
+        if wantedAlpha > 1 then wantedAlpha = 1 end
+      end
+      if frame._daLastFadeAlpha ~= wantedAlpha then
+        frame._daLastFadeAlpha = wantedAlpha
+        frame.icon:SetVertexColor(1, 1, 1, wantedAlpha)
+      end
+    end
+
     -- GREYSCALE — only flip when it changes
     if frame.icon then
       local wantGrey = (frame._daGreyscale == true) and showForSlide
@@ -7004,13 +7081,13 @@ function DoiteConditions:EvaluateAbilities(doLogic, doTime)
           data = key and live[key]
           if data and (data.type == "Ability" or data.type == "Item") then
             data.key = key
-            local show, glow, grey
+            local show, glow, grey, fade, fadeAlpha
             if data.type == "Ability" then
-              show, glow, grey = CheckAbilityConditions(data)
+              show, glow, grey, fade, fadeAlpha = CheckAbilityConditions(data)
             else
-              show, glow, grey = CheckItemConditions(data)
+              show, glow, grey, fade, fadeAlpha = CheckItemConditions(data)
             end
-            DoiteConditions:ApplyVisuals(key, show, glow, grey)
+            DoiteConditions:ApplyVisuals(key, show, glow, grey, fade, fadeAlpha)
           end
           i = i + 1
         end
@@ -7028,13 +7105,13 @@ function DoiteConditions:EvaluateAbilities(doLogic, doTime)
             data = edit[key]
             if data and (data.type == "Ability" or data.type == "Item") then
               data.key = key
-              local show, glow, grey
+              local show, glow, grey, fade, fadeAlpha
               if data.type == "Ability" then
-                show, glow, grey = CheckAbilityConditions(data)
+                show, glow, grey, fade, fadeAlpha = CheckAbilityConditions(data)
               else
-                show, glow, grey = CheckItemConditions(data)
+                show, glow, grey, fade, fadeAlpha = CheckItemConditions(data)
               end
-              DoiteConditions:ApplyVisuals(key, show, glow, grey)
+              DoiteConditions:ApplyVisuals(key, show, glow, grey, fade, fadeAlpha)
             end
           end
           i = i + 1
@@ -7064,13 +7141,13 @@ function DoiteConditions:EvaluateAbilities(doLogic, doTime)
 
         if wantsLogic or wantsTime then
           data.key = key
-          local show, glow, grey
+          local show, glow, grey, fade, fadeAlpha
           if data.type == "Ability" then
-            show, glow, grey = CheckAbilityConditions(data)
+            show, glow, grey, fade, fadeAlpha = CheckAbilityConditions(data)
           else
-            show, glow, grey = CheckItemConditions(data)
+            show, glow, grey, fade, fadeAlpha = CheckItemConditions(data)
           end
-          DoiteConditions:ApplyVisuals(key, show, glow, grey)
+          DoiteConditions:ApplyVisuals(key, show, glow, grey, fade, fadeAlpha)
         end
       end
     end
@@ -7094,13 +7171,13 @@ function DoiteConditions:EvaluateAbilities(doLogic, doTime)
 
           if wantsLogic or wantsTime then
             data.key = key
-            local show, glow, grey
+            local show, glow, grey, fade, fadeAlpha
             if data.type == "Ability" then
-              show, glow, grey = CheckAbilityConditions(data)
+              show, glow, grey, fade, fadeAlpha = CheckAbilityConditions(data)
             else
-              show, glow, grey = CheckItemConditions(data)
+              show, glow, grey, fade, fadeAlpha = CheckItemConditions(data)
             end
-            DoiteConditions:ApplyVisuals(key, show, glow, grey)
+            DoiteConditions:ApplyVisuals(key, show, glow, grey, fade, fadeAlpha)
           end
         end
       end
@@ -7178,7 +7255,7 @@ local function _DoiteCustomEvaluateOne(key, data)
     data._daCustomHideBG = false
     data._daCustomRemaining = nil
     data._daCustomStacks = nil
-    DoiteConditions:ApplyVisuals(key, false, false, false)
+    DoiteConditions:ApplyVisuals(key, false, false, false, false, 0)
     return true
   end
 
@@ -7196,7 +7273,7 @@ local function _DoiteCustomEvaluateOne(key, data)
     data._daCustomHideBG = false
     data._daCustomRemaining = nil
     data._daCustomStacks = nil
-    DoiteConditions:ApplyVisuals(key, false, false, false)
+    DoiteConditions:ApplyVisuals(key, false, false, false, false, 0)
     return true
   end
 
@@ -7207,7 +7284,7 @@ local function _DoiteCustomEvaluateOne(key, data)
   data._daCustomRemaining = (type(remaining) == "number") and remaining or nil
   data._daCustomStacks = (type(stacks) == "number") and stacks or nil
 
-  DoiteConditions:ApplyVisuals(key, data._daCustomShow, false, false)
+  DoiteConditions:ApplyVisuals(key, data._daCustomShow, false, false, false, 0)
   return true
 end
 
@@ -7266,8 +7343,8 @@ function DoiteConditions:EvaluateAuras()
       elseif data.type == "Buff" or data.type == "Debuff" then
         data.key = key
 
-        local show, glow, grey = CheckAuraConditions(data)
-        DoiteConditions:ApplyVisuals(key, show, glow, grey)
+        local show, glow, grey, fade, fadeAlpha = CheckAuraConditions(data)
+        DoiteConditions:ApplyVisuals(key, show, glow, grey, fade, fadeAlpha)
       end
     end
   end
@@ -7282,8 +7359,8 @@ function DoiteConditions:EvaluateAuras()
         elseif data.type == "Buff" or data.type == "Debuff" then
           data.key = key
 
-          local show, glow, grey = CheckAuraConditions(data)
-          DoiteConditions:ApplyVisuals(key, show, glow, grey)
+          local show, glow, grey, fade, fadeAlpha = CheckAuraConditions(data)
+          DoiteConditions:ApplyVisuals(key, show, glow, grey, fade, fadeAlpha)
         end
       end
     end

@@ -704,7 +704,7 @@ local function _SlideTick()
   local i = 1
   while i <= sc do
     local key = slideList[i]
-    local f = _GetIconFrame(key)
+    local fr = _GetIconFrame(key)
     if f and f._daSliding == true then
       i = i + 1
     else
@@ -835,42 +835,46 @@ local function _HookApplyVisualsIfPresent()
 
   local orig = DoiteConditions.ApplyVisuals
 
-  DoiteConditions.ApplyVisuals = function(a, b, c, d, e)
+  DoiteConditions.ApplyVisuals = function(a, b, c, d, e, f, g)
     -- Supports both call styles:
-    --   DoiteConditions:ApplyVisuals(key, show, glow, grey)
-    --   DoiteConditions.ApplyVisuals(key, show, glow, grey)
-    local self, key, show, glow, grey
+    --   DoiteConditions:ApplyVisuals(key, show, glow, grey, fade, fadeAlpha)
+    --   DoiteConditions.ApplyVisuals(key, show, glow, grey, fade, fadeAlpha)
+    local self, key, show, glow, grey, fade, fadeAlpha
     if type(a) == "table" then
       self = a
       key = b
       show = c
       glow = d
       grey = e
+      fade = f
+      fadeAlpha = g
     else
       self = DoiteConditions
       key = a
       show = b
       glow = c
       grey = d
+      fade = e
+      fadeAlpha = f
     end
 
-    local f = _GetIconFrame(key)
+    local fr = _GetIconFrame(key)
 
     -- Fast skip: only track grouped keys (works even before first ApplyGroupLayout)
     if not _IsKeyGrouped(key) then
-      return orig(self, key, show, glow, grey)
+      return orig(self, key, show, glow, grey, fade, fadeAlpha)
     end
 
     -- Normalize nil/false so first-time values don't cause "fake changes"
-    local oldShould = (f and f._daShouldShow == true) and 1 or 0
-    local oldSliding = (f and f._daSliding == true) and 1 or 0
+    local oldShould = (fr and fr._daShouldShow == true) and 1 or 0
+    local oldSliding = (fr and fr._daSliding == true) and 1 or 0
 
-    local r = orig(self, key, show, glow, grey)
+    local r = orig(self, key, show, glow, grey, fade, fadeAlpha)
 
-    f = _GetIconFrame(key)
-    if f then
-      local newShould = (f._daShouldShow == true) and 1 or 0
-      local newSliding = (f._daSliding == true) and 1 or 0
+    fr = _GetIconFrame(key)
+    if fr then
+      local newShould = (fr._daShouldShow == true) and 1 or 0
+      local newSliding = (fr._daSliding == true) and 1 or 0
       if oldShould ~= newShould or oldSliding ~= newSliding then
         DoiteGroup.RequestReflow()
       end
