@@ -4887,6 +4887,20 @@ end
 
 local _DA_SWIFTMEND_NEEDS = { "Rejuvenation", "Regrowth" }
 
+local function _NormalizeFadeAlpha(raw, fallback)
+  local v = tonumber(raw)
+  if not v then
+    v = fallback or 0.5
+  end
+  -- Backward compatibility: some profiles may store percentage values (e.g. 50).
+  if v > 1 then
+    v = v / 100
+  end
+  if v < 0.1 then v = 0.1 end
+  if v > 1 then v = 1 end
+  return v
+end
+
 local function _EvaluateVfxConditions(data)
   if not data or not data.conditions then
     return false, false, nil
@@ -4907,9 +4921,7 @@ local function _EvaluateVfxConditions(data)
           if entry.glow then glowOut = true end
           if entry.grey then greyOut = true end
           if entry.fade then
-            local fa = tonumber(entry.fadeAlpha) or 0.5
-            if fa < 0.1 then fa = 0.1 end
-            if fa > 1 then fa = 1 end
+            local fa = _NormalizeFadeAlpha(entry.fadeAlpha, 0.5)
             if fadeOut == nil or fa < fadeOut then
               fadeOut = fa
             end
@@ -4949,9 +4961,7 @@ local function CheckAbilityConditions(data)
     local grey = (c.greyscale and true) or false
     local fadeAlpha = nil
     if c.fade then
-      fadeAlpha = tonumber(c.fadeAlpha) or 0.5
-      if fadeAlpha < 0.1 then fadeAlpha = 0.1 end
-      if fadeAlpha > 1 then fadeAlpha = 1 end
+      fadeAlpha = _NormalizeFadeAlpha(c.fadeAlpha, 0.5)
     end
     return true, glow, grey, fadeAlpha
   end
@@ -5319,13 +5329,9 @@ local function CheckAbilityConditions(data)
   local grey = (c.greyscale or vGrey) and true or false
   local fadeAlpha = nil
   if c.fade then
-    fadeAlpha = tonumber(c.fadeAlpha) or 0.5
+    fadeAlpha = _NormalizeFadeAlpha(c.fadeAlpha, 0.5)
   elseif vFade ~= nil then
-    fadeAlpha = tonumber(vFade)
-  end
-  if fadeAlpha ~= nil then
-    if fadeAlpha < 0.1 then fadeAlpha = 0.1 end
-    if fadeAlpha > 1 then fadeAlpha = 1 end
+    fadeAlpha = _NormalizeFadeAlpha(vFade, 0.5)
   end
 
   if not show then
@@ -5351,9 +5357,7 @@ local function CheckItemConditions(data)
     local grey = (c.greyscale and true) or false
     local fadeAlpha = nil
     if c.fade then
-      fadeAlpha = tonumber(c.fadeAlpha) or 0.5
-      if fadeAlpha < 0.1 then fadeAlpha = 0.1 end
-      if fadeAlpha > 1 then fadeAlpha = 1 end
+      fadeAlpha = _NormalizeFadeAlpha(c.fadeAlpha, 0.5)
     end
     return true, glow, grey, fadeAlpha
   end
@@ -5596,13 +5600,9 @@ local function CheckItemConditions(data)
   local grey = (c.greyscale or vGrey) and true or false
   local fadeAlpha = nil
   if c.fade then
-    fadeAlpha = tonumber(c.fadeAlpha) or 0.5
+    fadeAlpha = _NormalizeFadeAlpha(c.fadeAlpha, 0.5)
   elseif vFade ~= nil then
-    fadeAlpha = tonumber(vFade)
-  end
-  if fadeAlpha ~= nil then
-    if fadeAlpha < 0.1 then fadeAlpha = 0.1 end
-    if fadeAlpha > 1 then fadeAlpha = 1 end
+    fadeAlpha = _NormalizeFadeAlpha(vFade, 0.5)
   end
 
   if not show then
@@ -5628,9 +5628,7 @@ local function CheckAuraConditions(data)
     local grey = (c.greyscale and true) or false
     local fadeAlpha = nil
     if c.fade then
-      fadeAlpha = tonumber(c.fadeAlpha) or 0.5
-      if fadeAlpha < 0.1 then fadeAlpha = 0.1 end
-      if fadeAlpha > 1 then fadeAlpha = 1 end
+      fadeAlpha = _NormalizeFadeAlpha(c.fadeAlpha, 0.5)
     end
     return true, glow, grey, fadeAlpha
   end
@@ -6074,13 +6072,9 @@ local function CheckAuraConditions(data)
   local grey = (c.greyscale or vGrey) and true or false
   local fadeAlpha = nil
   if c.fade then
-    fadeAlpha = tonumber(c.fadeAlpha) or 0.5
+    fadeAlpha = _NormalizeFadeAlpha(c.fadeAlpha, 0.5)
   elseif vFade ~= nil then
-    fadeAlpha = tonumber(vFade)
-  end
-  if fadeAlpha ~= nil then
-    if fadeAlpha < 0.1 then fadeAlpha = 0.1 end
-    if fadeAlpha > 1 then fadeAlpha = 1 end
+    fadeAlpha = _NormalizeFadeAlpha(vFade, 0.5)
   end
 
   if not show then

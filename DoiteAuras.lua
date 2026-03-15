@@ -2710,6 +2710,10 @@ local function RefreshIcons(force)
                 end
                 if bucket and bucket.fade then
                     fadeAlpha = tonumber(bucket.fadeAlpha) or 0.5
+                    -- Backward compatibility: treat legacy/imported percent values like 50 as 0.5.
+                    if fadeAlpha > 1 then
+                        fadeAlpha = fadeAlpha / 100
+                    end
                 end
             end
 
