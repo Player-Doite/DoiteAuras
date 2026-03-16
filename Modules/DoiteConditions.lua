@@ -2309,6 +2309,7 @@ local SlideMgr = {
   active = {},
 }
 _G.DoiteConditions_SlideMgr = SlideMgr
+_G.DoiteConditions_DirtyAbilityKeys = _G.DoiteConditions_DirtyAbilityKeys or {}
 
 local _slideTick = CreateFrame("Frame", "DoiteSlideTick")
 _slideTick:Hide()
@@ -2319,6 +2320,7 @@ _slideTick:SetScript("OnUpdate", function()
   for key, s in pairs(SlideMgr.active) do
     if now >= s.endTime then
       SlideMgr.active[key] = nil
+      _G.DoiteConditions_DirtyAbilityKeys[key] = true
     else
       anyActive = true
     end
@@ -2326,7 +2328,9 @@ _slideTick:SetScript("OnUpdate", function()
 
   -- While sliding, force abilities to re-paint frequently so positions update smoothly.
   if anyActive then
-    dirty_ability = true
+    for key, _ in pairs(SlideMgr.active) do
+      _G.DoiteConditions_DirtyAbilityKeys[key] = true
+    end
     DoiteConditions_RequestUpdate()
   else
     this:Hide()
@@ -7321,6 +7325,37 @@ function DoiteConditions:EvaluateAbilities(doLogic, doTime)
   end
 end
 
+function DoiteConditions:EvaluateAbilityKeys(dirtyKeys)
+  if type(dirtyKeys) ~= "table" then
+    return
+  end
+
+  local live = DoiteAurasDB and DoiteAurasDB.spells
+  local edit = DoiteDB and DoiteDB.icons
+  local key, data
+
+  for key, _ in pairs(dirtyKeys) do
+    data = nil
+    if live then
+      data = live[key]
+    end
+    if (not data) and edit then
+      data = edit[key]
+    end
+
+    if data and (data.type == "Ability" or data.type == "Item") then
+      data.key = key
+      local show, glow, grey, fade, fadeAlpha
+      if data.type == "Ability" then
+        show, glow, grey, fade, fadeAlpha = CheckAbilityConditions(data)
+      else
+        show, glow, grey, fade, fadeAlpha = CheckItemConditions(data)
+      end
+      DoiteConditions:ApplyVisuals(key, show, glow, grey, fade, fadeAlpha)
+    end
+  end
+end
+
 local function _DoiteCustomCompileForData(key, data)
   if type(data) ~= "table" then
     return nil, "Invalid custom data entry."
@@ -7638,13 +7673,8 @@ function DoiteConditions_UpdateTimeText()
   end
 end
 
-local _tick = CreateFrame("Frame", "DoiteConditionsTick")
-_tick:Hide()
-
 function DoiteConditions_RequestUpdate()
-  if _tick and _tick.Show and (not _tick:IsShown()) then
-    _tick:Show()
-  end
+  DoiteConditions._updateRequested = true
 end
 
 -- Keep these as globals so the OnUpdate script doesn't capture them as upvalues
@@ -7660,19 +7690,17 @@ _teFastActive = false
 
 -- Lift the body into a real function
 function DoiteConditions_OnUpdate(dt)
+  DoiteConditions._updateRequested = false
   _textAccum = _textAccum + dt
   _distAccum = _distAccum + dt
   _timeEvalAccum = _timeEvalAccum + dt
 
-  local keepAlive = false
 
   -- Coalesce aura events: scan/rebuild at most once per frame, before any rendering/eval.
   DoiteConditions:ProcessPendingAuraScans()
 
   -- Keep aura/cooldown remaining text fresh while idle.
   if _hasAnyAbilityTimeLogic or _hasAnyAuraTimeLogic then
-    keepAlive = true
-
     if _textAccum >= 0.10 then
       _textAccum = 0
       DoiteConditions_UpdateTimeText()
@@ -7690,7 +7718,6 @@ function DoiteConditions_OnUpdate(dt)
 
   -- Target-modifier checks (in range / melee range) need a light heartbeat while target exists.
   if UnitExists and UnitExists("target") and (_hasAnyTargetMods_Ability or _hasAnyTargetMods_Aura) then
-    keepAlive = true
     if _distAccum >= 0.15 then
       _distAccum = 0
       if _hasAnyTargetMods_Ability then
@@ -7706,21 +7733,22 @@ function DoiteConditions_OnUpdate(dt)
 
   -- Warrior proc windows can expire without another combat log event.
   if _isWarrior and (_WarriorProc.REV_until > 0 or _WarriorProc.OP_until > 0) then
-    keepAlive = true
     _WarriorProcTick()
-  end
-
-  if next(DoiteConditions_SlideMgr.active) then
-    keepAlive = true
   end
 
   local needAbilityLogic = dirty_ability or dirty_power
   local needAbilityTime = dirty_ability_time
   local needAura = dirty_aura or dirty_target or dirty_power
+  local needAbilityKeys = next(_G.DoiteConditions_DirtyAbilityKeys)
   local didCustom = false
 
   if needAbilityLogic or needAbilityTime then
     _G.DoiteConditions:EvaluateAbilities(needAbilityLogic, needAbilityTime)
+  elseif needAbilityKeys then
+    _G.DoiteConditions:EvaluateAbilityKeys(_G.DoiteConditions_DirtyAbilityKeys)
+    for key, _ in pairs(_G.DoiteConditions_DirtyAbilityKeys) do
+      _G.DoiteConditions_DirtyAbilityKeys[key] = nil
+    end
   end
   if needAura then
     _G.DoiteConditions:EvaluateAuras()
@@ -7736,35 +7764,36 @@ function DoiteConditions_OnUpdate(dt)
     dirty_ability = next(DoiteConditions_SlideMgr.active) and true or false
   end
 
-  if dirty_ability or dirty_aura or dirty_target or dirty_power or dirty_ability_time or next(DoiteConditions_SlideMgr.active) then
+  if dirty_ability or dirty_aura or dirty_target or dirty_power or dirty_ability_time or next(DoiteConditions_SlideMgr.active) or next(_G.DoiteConditions_DirtyAbilityKeys) or DoiteConditions._updateRequested then
     return
-  end
-
-  if keepAlive then
-    return
-  end
-
-  if _tick and _tick.Hide and _tick:IsShown() then
-    _tick:Hide()
   end
 end
 
--- Avoid per-frame pcall (allocation/overhead). Enable it only when debugging.
-local function _DoiteConditions_OnUpdateWrapper()
+local _tick = CreateFrame("Frame", "DoiteTick")
+_tick:Show()
+_tick._acc = 0
+_tick:SetScript("OnUpdate", function()
   local dt = arg1 or 0
-  if _G["DoiteAuras_DebugPcallOnUpdate"] == true then
-    local ok, err = pcall(DoiteConditions_OnUpdate, dt)
-    if not ok and DEFAULT_CHAT_FRAME then
-      DEFAULT_CHAT_FRAME:AddMessage(
-          "|cffff0000[DoiteAuras] OnUpdate error:|r " .. tostring(err)
-      )
-    end
-  else
-    DoiteConditions_OnUpdate(dt)
+  _tick._acc = _tick._acc + dt
+  if _tick._acc < 0.0125 then
+    return
   end
-end
+  dt = _tick._acc
+  _tick._acc = 0
 
-_tick:SetScript("OnUpdate", _DoiteConditions_OnUpdateWrapper)
+  if dirty_ability or dirty_aura or dirty_target or dirty_power or dirty_ability_time or next(DoiteConditions_SlideMgr.active) or next(_G.DoiteConditions_DirtyAbilityKeys) or DoiteConditions._updateRequested or _hasAnyAbilityTimeLogic or _hasAnyAuraTimeLogic or (_G.UnitExists and _G.UnitExists("target") and (_hasAnyTargetMods_Ability or _hasAnyTargetMods_Aura)) or (_isWarrior and (_WarriorProc.REV_until > 0 or _WarriorProc.OP_until > 0)) then
+    if _G["DoiteAuras_DebugPcallOnUpdate"] == true then
+      local ok, err = pcall(DoiteConditions_OnUpdate, dt)
+      if not ok and DEFAULT_CHAT_FRAME then
+        DEFAULT_CHAT_FRAME:AddMessage(
+            "|cffff0000[DoiteAuras] OnUpdate error:|r " .. tostring(err)
+        )
+      end
+    else
+      DoiteConditions_OnUpdate(dt)
+    end
+  end
+end)
 
 -- Prime aura snapshot and trigger initial evaluation
 if _G.UnitExists and _G.UnitExists("target") then
