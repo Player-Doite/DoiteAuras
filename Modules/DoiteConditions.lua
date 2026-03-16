@@ -5813,11 +5813,19 @@ local function CheckAuraConditions(data)
     end
   end
 
+  if show and c.trackpet == true and c.targetSelf == true then
+    if (not DoitePetAuras) or (not DoitePetAuras.TargetIsPet) or (not DoitePetAuras:TargetIsPet()) then
+      show = false
+    end
+  end
+
   local found = false
 
   if show and allowSelf then
     local hit = false
-    if useSpellIdOnly and auraSpellId > 0 then
+    if c.trackpet == true and DoitePetAuras and DoitePetAuras.HasAura then
+      hit = DoitePetAuras:HasAura(name, auraSpellId, useSpellIdOnly, wantBuff, wantDebuff)
+    elseif useSpellIdOnly and auraSpellId > 0 then
       if wantBuff then
         hit = DoitePlayerAuras.HasBuffSpellId(auraSpellId)
       end
@@ -5838,47 +5846,59 @@ local function CheckAuraConditions(data)
   end
 
   if show and (not found) and allowHelp then
-    local s = auraSnapshot.target
-    if s then
-      local hit = false
-      if useSpellIdOnly and auraSpellId > 0 then
-        if wantBuff and s.buffIds and s.buffIds[auraSpellId] then
-          hit = true
-        elseif wantDebuff and _TargetHasAuraBySpellId(auraSpellId, true) then
-          hit = true
-        end
-      else
-        if wantBuff and s.buffs[name] then
-          hit = true
-        elseif wantDebuff and _TargetHasOverflowDebuff(name) then
-          hit = true
-        end
-      end
-      if hit then
+    if c.trackpet == true and DoitePetAuras and DoitePetAuras.HasAura then
+      if DoitePetAuras:HasAura(name, auraSpellId, useSpellIdOnly, wantBuff, wantDebuff) then
         found = true
+      end
+    else
+      local s = auraSnapshot.target
+      if s then
+        local hit = false
+        if useSpellIdOnly and auraSpellId > 0 then
+          if wantBuff and s.buffIds and s.buffIds[auraSpellId] then
+            hit = true
+          elseif wantDebuff and _TargetHasAuraBySpellId(auraSpellId, true) then
+            hit = true
+          end
+        else
+          if wantBuff and s.buffs[name] then
+            hit = true
+          elseif wantDebuff and _TargetHasOverflowDebuff(name) then
+            hit = true
+          end
+        end
+        if hit then
+          found = true
+        end
       end
     end
   end
 
   if show and (not found) and allowHarm then
-    local s = auraSnapshot.target
-    if s then
-      local hit = false
-      if useSpellIdOnly and auraSpellId > 0 then
-        if wantBuff and s.buffIds and s.buffIds[auraSpellId] then
-          hit = true
-        elseif wantDebuff and _TargetHasAuraBySpellId(auraSpellId, true) then
-          hit = true
-        end
-      else
-        if wantBuff and s.buffs[name] then
-          hit = true
-        elseif wantDebuff and _TargetHasOverflowDebuff(name) then
-          hit = true
-        end
-      end
-      if hit then
+    if c.trackpet == true and DoitePetAuras and DoitePetAuras.HasAura then
+      if DoitePetAuras:HasAura(name, auraSpellId, useSpellIdOnly, wantBuff, wantDebuff) then
         found = true
+      end
+    else
+      local s = auraSnapshot.target
+      if s then
+        local hit = false
+        if useSpellIdOnly and auraSpellId > 0 then
+          if wantBuff and s.buffIds and s.buffIds[auraSpellId] then
+            hit = true
+          elseif wantDebuff and _TargetHasAuraBySpellId(auraSpellId, true) then
+            hit = true
+          end
+        else
+          if wantBuff and s.buffs[name] then
+            hit = true
+          elseif wantDebuff and _TargetHasOverflowDebuff(name) then
+            hit = true
+          end
+        end
+        if hit then
+          found = true
+        end
       end
     end
   end
@@ -5891,7 +5911,7 @@ local function CheckAuraConditions(data)
       ownerUnit = "target"
     end
     if ownerUnit then
-      local _, _, _, isMine, isOther, mineKnown = _DoiteTrackAuraOwnership(useSpellIdOnly and auraSpellId or name, ownerUnit, useSpellIdOnly)
+      local _, _, _, isMine, isOther, mineKnown = _DoiteTrackAuraOwnership(useSpellIdOnly and auraSpellId or name, (c.trackpet == true and "pet") or ownerUnit, useSpellIdOnly)
       if mineKnown then
         if ownerFilter == "mine" and not isMine then
           found = false
@@ -6039,7 +6059,12 @@ local function CheckAuraConditions(data)
         local comp = c.remainingComp
         local pass = true
         if targetSelf then
-          local rem = _PlayerAuraRemainingSeconds(name, auraSpellId, useSpellIdOnly)
+          local rem = nil
+          if c.trackpet == true and DoitePetAuras and DoitePetAuras.GetAuraRemainingSeconds then
+            rem = DoitePetAuras:GetAuraRemainingSeconds(name, auraSpellId, useSpellIdOnly)
+          else
+            rem = _PlayerAuraRemainingSeconds(name, auraSpellId, useSpellIdOnly)
+          end
           if rem and rem > 0 then
             pass = _RemainingPasses(rem, comp, threshold)
           else
@@ -6047,7 +6072,7 @@ local function CheckAuraConditions(data)
           end
         else
           if ownerFilter == "mine" and DoiteTrack then
-            local rpass = _DoiteTrackRemainingPass(useSpellIdOnly and auraSpellId or name, "target", comp, threshold, useSpellIdOnly)
+            local rpass = _DoiteTrackRemainingPass(useSpellIdOnly and auraSpellId or name, (c.trackpet == true and "pet") or "target", comp, threshold, useSpellIdOnly)
             if rpass == nil then
               pass = false
             else
@@ -6082,6 +6107,9 @@ local function CheckAuraConditions(data)
         elseif allowHarm and canAttack and (not isFriend) then
           unitToCheck = "target"
         end
+      end
+      if c.trackpet == true then
+        unitToCheck = "pet"
       end
       if unitToCheck then
         local cnt = _GetAuraStacksOnUnit(unitToCheck, name, wantDebuff, auraSpellId, useSpellIdOnly)
@@ -6561,7 +6589,9 @@ local function _Doite_UpdateOverlayForFrame(frame, key, dataTbl, slideActive)
 
         local remAura = nil
 
-        if targetSelf then
+        if ca.trackpet == true and DoitePetAuras and DoitePetAuras.GetAuraRemainingSeconds then
+          remAura = DoitePetAuras:GetAuraRemainingSeconds(auraName, auraSpellId, useSpellIdOnly)
+        elseif targetSelf then
           -- PLAYER/SELF remaining-time text must reflect the actual visible aura time (vanilla/tooltip scan), never DoiteTrack. Ownership filtering (onlyMine/onlyOthers) belongs in the condition logic.
           remAura = _PlayerAuraRemainingSeconds(auraName, auraSpellId, useSpellIdOnly)
         else
@@ -6639,6 +6669,9 @@ local function _Doite_UpdateOverlayForFrame(frame, key, dataTbl, slideActive)
         end
       end
 
+      if ca.trackpet == true then
+        unitToCheck = "pet"
+      end
       if unitToCheck then
         local cnt = _GetAuraStacksOnUnit(unitToCheck, auraName, wantDebuff, auraSpellId, useSpellIdOnly)
         if cnt and cnt >= 1 then

@@ -9,6 +9,7 @@ DoiteAuras.lua
 
 Modules\DoiteBuffData.lua
 Modules\DoitePlayerAuras.lua
+Modules\DoitePetAuras.lua
 Modules\DoiteEdit.lua
 Modules\DoiteGlow.lua
 Modules\DoiteConditions.lua
