@@ -7638,6 +7638,13 @@ function DoiteConditions_UpdateTimeText()
 end
 
 local _tick = CreateFrame("Frame", "DoiteConditionsTick")
+_tick:Hide()
+
+function DoiteConditions_RequestUpdate()
+  if _tick and _tick.Show and (not _tick:IsShown()) then
+    _tick:Show()
+  end
+end
 
 -- Keep these as globals so the OnUpdate script doesn't capture them as upvalues
 _acc = 0
@@ -7652,96 +7659,8 @@ _teFastActive = false
 
 -- Lift the body into a real function
 function DoiteConditions_OnUpdate(dt)
-  _acc = _acc + dt
-  _textAccum = _textAccum + dt
-
-  -- 0.5s heartbeat for ability/item time-based logic (cooldown end needs reevaluation).
-  -- Heartbeat for ability/item time-based logic (cooldown end needs reevaluation). When a temp weapon enchant is in its last 60s, refresh more frequently so enchant-based remaining/show/hide reacts on a tighter cadence. When a temp weapon enchant is in its last 60s, refresh more frequently so enchant-based remaining/show/hide reacts on a tighter cadence.
-  -- 0.5s heartbeat for ability/item time-based logic (cooldown end needs reevaluation).
-  _timeEvalAccum = _timeEvalAccum + dt
-  if _timeEvalAccum >= 0.5 then
-    _timeEvalAccum = 0
-    if _hasAnyAbilityTimeLogic then
-      dirty_ability_time = true
-    end
-  end
-
-  -- Weapon temp-enchant fast tick:
-  -- Above 60s: event-driven only (no ticking).
-  -- <=60s: tick at 0.10s to keep hide/show + remaining accurate near expiry.
-  do
-    local dc = _G.DoiteConditions
-    local te = dc and dc._daTempEnchantCache
-    local hasTE = false
-
-    if te then
-      local now = GetTime()
-      for _, slotC in pairs(te) do
-        if slotC and slotC.endTime then
-          local rem = slotC.endTime - now
-          if rem > 0 then
-            hasTE = true
-            if rem <= 60 then
-              _teFastActive = true
-              break
-            end
-          end
-        end
-      end
-    end
-
-    if not hasTE then
-      _teFastActive = false
-    end
-
-    if _teFastActive then
-      _teFastAccum = _teFastAccum + dt
-      if _teFastAccum >= 0.10 then
-        _teFastAccum = 0
-        dirty_ability_time = true
-      end
-    else
-      _teFastAccum = 0
-    end
-  end
-
-  -- Keep warrior Overpower/Revenge procs in sync even if no other events fire
-  DoiteConditions_WarriorProcTick()
-
   -- Coalesce aura events: scan/rebuild at most once per frame, before any rendering/eval.
   DoiteConditions:ProcessPendingAuraScans()
-
-  -- Smooth remaining-time text (abilities/items/auras) on a cheap path
-  if _textAccum >= 0.1 then
-    _textAccum = 0
-
-    if _hasAnyAbilityTimeLogic or _hasAnyAuraTimeLogic or _teFastActive then
-      DoiteConditions_UpdateTimeText()
-    end
-  end
-
-  -- Lightweight distance heartbeat: keep "In range" / "Melee range" /
-  _distAccum = _distAccum + dt
-  if _distAccum >= 0.15 then
-    _distAccum = 0
-
-    if UnitExists and UnitExists("target") then
-      -- Only mark dirty if configs actually use these options
-      if _hasAnyTargetMods_Ability then
-        dirty_ability = true
-      end
-      if _hasAnyTargetMods_Aura then
-        dirty_aura = true
-      end
-    end
-  end
-
-  -- Render faster while sliding; else ~30fps
-  local thresh = (next(DoiteConditions_SlideMgr.active) ~= nil) and 0.03 or 0.10
-  if _acc < thresh then
-    return
-  end
-  _acc = 0
 
   local needAbilityLogic = dirty_ability or dirty_power
   local needAbilityTime = dirty_ability_time
@@ -7763,6 +7682,14 @@ function DoiteConditions_OnUpdate(dt)
     dirty_ability_time = false
     -- While sliding, ability icons updating each frame
     dirty_ability = next(DoiteConditions_SlideMgr.active) and true or false
+  end
+
+  if dirty_ability or dirty_aura or dirty_target or dirty_power or dirty_ability_time or next(DoiteConditions_SlideMgr.active) then
+    return
+  end
+
+  if _tick and _tick.Hide and _tick:IsShown() then
+    _tick:Hide()
   end
 end
 
@@ -7788,6 +7715,7 @@ if _G.UnitExists and _G.UnitExists("target") then
   DoiteConditions_ScanUnitAuras("target")
 end
 dirty_ability, dirty_aura, dirty_target, dirty_power = true, true, true, true
+DoiteConditions_RequestUpdate()
 
 ---------------------------------------------------------------
 -- Event handling + smoother updates
@@ -7969,4 +7897,6 @@ eventFrame:SetScript("OnEvent", function()
     -- Re-evaluate all conditions when party/raid membership changes
     dirty_ability, dirty_aura = true, true
   end
+
+  DoiteConditions_RequestUpdate()
 end)
