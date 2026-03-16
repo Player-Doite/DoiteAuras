@@ -150,6 +150,7 @@ end
 -- Spell index cache (must be defined before any usage)
 local SpellIndexCache = {}
 _G.DoiteConditions_SpellIndexCache = SpellIndexCache
+_G.DoiteConditions_SpellBookTypeCache = _G.DoiteConditions_SpellBookTypeCache or {}
 
 local _isWarrior = false
 
@@ -166,8 +167,9 @@ local function _GetSpellIndexByName(spellName)
   -- Nampower fast path - GetSpellSlotTypeIdForName(spellName)
   if GetSpellSlotTypeIdForName then
     local slot, bookType = GetSpellSlotTypeIdForName(spellName)
-    if slot and slot > 0 and bookType == "spell" then
+    if slot and slot > 0 and (bookType == "spell" or bookType == "pet") then
       SpellIndexCache[spellName] = slot
+      _G.DoiteConditions_SpellBookTypeCache[spellName] = (bookType == "pet") and BOOKTYPE_PET or BOOKTYPE_SPELL
       return slot
     end
   end
@@ -181,12 +183,29 @@ local function _GetSpellIndexByName(spellName)
     end
     if s == spellName then
       SpellIndexCache[spellName] = i
+      _G.DoiteConditions_SpellBookTypeCache[spellName] = BOOKTYPE_SPELL
+      return i
+    end
+    i = i + 1
+  end
+
+  -- pet spellbook fallback
+  i = 1
+  while i <= 200 do
+    local s = GetSpellName(i, BOOKTYPE_PET)
+    if not s then
+      break
+    end
+    if s == spellName then
+      SpellIndexCache[spellName] = i
+      _G.DoiteConditions_SpellBookTypeCache[spellName] = BOOKTYPE_PET
       return i
     end
     i = i + 1
   end
 
   SpellIndexCache[spellName] = false
+  _G.DoiteConditions_SpellBookTypeCache[spellName] = false
   return nil
 end
 
@@ -890,7 +909,8 @@ local function _AbilityRemainingByName(spellName)
     return nil
   end
   local idx = _GetSpellIndexByName(spellName)
-  return _AbilityRemainingSeconds(idx, BOOKTYPE_SPELL)
+  local bt = _G.DoiteConditions_SpellBookTypeCache[spellName]
+  return _AbilityRemainingSeconds(idx, bt or BOOKTYPE_SPELL)
 end
 
 -- Cooldown (remaining, totalDuration) by spell name; nil,nil if not in book
@@ -899,11 +919,12 @@ local function _AbilityCooldownByName(spellName)
     return nil, nil
   end
   local idx = _GetSpellIndexByName(spellName)
+  local bt = _G.DoiteConditions_SpellBookTypeCache[spellName]
   if not idx then
     return nil, nil
   end
 
-  local start, dur = GetSpellCooldown(idx, BOOKTYPE_SPELL)
+  local start, dur = GetSpellCooldown(idx, bt or BOOKTYPE_SPELL)
   if start and dur and start > 0 and dur > 0 then
     local rem = (start + dur) - GetTime()
     if rem < 0 then
@@ -4263,8 +4284,9 @@ local function _EnsureAbilityTexture(frame, data)
   end
 
   local idx = _GetSpellIndexByName(spellName)
+  local bt = _G.DoiteConditions_SpellBookTypeCache[spellName]
   if idx then
-    local tex = GetSpellTexture(idx, BOOKTYPE_SPELL)
+    local tex = GetSpellTexture(idx, bt or BOOKTYPE_SPELL)
     if tex then
       frame.icon:SetTexture(tex)
       IconCache[spellName] = tex -- persist
@@ -5030,6 +5052,7 @@ local function CheckAbilityConditions(data)
   ctx.allowSelf = (c.targetSelf == true)
   ctx.spellName = _GetCanonicalSpellNameFromData(data)
   ctx.spellIndex = _GetSpellIndexByName(ctx.spellName)
+  ctx.spellBookType = _G.DoiteConditions_SpellBookTypeCache[ctx.spellName]
   ctx.tf = nil
 
   -- While editing this key, force conditions to pass (always show).
@@ -5087,7 +5110,7 @@ local function CheckAbilityConditions(data)
   -- === 1. Cooldown / usability (MODE-ONLY) ===
   local spellName = ctx.spellName
   local spellIndex = ctx.spellIndex
-  local bookType = BOOKTYPE_SPELL
+  local bookType = ctx.spellBookType or BOOKTYPE_SPELL
   local onCdNow = false
 
   if not spellIndex then
@@ -7864,6 +7887,12 @@ eventFrame:SetScript("OnEvent", function()
     if cache then
       for k in pairs(cache) do
         cache[k] = nil
+      end
+    end
+    local btCache = _G.DoiteConditions_SpellBookTypeCache
+    if btCache then
+      for k in pairs(btCache) do
+        btCache[k] = nil
       end
     end
     dirty_ability = true

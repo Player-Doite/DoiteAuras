@@ -774,39 +774,45 @@ local function DA_RebuildAbilityDropDown()
 
     local seen = {}
 
-    -- linear scan over spellbook, filter passives by IsPassiveSpell + rank "Passive"
-    local i = 1
-    while true do
-        local name, rank = GetSpellName(i, BOOKTYPE_SPELL)
-        if not name then
-            break
-        end
+    local function scanBook(bookType)
+        local i = 1
+        while true do
+            local name, rank = GetSpellName(i, bookType)
+            if not name then
+                break
+            end
 
-        local isPassive = false
+            local isPassive = false
 
-        if IsPassiveSpell then
-            -- best-effort: use IsPassiveSpell if available (signature may differ)
-            local ok, passive = pcall(IsPassiveSpell, i, BOOKTYPE_SPELL)
-            if ok and passive then
+            if IsPassiveSpell then
+                -- best-effort: use IsPassiveSpell if available (signature may differ)
+                local ok, passive = pcall(IsPassiveSpell, i, bookType)
+                if ok and passive then
+                    isPassive = true
+                end
+            end
+
+            -- Fallback: many passives have "Passive" in the rank string
+            if (not isPassive) and rank and string.find(rank, "Passive") then
                 isPassive = true
             end
-        end
 
-        -- Fallback: many passives have "Passive" in the rank string
-        if (not isPassive) and rank and string.find(rank, "Passive") then
-            isPassive = true
-        end
-
-        if (not isPassive) and name ~= "" then
-            local lname = string.lower(name or "")
-            if not seen[lname] then
-                seen[lname] = true
-                DA_AddAbilityOption(name)
+            if (not isPassive) and name ~= "" then
+                local lname = string.lower(name or "")
+                if not seen[lname] then
+                    seen[lname] = true
+                    DA_AddAbilityOption(name)
+                end
             end
-        end
 
-        i = i + 1
+            i = i + 1
+        end
     end
+
+    -- Player abilities
+    scanBook(BOOKTYPE_SPELL)
+    -- Pet abilities (Hunters/Warlocks etc.)
+    scanBook(BOOKTYPE_PET)
 
     -- Sort 0–9 A–Z (case-insensitive; ties broken by original)
     table.sort(DA_AbilityOptions, function(a, b)
@@ -2017,7 +2023,10 @@ local function FindSpellBookSlot(spellName)
     if type(GetSpellSlotTypeIdForName) == "function" then
         local ok, slot, bookType = pcall(GetSpellSlotTypeIdForName, spellName)
         if ok and slot and slot > 0 and (bookType == "spell" or bookType == "pet" or bookType == "unknown") then
-            return slot
+            if bookType == "pet" then
+                return slot, BOOKTYPE_PET
+            end
+            return slot, BOOKTYPE_SPELL
         end
     end
 
@@ -2033,11 +2042,23 @@ local function FindSpellBookSlot(spellName)
                 local idx  = offset + i
                 local name = GetSpellName(idx, BOOKTYPE_SPELL)
                 if name == spellName then
-                    return idx
+                    return idx, BOOKTYPE_SPELL
                 end
             end
         end
     end
+
+    -- Fallback pet spellbook scan
+    local p = 1
+    while true do
+        local name = GetSpellName(p, BOOKTYPE_PET)
+        if not name then break end
+        if name == spellName then
+            return p, BOOKTYPE_PET
+        end
+        p = p + 1
+    end
+
     return nil
 end
 
@@ -2455,15 +2476,16 @@ local function RefreshIcons(force)
         -- For Abilities only: single cheap fallback via spell slot (Nampower-accelerated)
         if not tex and typ == "Ability" then
             local slot = slotCache[displayName]
+            local slotBookType = BOOKTYPE_SPELL
             if slot == nil then
-                slot = FindSpellBookSlot(displayName)
+                slot, slotBookType = FindSpellBookSlot(displayName)
                 slotCache[displayName] = slot or false
             elseif slot == false then
                 slot = nil
             end
 
             if slot and GetSpellTexture then
-                tex = GetSpellTexture(slot, BOOKTYPE_SPELL)
+                tex = GetSpellTexture(slot, slotBookType or BOOKTYPE_SPELL)
             end
         end
 
@@ -3604,9 +3626,9 @@ addBtn:SetScript("OnClick", function()
   end
 
   if t == "Ability" then
-    local slot = FindSpellBookSlot(name)
+    local slot, slotBookType = FindSpellBookSlot(name)
     if slot and GetSpellTexture then
-      local tex = GetSpellTexture(slot, BOOKTYPE_SPELL)
+      local tex = GetSpellTexture(slot, slotBookType or BOOKTYPE_SPELL)
       if tex then
         cache[name]       = tex
         entry.iconTexture = tex

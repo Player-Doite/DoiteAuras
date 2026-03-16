@@ -231,6 +231,12 @@ local function _IsRogueOrDruid()
   return (c == "ROGUE" or c == "DRUID")
 end
 
+local function _IsHunterOrWarlock()
+  local _, c = UnitClass("player")
+  c = c and string.upper(c) or ""
+  return (c == "HUNTER" or c == "WARLOCK")
+end
+
 -- If an aura is ALWAYS applied by the player to the player, ownership is meaningless.
 local DOITE_AURA_OWNER_LOCK_ON_SELF = {
   ["Zeal"] = true, ["Berserker Rage"] = true,
@@ -724,6 +730,10 @@ EnsureDBEntry = function(key)
     end
     if d.conditions.aura.weaponFilter == nil then
       d.conditions.aura.weaponFilter = nil
+    end
+
+    if d.conditions.aura.trackpet == nil then
+      d.conditions.aura.trackpet = false
     end
 
     -- legacy cleanup
@@ -2213,6 +2223,9 @@ local function CreateConditionsUI()
   condFrame.cond_aura_class_note:SetTextColor(1, 0.82, 0)
   condFrame.cond_aura_class_note:SetText("No class-specific option added for your class.")
   condFrame.cond_aura_class_note:Hide()
+
+  condFrame.cond_aura_trackpet = MakeCheck("DoiteCond_Aura_TrackPet", "Track this Aura on pet", 0, auraClassRowY)
+  condFrame.cond_aura_trackpet:Hide()
 
   -- Aura: Sound effects
   condFrame.cond_aura_sound_ongain_cb = MakeCheck("DoiteCond_Aura_Sound_OnGain_CB", "On gain", 0, row14_y - 10)
@@ -4036,6 +4049,23 @@ function UpdateItemStacksForMissing()
     SafeEvaluate()
   end)
 
+  if condFrame.cond_aura_trackpet then
+    condFrame.cond_aura_trackpet:SetScript("OnClick", function()
+      if not currentKey then
+        this:SetChecked(false)
+        return
+      end
+      local d = EnsureDBEntry(currentKey);
+      d.conditions.aura = d.conditions.aura or {}
+      d.conditions.aura.trackpet = this:GetChecked() and true or false
+      if UpdateCondFrameForKey then
+        UpdateCondFrameForKey(currentKey)
+      end
+      SafeRefresh();
+      SafeEvaluate()
+    end)
+  end
+
   -- === Aura Power toggle ===
   condFrame.cond_aura_power:SetScript("OnClick", function()
     if not currentKey then
@@ -5290,6 +5320,9 @@ function UpdateItemStacksForMissing()
   condFrame.cond_aura_fade:Hide()
   condFrame.cond_aura_fade_slider:Hide()
   condFrame.cond_aura_mine:Hide()
+  if condFrame.cond_aura_trackpet then
+    condFrame.cond_aura_trackpet:Hide()
+  end
   if condFrame.cond_aura_others then
     condFrame.cond_aura_others:Hide()
   end
@@ -5633,33 +5666,37 @@ do
   local function AuraCond_BuildAbilitySpellList()
     local spells = {}
     local seen = {}
-    local i = 1
 
-    while true do
-      local name, rank = GetSpellName(i, BOOKTYPE_SPELL)
-      if not name then
-        break
-      end
+    local function scanBook(bookType)
+      local i = 1
+      while true do
+        local name, rank = GetSpellName(i, bookType)
+        if not name then
+          break
+        end
 
-      -- filter out passives
-      local isPassive = false
-      if IsPassiveSpell then
-        local ok, passive = pcall(IsPassiveSpell, i, BOOKTYPE_SPELL)
-        if ok and passive then
+        local isPassive = false
+        if IsPassiveSpell then
+          local ok, passive = pcall(IsPassiveSpell, i, bookType)
+          if ok and passive then
+            isPassive = true
+          end
+        end
+        if (not isPassive) and rank and string.find(rank, "Passive") then
           isPassive = true
         end
-      end
-      if (not isPassive) and rank and string.find(rank, "Passive") then
-        isPassive = true
-      end
 
-      if not isPassive and name and name ~= "" and not seen[name] then
-        table.insert(spells, name)
-        seen[name] = true
-      end
+        if not isPassive and name and name ~= "" and not seen[name] then
+          table.insert(spells, name)
+          seen[name] = true
+        end
 
-      i = i + 1
+        i = i + 1
+      end
     end
+
+    scanBook(BOOKTYPE_SPELL)
+    scanBook(BOOKTYPE_PET)
 
     table.sort(spells, function(a, b)
       a = string.lower(a or "")
@@ -6955,37 +6992,42 @@ do
   local function VfxCond_BuildAbilitySpellList()
     local spells = {}
     local seen = {}
-    local i = 1
-  
-    while true do
-      local name, rank = GetSpellName(i, BOOKTYPE_SPELL)
-      if not name then break end
-  
-      local isPassive = false
-      if IsPassiveSpell then
-        local ok, passive = pcall(IsPassiveSpell, i, BOOKTYPE_SPELL)
-        if ok and passive then
+
+    local function scanBook(bookType)
+      local i = 1
+      while true do
+        local name, rank = GetSpellName(i, bookType)
+        if not name then break end
+
+        local isPassive = false
+        if IsPassiveSpell then
+          local ok, passive = pcall(IsPassiveSpell, i, bookType)
+          if ok and passive then
+            isPassive = true
+          end
+        end
+        if (not isPassive) and rank and string.find(rank, "Passive") then
           isPassive = true
         end
+
+        if not isPassive and name and name ~= "" and not seen[name] then
+          table.insert(spells, name)
+          seen[name] = true
+        end
+
+        i = i + 1
       end
-      if (not isPassive) and rank and string.find(rank, "Passive") then
-        isPassive = true
-      end
-  
-      if not isPassive and name and name ~= "" and not seen[name] then
-        table.insert(spells, name)
-        seen[name] = true
-      end
-  
-      i = i + 1
     end
-  
+
+    scanBook(BOOKTYPE_SPELL)
+    scanBook(BOOKTYPE_PET)
+
     table.sort(spells, function(a, b)
       a = string.lower(a or "")
       b = string.lower(b or "")
       return a < b
     end)
-  
+
     return spells
   end
 
@@ -8339,6 +8381,11 @@ local function UpdateConditionsUI(data)
       condFrame.cond_ability_cp_val:Hide()
       condFrame.cond_ability_cp_val_enter:Hide()
       if condFrame.cond_ability_class_note then
+        if _IsHunterOrWarlock and _IsHunterOrWarlock() then
+          condFrame.cond_ability_class_note:SetText("Pet-tracking option for buff/debuff under this section.")
+        else
+          condFrame.cond_ability_class_note:SetText("No class-specific option added for your class.")
+        end
         condFrame.cond_ability_class_note:Show()
       end
     end
@@ -8516,6 +8563,9 @@ local function UpdateConditionsUI(data)
     end
     if condFrame.cond_aura_class_note then
       condFrame.cond_aura_class_note:Hide()
+    end
+    if condFrame.cond_aura_trackpet then
+      condFrame.cond_aura_trackpet:Hide()
     end
     if condFrame.cond_aura_weaponDD then
       condFrame.cond_aura_weaponDD:Hide()
@@ -9465,6 +9515,11 @@ local ic = c.item or {}
       condFrame.cond_item_cp_val:Hide()
       condFrame.cond_item_cp_val_enter:Hide()
       if condFrame.cond_item_class_note then
+        if _IsHunterOrWarlock and _IsHunterOrWarlock() then
+          condFrame.cond_item_class_note:SetText("Pet-tracking option for buff/debuff under this section.")
+        else
+          condFrame.cond_item_class_note:SetText("No class-specific option added for your class.")
+        end
         condFrame.cond_item_class_note:Show()
       end
     end
@@ -9632,6 +9687,9 @@ local ic = c.item or {}
     if condFrame.cond_aura_class_note then
       condFrame.cond_aura_class_note:Hide()
     end
+    if condFrame.cond_aura_trackpet then
+      condFrame.cond_aura_trackpet:Hide()
+    end
 
   elseif data.type == "Custom" then
     -- Hide all separators – the edit box fills the entire conditions area.
@@ -9746,6 +9804,7 @@ local ic = c.item or {}
     _Hide(condFrame.cond_aura_hp_val_enter)
     _Hide(condFrame.cond_aura_mine)
     _Hide(condFrame.cond_aura_others)
+    _Hide(condFrame.cond_aura_trackpet)
     _Hide(condFrame.cond_aura_owner_tip)
     _Hide(condFrame.cond_aura_remaining_cb)
     _Hide(condFrame.cond_aura_remaining_comp)
@@ -9969,6 +10028,15 @@ local ic = c.item or {}
     condFrame.cond_aura_target_harm:SetChecked(tm)
     condFrame.cond_aura_onself:SetChecked(ts)
 
+    local isTrackPetActive = (_IsHunterOrWarlock and _IsHunterOrWarlock() and c.aura and c.aura.trackpet) and true or false
+    if condFrame.cond_aura_onself and condFrame.cond_aura_onself.text and condFrame.cond_aura_onself.text.SetText then
+      if isTrackPetActive then
+        condFrame.cond_aura_onself.text:SetText("Target (pet)")
+      else
+        condFrame.cond_aura_onself.text:SetText("On player (self)")
+      end
+    end
+
     -- === TARGET DISTANCE & TYPE (Aura) ===
     if condFrame.cond_aura_distanceDD then
       condFrame.cond_aura_distanceDD:Show()
@@ -10098,7 +10166,23 @@ local ic = c.item or {}
       condFrame.cond_aura_cp_val:Hide()
       condFrame.cond_aura_cp_val_enter:Hide()
       if condFrame.cond_aura_class_note then
-        condFrame.cond_aura_class_note:Show()
+        if _IsHunterOrWarlock and _IsHunterOrWarlock() then
+          condFrame.cond_aura_class_note:Hide()
+        else
+          condFrame.cond_aura_class_note:SetText("No class-specific option added for your class.")
+          condFrame.cond_aura_class_note:Show()
+        end
+      end
+    end
+
+    if condFrame.cond_aura_trackpet then
+      local isHW = _IsHunterOrWarlock and _IsHunterOrWarlock() or false
+      if isHW then
+        condFrame.cond_aura_trackpet:Show()
+        condFrame.cond_aura_trackpet:SetChecked((c.aura and c.aura.trackpet) and true or false)
+      else
+        condFrame.cond_aura_trackpet:Hide()
+        condFrame.cond_aura_trackpet:SetChecked(false)
       end
     end
 
@@ -10166,7 +10250,9 @@ local ic = c.item or {}
 
     -- If this aura is in the lock-list AND target is "On player (self)", ownership is meaningless.
     local lockOwnerOnSelf = false
-    if isSelfOnly and DoiteEdit_ShouldLockAuraOwnerOnSelf and DoiteEdit_ShouldLockAuraOwnerOnSelf(data) then
+    if isTrackPetActive then
+      lockOwnerOnSelf = true
+    elseif isSelfOnly and DoiteEdit_ShouldLockAuraOwnerOnSelf and DoiteEdit_ShouldLockAuraOwnerOnSelf(data) then
       lockOwnerOnSelf = true
     end
 
@@ -10246,8 +10332,8 @@ local ic = c.item or {}
       -- === Text: Time remaining ===
       condFrame.cond_aura_text_time:Show()
 
-      if isSelfOnly then
-        -- On Player (self): user may freely toggle Text: Remaining
+      if isTrackPetActive or isSelfOnly then
+        -- Pet-tracking (or On Player self): user may freely toggle Text: Remaining
         DoiteEdit_EnableCheck(condFrame.cond_aura_text_time)
         condFrame.cond_aura_text_time:SetChecked((c.aura and c.aura.textTimeRemaining) or false)
 
@@ -10389,8 +10475,8 @@ local ic = c.item or {}
         condFrame.cond_aura_remaining_cb.text:SetText("Remaining")
       end
 
-      if isSelfOnly then
-        -- On Player (self): user can freely toggle Remaining
+      if isTrackPetActive or isSelfOnly then
+        -- Pet-tracking (or On Player self): user can freely toggle Remaining
         DoiteEdit_EnableCheck(condFrame.cond_aura_remaining_cb)
         condFrame.cond_aura_remaining_cb:SetChecked(aRemEnabled)
 
