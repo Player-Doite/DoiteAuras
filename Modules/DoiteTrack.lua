@@ -613,6 +613,44 @@ local function _GetAuraBucketForGuid(guid, create)
   return t
 end
 
+-- Prune stale per-target aura state so target churn doesn't retain GUID buckets forever.
+-- Keep this cheap and infrequent; called from NP aura event path.
+function DoiteTrack:_PruneAuraStateByGuid(now)
+  local keepFor = 20
+  local guid, bucket
+  for guid, bucket in pairs(AuraStateByGuid) do
+    local keepBucket = false
+    if type(bucket) == "table" then
+      local sid, a
+      for sid, a in pairs(bucket) do
+        if type(a) == "table" then
+          local appliedAt = tonumber(a.appliedAt) or 0
+          local fullDur = tonumber(a.fullDur) or 0
+          local lastSeen = tonumber(a.lastSeen) or appliedAt
+          local expiresAt = appliedAt + fullDur
+
+          -- Drop entries long after expiry, or immediately if malformed.
+          if fullDur <= 0 or appliedAt <= 0 then
+            bucket[sid] = nil
+          elseif (now - expiresAt) > keepFor then
+            bucket[sid] = nil
+          elseif (now - lastSeen) > (fullDur + keepFor) then
+            bucket[sid] = nil
+          else
+            keepBucket = true
+          end
+        else
+          bucket[sid] = nil
+        end
+      end
+    end
+
+    if not keepBucket then
+      AuraStateByGuid[guid] = nil
+    end
+  end
+end
+
 ---------------------------------------------------------------
 -- Special-cases:
 ---------------------------------------------------------------
@@ -1673,6 +1711,12 @@ end
 --  AURA_CAST_ON_SELF/OTHER: capture durationMs + set pending.dur
 --  BUFF/DEBUFF_ADDED_SELF/OTHER: confirm apply -> start timer if pending exists
 function DoiteTrack:_OnAuraNPEvent()
+  local nowForPrune = GetTime and GetTime() or 0
+  if nowForPrune >= (self._nextAuraStatePruneAt or 0) then
+    self._nextAuraStatePruneAt = nowForPrune + 10
+    self:_PruneAuraStateByGuid(nowForPrune)
+  end
+
   ----------------------------------------------------------------
   -- 0) Paladin SC: stop logic on REMOVED events (only registered while palMode)
   -- Handles both debuff-slot and buff-slot (16 cap spill) removals.
