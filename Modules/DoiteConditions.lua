@@ -2310,6 +2310,7 @@ local SlideMgr = {
 }
 _G.DoiteConditions_SlideMgr = SlideMgr
 _G.DoiteConditions_DirtyAbilityKeys = _G.DoiteConditions_DirtyAbilityKeys or {}
+_G.DoiteConditions_DirtyAuraKeys = _G.DoiteConditions_DirtyAuraKeys or {}
 
 local _slideTick = CreateFrame("Frame", "DoiteSlideTick")
 _slideTick:Hide()
@@ -4911,6 +4912,21 @@ local function _RebuildTargetModsFlags()
   _hasAnyTargetMods_Aura = false
   if DoiteConditions then
     DoiteConditions._hasAnyItemLogic = false
+    DoiteConditions._targetModKeysAbilityItem = DoiteConditions._targetModKeysAbilityItem or {}
+    DoiteConditions._targetModKeysAura = DoiteConditions._targetModKeysAura or {}
+  end
+
+  local abilityKeys = DoiteConditions and DoiteConditions._targetModKeysAbilityItem
+  local auraKeys = DoiteConditions and DoiteConditions._targetModKeysAura
+  if abilityKeys then
+    for i = table.getn(abilityKeys), 1, -1 do
+      abilityKeys[i] = nil
+    end
+  end
+  if auraKeys then
+    for i = table.getn(auraKeys), 1, -1 do
+      auraKeys[i] = nil
+    end
   end
 
   -- 1) Live icons
@@ -4923,13 +4939,16 @@ local function _RebuildTargetModsFlags()
         if (data.type == "Ability" or data.type == "Item")
             and _IconHasTargetMods_AbilityOrItem(data) then
           _hasAnyTargetMods_Ability = true
+          if abilityKeys then
+            table.insert(abilityKeys, key)
+          end
         end
         if (data.type == "Buff" or data.type == "Debuff")
             and _IconHasTargetMods_Aura(data) then
           _hasAnyTargetMods_Aura = true
-        end
-        if _hasAnyTargetMods_Ability and _hasAnyTargetMods_Aura then
-          return
+          if auraKeys then
+            table.insert(auraKeys, key)
+          end
         end
       end
     end
@@ -4945,13 +4964,16 @@ local function _RebuildTargetModsFlags()
         if (data.type == "Ability" or data.type == "Item")
             and _IconHasTargetMods_AbilityOrItem(data) then
           _hasAnyTargetMods_Ability = true
+          if abilityKeys and ((not DoiteAurasDB) or (not DoiteAurasDB.spells) or (not DoiteAurasDB.spells[key])) then
+            table.insert(abilityKeys, key)
+          end
         end
         if (data.type == "Buff" or data.type == "Debuff")
             and _IconHasTargetMods_Aura(data) then
           _hasAnyTargetMods_Aura = true
-        end
-        if _hasAnyTargetMods_Ability and _hasAnyTargetMods_Aura then
-          return
+          if auraKeys and ((not DoiteAurasDB) or (not DoiteAurasDB.spells) or (not DoiteAurasDB.spells[key])) then
+            table.insert(auraKeys, key)
+          end
         end
       end
     end
@@ -7356,6 +7378,32 @@ function DoiteConditions:EvaluateAbilityKeys(dirtyKeys)
   end
 end
 
+function DoiteConditions:EvaluateAuraKeys(dirtyKeys)
+  if type(dirtyKeys) ~= "table" then
+    return
+  end
+
+  local live = DoiteAurasDB and DoiteAurasDB.spells
+  local edit = DoiteDB and DoiteDB.icons
+  local key, data
+
+  for key, _ in pairs(dirtyKeys) do
+    data = nil
+    if live then
+      data = live[key]
+    end
+    if (not data) and edit then
+      data = edit[key]
+    end
+
+    if data and (data.type == "Buff" or data.type == "Debuff") then
+      data.key = key
+      local show, glow, grey, fade, fadeAlpha = CheckAuraConditions(data)
+      DoiteConditions:ApplyVisuals(key, show, glow, grey, fade, fadeAlpha)
+    end
+  end
+end
+
 local function _DoiteCustomCompileForData(key, data)
   if type(data) ~= "table" then
     return nil, "Invalid custom data entry."
@@ -7720,11 +7768,15 @@ function DoiteConditions_OnUpdate(dt)
   if UnitExists and UnitExists("target") and (_hasAnyTargetMods_Ability or _hasAnyTargetMods_Aura) then
     if _distAccum >= 0.15 then
       _distAccum = 0
-      if _hasAnyTargetMods_Ability then
-        dirty_ability = true
+      if _hasAnyTargetMods_Ability and DoiteConditions and DoiteConditions._targetModKeysAbilityItem then
+        for _, key in ipairs(DoiteConditions._targetModKeysAbilityItem) do
+          _G.DoiteConditions_DirtyAbilityKeys[key] = true
+        end
       end
-      if _hasAnyTargetMods_Aura then
-        dirty_aura = true
+      if _hasAnyTargetMods_Aura and DoiteConditions and DoiteConditions._targetModKeysAura then
+        for _, key in ipairs(DoiteConditions._targetModKeysAura) do
+          _G.DoiteConditions_DirtyAuraKeys[key] = true
+        end
       end
     end
   else
@@ -7740,6 +7792,7 @@ function DoiteConditions_OnUpdate(dt)
   local needAbilityTime = dirty_ability_time
   local needAura = dirty_aura or dirty_target or dirty_power
   local needAbilityKeys = next(_G.DoiteConditions_DirtyAbilityKeys)
+  local needAuraKeys = next(_G.DoiteConditions_DirtyAuraKeys)
   local didCustom = false
 
   if needAbilityLogic or needAbilityTime then
@@ -7752,10 +7805,17 @@ function DoiteConditions_OnUpdate(dt)
   end
   if needAura then
     _G.DoiteConditions:EvaluateAuras()
+  elseif needAuraKeys then
+    _G.DoiteConditions:EvaluateAuraKeys(_G.DoiteConditions_DirtyAuraKeys)
+    for key, _ in pairs(_G.DoiteConditions_DirtyAuraKeys) do
+      _G.DoiteConditions_DirtyAuraKeys[key] = nil
+    end
   end
 
-  -- Custom functions run here near the end of OnUpdate.
-  didCustom = _G.DoiteConditions:EvaluateCustom() and true or false
+  -- Custom functions are only evaluated when some pass actually ran.
+  if needAbilityLogic or needAbilityTime or needAura or needAbilityKeys or needAuraKeys or DoiteConditions._updateRequested then
+    didCustom = _G.DoiteConditions:EvaluateCustom() and true or false
+  end
 
   if needAbilityLogic or needAbilityTime or needAura or didCustom then
     dirty_aura, dirty_target, dirty_power = false, false, false
@@ -7764,7 +7824,7 @@ function DoiteConditions_OnUpdate(dt)
     dirty_ability = next(DoiteConditions_SlideMgr.active) and true or false
   end
 
-  if dirty_ability or dirty_aura or dirty_target or dirty_power or dirty_ability_time or next(DoiteConditions_SlideMgr.active) or next(_G.DoiteConditions_DirtyAbilityKeys) or DoiteConditions._updateRequested then
+  if dirty_ability or dirty_aura or dirty_target or dirty_power or dirty_ability_time or next(DoiteConditions_SlideMgr.active) or next(_G.DoiteConditions_DirtyAbilityKeys) or next(_G.DoiteConditions_DirtyAuraKeys) or DoiteConditions._updateRequested then
     return
   end
 end
@@ -7781,7 +7841,7 @@ _tick:SetScript("OnUpdate", function()
   dt = _tick._acc
   _tick._acc = 0
 
-  if dirty_ability or dirty_aura or dirty_target or dirty_power or dirty_ability_time or next(DoiteConditions_SlideMgr.active) or next(_G.DoiteConditions_DirtyAbilityKeys) or DoiteConditions._updateRequested or _hasAnyAbilityTimeLogic or _hasAnyAuraTimeLogic or (_G.UnitExists and _G.UnitExists("target") and (_hasAnyTargetMods_Ability or _hasAnyTargetMods_Aura)) or (_isWarrior and (_WarriorProc.REV_until > 0 or _WarriorProc.OP_until > 0)) then
+  if dirty_ability or dirty_aura or dirty_target or dirty_power or dirty_ability_time or next(DoiteConditions_SlideMgr.active) or next(_G.DoiteConditions_DirtyAbilityKeys) or next(_G.DoiteConditions_DirtyAuraKeys) or DoiteConditions._updateRequested or _hasAnyAbilityTimeLogic or _hasAnyAuraTimeLogic or (_G.UnitExists and _G.UnitExists("target") and (_hasAnyTargetMods_Ability or _hasAnyTargetMods_Aura)) or (_isWarrior and (_WarriorProc.REV_until > 0 or _WarriorProc.OP_until > 0)) then
     if _G["DoiteAuras_DebugPcallOnUpdate"] == true then
       local ok, err = pcall(DoiteConditions_OnUpdate, dt)
       if not ok and DEFAULT_CHAT_FRAME then
