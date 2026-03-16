@@ -2327,6 +2327,7 @@ _slideTick:SetScript("OnUpdate", function()
   -- While sliding, force abilities to re-paint frequently so positions update smoothly.
   if anyActive then
     dirty_ability = true
+    DoiteConditions_RequestUpdate()
   else
     this:Hide()
   end
@@ -7659,8 +7660,59 @@ _teFastActive = false
 
 -- Lift the body into a real function
 function DoiteConditions_OnUpdate(dt)
+  _textAccum = _textAccum + dt
+  _distAccum = _distAccum + dt
+  _timeEvalAccum = _timeEvalAccum + dt
+
+  local keepAlive = false
+
   -- Coalesce aura events: scan/rebuild at most once per frame, before any rendering/eval.
   DoiteConditions:ProcessPendingAuraScans()
+
+  -- Keep aura/cooldown remaining text fresh while idle.
+  if _hasAnyAbilityTimeLogic or _hasAnyAuraTimeLogic then
+    keepAlive = true
+
+    if _textAccum >= 0.10 then
+      _textAccum = 0
+      DoiteConditions_UpdateTimeText()
+    end
+
+    -- Ability/item time predicates (cooldown end / remaining) still need periodic re-check.
+    if _hasAnyAbilityTimeLogic and _timeEvalAccum >= 0.50 then
+      _timeEvalAccum = 0
+      dirty_ability_time = true
+    end
+  else
+    _textAccum = 0
+    _timeEvalAccum = 0
+  end
+
+  -- Target-modifier checks (in range / melee range) need a light heartbeat while target exists.
+  if UnitExists and UnitExists("target") and (_hasAnyTargetMods_Ability or _hasAnyTargetMods_Aura) then
+    keepAlive = true
+    if _distAccum >= 0.15 then
+      _distAccum = 0
+      if _hasAnyTargetMods_Ability then
+        dirty_ability = true
+      end
+      if _hasAnyTargetMods_Aura then
+        dirty_aura = true
+      end
+    end
+  else
+    _distAccum = 0
+  end
+
+  -- Warrior proc windows can expire without another combat log event.
+  if _isWarrior and (_WarriorProc.REV_until > 0 or _WarriorProc.OP_until > 0) then
+    keepAlive = true
+    _WarriorProcTick()
+  end
+
+  if next(DoiteConditions_SlideMgr.active) then
+    keepAlive = true
+  end
 
   local needAbilityLogic = dirty_ability or dirty_power
   local needAbilityTime = dirty_ability_time
@@ -7685,6 +7737,10 @@ function DoiteConditions_OnUpdate(dt)
   end
 
   if dirty_ability or dirty_aura or dirty_target or dirty_power or dirty_ability_time or next(DoiteConditions_SlideMgr.active) then
+    return
+  end
+
+  if keepAlive then
     return
   end
 
