@@ -4660,6 +4660,7 @@ function DoiteConditions:_ClearTargetAuraSnapshot()
   local s = auraSnapshot and auraSnapshot.target
   if s then
     local b, d = s.buffs, s.debuffs
+    local bi, di = s.buffIds, s.debuffIds
     if b then
       for k in pairs(b) do
         b[k] = nil
@@ -4670,6 +4671,18 @@ function DoiteConditions:_ClearTargetAuraSnapshot()
         d[k] = nil
       end
     end
+    if bi then
+      for k in pairs(bi) do
+        bi[k] = nil
+      end
+    end
+    if di then
+      for k in pairs(di) do
+        di[k] = nil
+      end
+    end
+    s.buffCount = 0
+    s.debuffCount = 0
   end
 end
 
