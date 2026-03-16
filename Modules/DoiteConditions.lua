@@ -5813,18 +5813,13 @@ local function CheckAuraConditions(data)
     end
   end
 
-  if show and c.trackpet == true and c.targetSelf == true then
-    if (not DoitePetAuras) or (not DoitePetAuras.TargetIsPet) or (not DoitePetAuras:TargetIsPet()) then
-      show = false
-    end
-  end
 
   local found = false
 
   if show and allowSelf then
     local hit = false
     if c.trackpet == true and DoitePetAuras and DoitePetAuras.HasAura then
-      hit = DoitePetAuras:HasAura(name, auraSpellId, useSpellIdOnly, wantBuff, wantDebuff)
+      hit = DoitePetAuras.HasAura(name, auraSpellId, useSpellIdOnly, wantBuff, wantDebuff)
     elseif useSpellIdOnly and auraSpellId > 0 then
       if wantBuff then
         hit = DoitePlayerAuras.HasBuffSpellId(auraSpellId)
@@ -5847,7 +5842,7 @@ local function CheckAuraConditions(data)
 
   if show and (not found) and allowHelp then
     if c.trackpet == true and DoitePetAuras and DoitePetAuras.HasAura then
-      if DoitePetAuras:HasAura(name, auraSpellId, useSpellIdOnly, wantBuff, wantDebuff) then
+      if DoitePetAuras.HasAura(name, auraSpellId, useSpellIdOnly, wantBuff, wantDebuff) then
         found = true
       end
     else
@@ -5876,7 +5871,7 @@ local function CheckAuraConditions(data)
 
   if show and (not found) and allowHarm then
     if c.trackpet == true and DoitePetAuras and DoitePetAuras.HasAura then
-      if DoitePetAuras:HasAura(name, auraSpellId, useSpellIdOnly, wantBuff, wantDebuff) then
+      if DoitePetAuras.HasAura(name, auraSpellId, useSpellIdOnly, wantBuff, wantDebuff) then
         found = true
       end
     else
@@ -6061,7 +6056,7 @@ local function CheckAuraConditions(data)
         if targetSelf then
           local rem = nil
           if c.trackpet == true and DoitePetAuras and DoitePetAuras.GetAuraRemainingSeconds then
-            rem = DoitePetAuras:GetAuraRemainingSeconds(name, auraSpellId, useSpellIdOnly)
+            rem = DoitePetAuras.GetAuraRemainingSeconds(name, auraSpellId, useSpellIdOnly)
           else
             rem = _PlayerAuraRemainingSeconds(name, auraSpellId, useSpellIdOnly)
           end
@@ -6590,7 +6585,7 @@ local function _Doite_UpdateOverlayForFrame(frame, key, dataTbl, slideActive)
         local remAura = nil
 
         if ca.trackpet == true and DoitePetAuras and DoitePetAuras.GetAuraRemainingSeconds then
-          remAura = DoitePetAuras:GetAuraRemainingSeconds(auraName, auraSpellId, useSpellIdOnly)
+          remAura = DoitePetAuras.GetAuraRemainingSeconds(auraName, auraSpellId, useSpellIdOnly)
         elseif targetSelf then
           -- PLAYER/SELF remaining-time text must reflect the actual visible aura time (vanilla/tooltip scan), never DoiteTrack. Ownership filtering (onlyMine/onlyOthers) belongs in the condition logic.
           remAura = _PlayerAuraRemainingSeconds(auraName, auraSpellId, useSpellIdOnly)
