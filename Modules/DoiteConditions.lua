@@ -6307,9 +6307,9 @@ local function _Doite_UpdateOverlayForFrame(frame, key, dataTbl, slideActive)
     end
     dur = dur or 0
 
-    -- 1) ON COOLDOWN: always show for the entire real cooldown.
+    -- 1) ON COOLDOWN: only show real cooldowns (ignore pure GCD blips).
     if ca.mode == "oncd" or ca.mode == "usableoncd" or ca.mode == "nocdoncd" then
-      return (dur > 0)
+      return (dur > 1.6)
     end
 
     -- 2) USABLE / NOTCD with slider: slide can override the 1.6s/GCD filter
