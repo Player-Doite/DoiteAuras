@@ -1183,6 +1183,11 @@ local function _ScanPlayerItemInstances(data)
       end
       if match then
         hasEquipped = true
+        if (not expectedId) and id and tonumber(id) then
+          data.itemId = tonumber(id)
+          data.itemID = tonumber(id)
+          expectedId = tonumber(id)
+        end
         if not firstEquippedSlot then
           firstEquippedSlot = slot
         end
@@ -1225,6 +1230,11 @@ local function _ScanPlayerItemInstances(data)
           end
           if match then
             hasBag = true
+            if (not expectedId) and id and tonumber(id) then
+              data.itemId = tonumber(id)
+              data.itemID = tonumber(id)
+              expectedId = tonumber(id)
+            end
             if (not firstBagBag) then
               firstBagBag = bag
               firstBagSlot = bslot
