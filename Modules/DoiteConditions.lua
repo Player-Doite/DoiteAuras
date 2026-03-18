@@ -1146,7 +1146,9 @@ local function _ScanPlayerItemInstances(data)
     data._daItemScanCacheKeyName = nil
   end
 
-  if cacheKey then
+  local skipCache = (GetTime and (GetTime() < (DoiteConditions._daItemScanNoCacheUntil or 0))) and true or false
+
+  if cacheKey and (not skipCache) then
     local c = _ItemScanCache[cacheKey]
     if c then
       if (c.gen == _ItemScanGen) then
@@ -1246,7 +1248,7 @@ local function _ScanPlayerItemInstances(data)
   end
 
   -- Store in cache (reusing bagLoc table)
-  if cacheKey then
+  if cacheKey and (not skipCache) then
     local c = _ItemScanCache[cacheKey]
     if not c then
       c = {}
@@ -1498,17 +1500,19 @@ local function _EvaluateItemCoreState(data, c)
             if GetEquippedItem then
               local info = GetEquippedItem("player", idx)
 
-              -- Always track what's currently in the slot so stale itemId doesn't stick.
-              if info and info.itemId then
-                slotC.itemId = info.itemId
-              else
-                slotC.itemId = nil
-              end
+              -- If API returns nil for a frame, keep last good cache to avoid flicker.
+              if info then
+                -- Always track what's currently in the slot so stale itemId doesn't stick.
+                if info.itemId then
+                  slotC.itemId = info.itemId
+                else
+                  slotC.itemId = nil
+                end
 
-              local teId = info and info.tempEnchantId or nil
-              local msLeft = info and info.tempEnchantmentTimeLeftMs or nil
+                local teId = info.tempEnchantId
+                local msLeft = info.tempEnchantmentTimeLeftMs
 
-              if info and teId and teId > 0 then
+                if teId and teId > 0 then
                 -- Optional per-slot memory (handles rare cases where timeLeft isn't returned)
                 local memE = slotC._e
                 if not memE then
@@ -1582,11 +1586,12 @@ local function _EvaluateItemCoreState(data, c)
                   slotC.charges = ch
                 end
 
-              else
-                -- No temp enchant on the CURRENTLY equipped weapon in this slot => clear display.
-                slotC.endTime = nil
-                slotC.tempEnchantId = nil
-                slotC.charges = 0
+                else
+                  -- No temp enchant on the CURRENTLY equipped weapon in this slot => clear display.
+                  slotC.endTime = nil
+                  slotC.tempEnchantId = nil
+                  slotC.charges = 0
+                end
               end
             end
           end
@@ -7996,6 +8001,9 @@ eventFrame:SetScript("OnEvent", function()
       if _InvalidateItemScanCache then
         _InvalidateItemScanCache()
       end
+      -- During bag churn some APIs can briefly return incomplete slot data;
+      -- avoid caching that transient snapshot as "truth" for this generation.
+      DoiteConditions._daItemScanNoCacheUntil = (GetTime and (GetTime() + 0.20)) or 0
       dirty_ability = true
     end
 
