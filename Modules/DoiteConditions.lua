@@ -8,6 +8,26 @@
 local DoiteConditions = {}
 _G["DoiteConditions"] = DoiteConditions
 
+-- Defensive bootstrap: DoiteConditions may receive events before DoitePlayerAuras
+-- is initialized (or when that module failed to load). Provide a safe fallback
+-- object so condition evaluation never hard-errors on nil global access.
+if not _G["DoitePlayerAuras"] then
+  _G["DoitePlayerAuras"] = {
+    IsActive = function() return false end,
+    HasBuff = function() return false end,
+    HasDebuff = function() return false end,
+    HasBuffSpellId = function() return false end,
+    HasDebuffSpellId = function() return false end,
+    GetActiveAuraSlot = function() return nil end,
+    GetActiveAuraSlotBySpellId = function() return nil end,
+    GetHiddenBuffRemaining = function() return nil end,
+    GetDebuffStacksBySpellId = function() return nil end,
+    GetBuffStacksBySpellId = function() return nil end,
+    GetDebuffStacks = function() return nil end,
+    GetBuffStacks = function() return nil end,
+  }
+end
+
 if not _G["DoiteAurasDB"] then
   _G["DoiteAurasDB"] = {}
 end
