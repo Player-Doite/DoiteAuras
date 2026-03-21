@@ -93,6 +93,44 @@ local function RemoveCappedBuff(spellName)
   DoitePlayerAuras.cappedBuffsStacks[spellName] = 0
 end
 
+local function ResetTrackedAuraState()
+  DoitePlayerAuras.activeBuffs = {}
+  DoitePlayerAuras.activeDebuffs = {}
+  DoitePlayerAuras.activeBuffSpellIds = {}
+  DoitePlayerAuras.activeDebuffSpellIds = {}
+  DoitePlayerAuras.numActiveBuffs = 0
+  DoitePlayerAuras.numActiveDebuffs = 0
+
+  for i = 1, MAX_BUFF_SLOTS do
+    DoitePlayerAuras.buffs[i].spellId = nil
+    DoitePlayerAuras.buffs[i].stacks = nil
+  end
+  for i = 1, MAX_DEBUFF_SLOTS do
+    DoitePlayerAuras.debuffs[i].spellId = nil
+    DoitePlayerAuras.debuffs[i].stacks = nil
+  end
+end
+
+local function IsAuraCapStatusSet(auraCapStatus, bitMask)
+  auraCapStatus = tonumber(auraCapStatus) or 0
+  bitMask = tonumber(bitMask) or 0
+  if bitMask <= 0 then
+    return false
+  end
+
+  if bit and bit.band then
+    return bit.band(auraCapStatus, bitMask) ~= 0
+  end
+
+  return math.floor(auraCapStatus / bitMask) % 2 == 1
+end
+
+local function NotifyPlayerAuraStateChanged()
+  if type(DoiteConditions_RequestImmediateEval) == "function" then
+    DoiteConditions_RequestImmediateEval()
+  end
+end
+
 local function UpdateAuras()
   local auraSpellIds = GetUnitField("player", "aura")
   local auraStacks = GetUnitField("player", "auraApplications")
@@ -137,6 +175,9 @@ end
 function DoitePlayerAuras.IsHiddenByBuffCap(spellName)
   local expirationTime = DoitePlayerAuras.cappedBuffsExpirationTime[spellName]
   if expirationTime and expirationTime > 0 then
+    if expirationTime == math.huge then
+      return true
+    end
     if expirationTime > GetTime() then
       return true
     else
@@ -328,6 +369,9 @@ end
 function DoitePlayerAuras.GetHiddenBuffRemaining(spellName)
   local expirationTime = DoitePlayerAuras.cappedBuffsExpirationTime[spellName]
   if expirationTime and expirationTime > 0 then
+    if expirationTime == math.huge then
+      return math.huge
+    end
     local remaining = expirationTime - GetTime()
     if remaining > 0 then
       return remaining
@@ -353,6 +397,8 @@ PlayerEnteringWorldFrame:SetScript("OnEvent", function()
   if DoitePlayerAuras.numActiveBuffs >= MAX_BUFF_SLOTS or DoitePlayerAuras.debugBuffCap then
     DoitePlayerAuras.RegisterBuffCapEvents()
   end
+
+  NotifyPlayerAuraStateChanged()
 end)
 
 -- Frame for BUFF_ADDED_SELF event
@@ -379,6 +425,8 @@ BuffAddedFrame:SetScript("OnEvent", function()
       DoitePlayerAuras.RegisterBuffCapEvents()
     end
   end
+
+  NotifyPlayerAuraStateChanged()
 end)
 
 -- Frame for BUFF_REMOVED_SELF event
@@ -418,6 +466,8 @@ BuffRemovedFrame:SetScript("OnEvent", function()
     -- state == 2, stack decrease
     DoitePlayerAuras.buffs[slot].stacks = stacks
   end
+
+  NotifyPlayerAuraStateChanged()
 end)
 
 -- Frame for DEBUFF_ADDED_SELF event
@@ -440,6 +490,8 @@ DebuffAddedFrame:SetScript("OnEvent", function()
     -- newly added
     DoitePlayerAuras.numActiveDebuffs = DoitePlayerAuras.numActiveDebuffs + 1
   end
+
+  NotifyPlayerAuraStateChanged()
 end)
 
 -- Frame for DEBUFF_REMOVED_SELF event
@@ -465,6 +517,8 @@ DebuffRemovedFrame:SetScript("OnEvent", function()
     -- state == 2, stack decrease
     DoitePlayerAuras.debuffs[slot].stacks = stacks
   end
+
+  NotifyPlayerAuraStateChanged()
 end)
 
 -- Frame for AURA_CAST_ON_SELF event (dynamically registered during buff cap)
@@ -474,7 +528,11 @@ AuraCastFrame:SetScript("OnEvent", function()
   -- int auraCapStatus - bitfield: 1 = buff bar full, 2 = debuff bar full (3 means both)
   local spellId, durationMs, auraCapStatus = arg1, arg8, arg9
 
-  local applyCappedBuff = auraCapStatus == 1 or auraCapStatus == 3 or DoitePlayerAuras.debugBuffCap
+  -- Buff-cap tracking should only key off buff-bar-full.
+  -- debuff-bar-full (bit 2) can be true while buffs are still normal,
+  -- which would incorrectly classify regular aura casts as hidden capped buffs.
+  local applyCappedBuff = DoitePlayerAuras.debugBuffCap or
+      IsAuraCapStatusSet(auraCapStatus, 1)
 
 
 
@@ -507,18 +565,25 @@ AuraCastFrame:SetScript("OnEvent", function()
       DoitePlayerAuras.cappedBuffsStacks[spellName] = 0
     end
 
-    DoitePlayerAuras.cappedBuffsExpirationTime[spellName] = GetTime() + durationMs / 1000.0
+    if durationMs and durationMs > 0 then
+      DoitePlayerAuras.cappedBuffsExpirationTime[spellName] = GetTime() + durationMs / 1000.0
+    else
+      -- no duration = effectively infinite until canceled/removed
+      DoitePlayerAuras.cappedBuffsExpirationTime[spellName] = math.huge
+    end
 
     -- increment stacks, capped at max stacks
     local currentStacks = DoitePlayerAuras.cappedBuffsStacks[spellName] or 0
     local maxStacks = DoitePlayerAuras.spellNameToMaxStacks[spellName] or 1
 
     DoitePlayerAuras.cappedBuffsStacks[spellName] = math.min(currentStacks + 1, maxStacks)
+    NotifyPlayerAuraStateChanged()
   end
 end)
 
 -- Shared logic for processing spell casts that may consume stacks or clearcasting
 local function ProcessBuffCappedSpell(spellId, casterGUID, targetGUID)
+  local changed = false
   if DoiteBuffData.stackModifiers[spellId] then
     local modifiedBuffName = DoiteBuffData.stackModifiers[spellId].modifiedBuffName
     local stackChange = DoiteBuffData.stackModifiers[spellId].stackChange
@@ -529,17 +594,21 @@ local function ProcessBuffCappedSpell(spellId, casterGUID, targetGUID)
       local maxStacks = DoitePlayerAuras.spellNameToMaxStacks[modifiedBuffName] or 1
       local newStacks = math.min(currentStacks + stackChange, maxStacks)
       DoitePlayerAuras.cappedBuffsStacks[modifiedBuffName] = newStacks
+      changed = true
 
       local duration = DoiteBuffData.stackModifiers[spellId].duration
       if duration then
         DoitePlayerAuras.cappedBuffsExpirationTime[modifiedBuffName] = GetTime() + duration
+        changed = true
       end
     elseif stackChange < 0 and currentStacks > 0 then
       local newStacks = math.max(0, currentStacks + stackChange)
       DoitePlayerAuras.cappedBuffsStacks[modifiedBuffName] = newStacks
+      changed = true
 
       if newStacks == 0 then
         RemoveCappedBuff(modifiedBuffName)
+        changed = true
       end
     end
   end
@@ -551,7 +620,12 @@ local function ProcessBuffCappedSpell(spellId, casterGUID, targetGUID)
     local manaCost = GetSpellRecField(spellId, "manaCost")
     if manaCost and manaCost > 0 then
       RemoveCappedBuff("Clearcasting")
+      changed = true
     end
+  end
+
+  if changed then
+    NotifyPlayerAuraStateChanged()
   end
 end
 
@@ -581,6 +655,7 @@ function DoitePlayerAuras.RegisterBuffCapEvents()
   AuraCastFrame:RegisterEvent("AURA_CAST_ON_SELF")
   SpellGoSelfFrame:RegisterEvent("SPELL_GO_SELF")
   SpellChannelStartFrame:RegisterEvent("SPELL_CHANNEL_START")
+  NotifyPlayerAuraStateChanged()
 end
 
 -- Currently unused as it is hard to know when we can safely unregister these events
@@ -593,6 +668,7 @@ function DoitePlayerAuras.UnregisterBuffCapEvents()
   AuraCastFrame:UnregisterEvent("AURA_CAST_ON_SELF")
   SpellGoSelfFrame:UnregisterEvent("SPELL_GO_SELF")
   SpellChannelStartFrame:UnregisterEvent("SPELL_CHANNEL_START")
+  NotifyPlayerAuraStateChanged()
 end
 
 function DoitePlayerAuras.ToggleDebugBuffCap()
@@ -600,6 +676,9 @@ function DoitePlayerAuras.ToggleDebugBuffCap()
 
   if DoitePlayerAuras.debugBuffCap then
     -- Enabling debug mode: unregister normal events and register buff cap events
+    ResetTrackedAuraState()
+    DoitePlayerAuras.cappedBuffsExpirationTime = {}
+    DoitePlayerAuras.cappedBuffsStacks = {}
     BuffAddedFrame:UnregisterEvent("BUFF_ADDED_SELF")
     BuffRemovedFrame:UnregisterEvent("BUFF_REMOVED_SELF")
     DebuffAddedFrame:UnregisterEvent("DEBUFF_ADDED_SELF")
@@ -614,7 +693,12 @@ function DoitePlayerAuras.ToggleDebugBuffCap()
     DebuffRemovedFrame:RegisterEvent("DEBUFF_REMOVED_SELF")
     DoitePlayerAuras.UnregisterBuffCapEvents()
     -- Refresh buff/debuff state
-	UpdateAuras()
+    ResetTrackedAuraState()
+    DoitePlayerAuras.cappedBuffsExpirationTime = {}
+    DoitePlayerAuras.cappedBuffsStacks = {}
+    UpdateAuras()
     print("DoitePlayerAuras: Debug buff cap disabled")
   end
+
+  NotifyPlayerAuraStateChanged()
 end

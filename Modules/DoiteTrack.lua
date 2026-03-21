@@ -68,6 +68,16 @@ local ManualDurationBySpellId = {
   --[SpellID] = #,
 }
 
+-- CP-based duration fallback by normalized spell name.
+-- Used when spellId is unknown/new and not present in ManualDurationBySpellId.
+local ManualDurationBySpellNameNorm = {
+  ["rip"] = { base = 8, perCp = 2 },
+  ["rupture"] = { base = 6, perCp = 2 },
+  ["kidney shot"] = { base = 1, perCp = 1 },
+  ["slice and dice"] = { base = 6, perCp = 3 },
+  ["expose armor"] = { base = 30, perCp = 0 },
+}
+
 ---------------------------------------------------------------
 -- Local API shortcuts (assigned on login)
 ---------------------------------------------------------------
@@ -921,6 +931,51 @@ local function _NP_PrintLine(spellId, spellName, spellNorm, targetGuid, duration
   end
 end
 
+-- AURA_CAST may fire multiple times per spell/target (multi-effect spells).
+-- Merge bursts and keep the longest duration seen in a short window.
+local function _MergeAuraCastDuration(spellId, casterGuid, targetGuid, durationMs)
+  local store = _G["DoiteTrack_AuraCastMerge"]
+  if not store then
+    store = {}
+    _G["DoiteTrack_AuraCastMerge"] = store
+  end
+
+  local now = GetTime and GetTime() or 0
+  local window = 0.12
+  local cleanupAt = _G["DoiteTrack_AuraCastMergeCleanupAt"] or 0
+
+  if now >= cleanupAt then
+    local cutoff = now - (window * 4)
+    for k, v in pairs(store) do
+      if (not v) or (not v.t) or v.t < cutoff then
+        store[k] = nil
+      end
+    end
+    _G["DoiteTrack_AuraCastMergeCleanupAt"] = now + 1.0
+  end
+
+  local key = tostring(tonumber(spellId) or 0) .. ":" .. tostring(casterGuid or "") .. ":" .. tostring(targetGuid or "")
+  local prev = store[key]
+  local curMs = tonumber(durationMs) or 0
+
+  if prev and prev.t and (now - prev.t) <= window then
+    local prevMs = tonumber(prev.durationMs) or 0
+    local mergedMs = curMs
+    if prevMs > mergedMs then
+      mergedMs = prevMs
+    end
+    prev.t = now
+    prev.durationMs = mergedMs
+    return mergedMs
+  end
+
+  store[key] = {
+    t = now,
+    durationMs = curMs
+  }
+  return curMs
+end
+
 ---------------------------------------------------------------
 -- Baseline duration getters (NP DB + manual overrides)
 ---------------------------------------------------------------
@@ -1636,14 +1691,17 @@ function DoiteTrack:_OnSpellCastEvent()
     end
   end
 
-  -- Only snapshot CP if this spellId has a CP-table manual entry
-  if type(ManualDurationBySpellId[spellId]) ~= "table" then
-    return
-  end
-
   local name, rank = _GetSpellNameRank(spellId)
   local norm = _NormSpellName(name)
   if not norm then
+    return
+  end
+
+  local mvById = ManualDurationBySpellId[spellId]
+  local mvByName = ManualDurationBySpellNameNorm[norm]
+
+  -- Only snapshot CP for spells with known CP-based manual data
+  if type(mvById) ~= "table" and not mvByName then
     return
   end
 
@@ -1937,6 +1995,8 @@ function DoiteTrack:_OnAuraNPEvent()
     return
   end
 
+  durationMs = _MergeAuraCastDuration(spellId, casterGuid, targetGuid, durationMs)
+
   -- Derive name from spellId
   local spellName, spellRank = _GetSpellNameRank(spellId)
   local spellNameNorm = _NormSpellName(spellName)
@@ -2064,6 +2124,10 @@ function DoiteTrack:_OnAuraNPEvent()
   local manualSec = nil
   local mv = ManualDurationBySpellId[spellId]
   local isCPTbl = (type(mv) == "table")
+  local nameCpData = nil
+  if spellNameNorm then
+    nameCpData = ManualDurationBySpellNameNorm[spellNameNorm]
+  end
 
   if isCPTbl then
     -- Prefer CP snapshotted earlier (p.cp). If missing, try current CP as last resort.
@@ -2087,6 +2151,29 @@ function DoiteTrack:_OnAuraNPEvent()
       end
 
       -- Rogue SC: Improved Blade Tactics increases Slice and Dice duration by +15%/+30%/+45%. Apply to the *manual* CP-table duration (same place as Rupture edge case).
+      if manualSec and manualSec > 0 and _IsPlayerRogue and _ImprovedBladeTacticsRank and _ImprovedBladeTacticsRank > 0 then
+        if spellNameNorm == "slice and dice" then
+          local pct = _ImprovedBladeTacticsRank * 15
+          manualSec = math.floor((manualSec * (100 + pct)) / 100 + 0.5)
+        end
+      end
+    end
+  elseif nameCpData and _PlayerUsesComboPoints() then
+    if (not cp) or cp <= 0 then
+      cp = _GetComboPointsSafe()
+      p.cp = cp
+    end
+    if cp and cp > 0 then
+      manualSec = (nameCpData.base or 0) + ((nameCpData.perCp or 0) * cp)
+
+      -- Rogue SC: Taste for Blood increases Rupture duration by +2s per talent point.
+      if manualSec and manualSec > 0 and _IsPlayerRogue and _TasteForBloodRank and _TasteForBloodRank > 0 then
+        if spellNameNorm == "rupture" then
+          manualSec = manualSec + (_TasteForBloodRank * 2)
+        end
+      end
+
+      -- Rogue SC: Improved Blade Tactics increases Slice and Dice duration by +15%/+30%/+45%.
       if manualSec and manualSec > 0 and _IsPlayerRogue and _ImprovedBladeTacticsRank and _ImprovedBladeTacticsRank > 0 then
         if spellNameNorm == "slice and dice" then
           local pct = _ImprovedBladeTacticsRank * 15
