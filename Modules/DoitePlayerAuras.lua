@@ -48,6 +48,7 @@ for i = 1, MAX_DEBUFF_SLOTS do
 end
 
 _G["DoitePlayerAuras"] = DoitePlayerAuras
+local SafeGetSpellRecField
 
 local function MarkActive(spellId, activeTable, slot)
   if activeTable == DoitePlayerAuras.activeBuffs then
@@ -58,7 +59,7 @@ local function MarkActive(spellId, activeTable, slot)
 
   -- cache spell name if not already cached
   if not DoitePlayerAuras.spellIdToNameCache[spellId] then
-    local spellName = GetSpellRecField(spellId, "name")
+    local spellName = SafeGetSpellRecField(spellId, "name")
     if spellName then
       DoitePlayerAuras.spellIdToNameCache[spellId] = spellName
       DoitePlayerAuras.spellNameToIdCache[spellName] = spellId
@@ -131,9 +132,26 @@ local function NotifyPlayerAuraStateChanged()
   end
 end
 
+SafeGetSpellRecField = function(spellId, fieldName)
+  if type(GetSpellRecField) ~= "function" then
+    return nil
+  end
+  return GetSpellRecField(spellId, fieldName)
+end
+
 local function UpdateAuras()
+  if type(GetUnitField) ~= "function" then
+    ResetTrackedAuraState()
+    return
+  end
+
   local auraSpellIds = GetUnitField("player", "aura")
   local auraStacks = GetUnitField("player", "auraApplications")
+
+  if type(auraSpellIds) ~= "table" or type(auraStacks) ~= "table" then
+    ResetTrackedAuraState()
+    return
+  end
 
   -- clear active buffs/debuffs
   DoitePlayerAuras.activeBuffs = {}
@@ -147,7 +165,7 @@ local function UpdateAuras()
     local spellId = auraSpellIds[i]
     if spellId and spellId ~= 0 then
       DoitePlayerAuras.buffs[i].spellId = spellId
-      DoitePlayerAuras.buffs[i].stacks = auraStacks[i] + 1 -- raw buff stacks are 0-indexed, add 1
+      DoitePlayerAuras.buffs[i].stacks = (auraStacks[i] or 0) + 1 -- raw buff stacks are 0-indexed, add 1
       MarkActive(spellId, DoitePlayerAuras.activeBuffs, i)
       DoitePlayerAuras.numActiveBuffs = i
     else
@@ -162,7 +180,7 @@ local function UpdateAuras()
     local spellId = auraSpellIds[MAX_BUFF_SLOTS + i]
     if spellId and spellId ~= 0 then
       DoitePlayerAuras.debuffs[i].spellId = spellId
-      DoitePlayerAuras.debuffs[i].stacks = auraStacks[MAX_BUFF_SLOTS + i] + 1 -- raw debuff stacks are 0-indexed, add 1
+      DoitePlayerAuras.debuffs[i].stacks = (auraStacks[MAX_BUFF_SLOTS + i] or 0) + 1 -- raw debuff stacks are 0-indexed, add 1
       MarkActive(spellId, DoitePlayerAuras.activeDebuffs, i)
       DoitePlayerAuras.numActiveDebuffs = i
     else
@@ -541,7 +559,7 @@ AuraCastFrame:SetScript("OnEvent", function()
     -- cache spell name if not already cached
     local spellName = DoitePlayerAuras.spellIdToNameCache[spellId]
     if not spellName then
-      spellName = GetSpellRecField(spellId, "name")
+      spellName = SafeGetSpellRecField(spellId, "name")
       if spellName then
         DoitePlayerAuras.spellIdToNameCache[spellId] = spellName
         DoitePlayerAuras.spellNameToIdCache[spellName] = spellId
@@ -552,7 +570,7 @@ AuraCastFrame:SetScript("OnEvent", function()
 
     -- cache max stacks for spell
     if not DoitePlayerAuras.spellNameToMaxStacks[spellName] then
-      local maxStacks = GetSpellRecField(spellId, "stackAmount")
+      local maxStacks = SafeGetSpellRecField(spellId, "stackAmount")
       if maxStacks == 0 then
         maxStacks = 1
       end
@@ -617,7 +635,7 @@ local function ProcessBuffCappedSpell(spellId, casterGUID, targetGUID)
       targetGUID ~= casterGUID then
     -- remove clearcasting buff on any spell cast that costs mana and doesn't target yourself
     -- not perfect as buffs on others will remove but pretty good
-    local manaCost = GetSpellRecField(spellId, "manaCost")
+    local manaCost = SafeGetSpellRecField(spellId, "manaCost")
     if manaCost and manaCost > 0 then
       RemoveCappedBuff("Clearcasting")
       changed = true
