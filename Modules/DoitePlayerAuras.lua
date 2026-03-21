@@ -123,7 +123,7 @@ local function IsAuraCapStatusSet(auraCapStatus, bitMask)
     return bit.band(auraCapStatus, bitMask) ~= 0
   end
 
-  return math.floor(auraCapStatus / bitMask) % 2 == 1
+  return math.mod(math.floor(auraCapStatus / bitMask), 2) == 1
 end
 
 local function NotifyPlayerAuraStateChanged()
