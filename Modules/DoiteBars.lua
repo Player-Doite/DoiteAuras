@@ -85,6 +85,10 @@ local BAR_DEFAULTS = {
     alpha         = 1,
     inCombat      = true,
     outCombat     = true,
+    powerOnly     = false,
+    hpMode        = nil,      -- nil | "my" | "target"
+    hpComp        = ">=",
+    hpValue       = 0,
     barR          = -1,
     barG          = -1,
     barB          = -1,
@@ -115,6 +119,37 @@ local function DA_BarApplyDefaults(data)
         data.bgUseDefault = (data.bgR == 0 and data.bgG == 0 and data.bgB == 0 and data.bgAlpha == 0.7)
     end
     DA_BarForceCategory(data)
+end
+
+local function DA_BarCompare(left, comp, right)
+    if comp == "<=" then return left <= right end
+    if comp == "==" then return left == right end
+    return left >= right
+end
+
+local function DA_BarPassesExtraConditions(data)
+    if data.powerOnly then
+        local p = UnitMana and UnitMana("player") or 0
+        if (p or 0) <= 0 then
+            return false
+        end
+    end
+
+    if data.hpMode == "my" or data.hpMode == "target" then
+        local unit = (data.hpMode == "target") and "target" or "player"
+        if unit == "target" and UnitExists and not UnitExists("target") then
+            return false
+        end
+        local cur = UnitHealth and UnitHealth(unit) or 0
+        local max = UnitHealthMax and UnitHealthMax(unit) or 0
+        local pct = (max and max > 0) and ((cur / max) * 100) or 0
+        local val = tonumber(data.hpValue) or 0
+        if not DA_BarCompare(pct, data.hpComp or ">=", val) then
+            return false
+        end
+    end
+
+    return true
 end
 
 ---------------------------------------------------------------
@@ -272,6 +307,9 @@ function DoiteBars.RefreshBar(key, data)
     -- Visibility (combat state)
     local inCombat = UnitAffectingCombat and UnitAffectingCombat("player") or false
     local visible  = (inCombat and data.inCombat) or ((not inCombat) and data.outCombat)
+    if visible and not DA_BarPassesExtraConditions(data) then
+        visible = false
+    end
     if not visible then
         f:Hide()
         return
@@ -509,16 +547,30 @@ end
 -- Section header + separator
 ---------------------------------------------------------------
 local function BE_MakeHeader(parent, y, labelText)
-    local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    fs:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, y)
-    fs:SetText(labelText)
+    local holder = CreateFrame("Frame", nil, parent)
+    holder:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, y)
+    holder:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -10, y)
+    holder:SetHeight(16)
 
-    local sep = parent:CreateTexture(nil, "ARTWORK")
-    sep:SetHeight(1)
-    sep:SetPoint("TOPLEFT",  parent, "TOPLEFT",  6, y - 14)
-    sep:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -6, y - 14)
-    sep:SetTexture(1, 1, 1)
-    if sep.SetVertexColor then sep:SetVertexColor(1, 1, 1, 0.25) end
+    local label = holder:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    label:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, 0)
+    label:SetJustifyH("LEFT")
+    label:SetText("|cffffffff" .. (labelText or "") .. "|r")
+
+    local lineY = -8
+    local lineL = holder:CreateTexture(nil, "ARTWORK")
+    lineL:SetHeight(1)
+    lineL:SetTexture(1, 1, 1)
+    if lineL.SetVertexColor then lineL:SetVertexColor(1, 1, 1, 0.25) end
+    lineL:SetPoint("TOPLEFT", holder, "TOPLEFT", 0, lineY)
+    lineL:SetPoint("TOPRIGHT", label, "TOPLEFT", -6, lineY)
+
+    local lineR = holder:CreateTexture(nil, "ARTWORK")
+    lineR:SetHeight(1)
+    lineR:SetTexture(1, 1, 1)
+    if lineR.SetVertexColor then lineR:SetVertexColor(1, 1, 1, 0.25) end
+    lineR:SetPoint("TOPLEFT", label, "TOPRIGHT", 6, lineY)
+    lineR:SetPoint("TOPRIGHT", holder, "TOPRIGHT", 0, lineY)
 end
 
 local function BE_MakeDropdown(parent, name, x, y, width, options, selectedValue, onPick)
@@ -583,6 +635,8 @@ local function BE_ShowColorPicker(r, g, b, a, changedCallback)
     end
     ColorPickerFrame.opacityFunc = ColorPickerFrame.func
     ColorPickerFrame.cancelFunc = ColorPickerFrame.func
+    if ColorPickerFrame.SetFrameStrata then ColorPickerFrame:SetFrameStrata("DIALOG") end
+    if ColorPickerFrame.Raise then ColorPickerFrame:Raise() end
     ColorPickerFrame:Hide()
     ColorPickerFrame:Show()
 end
@@ -712,6 +766,10 @@ local function BE_PopulateContent(content, key)
         local d = DoiteAurasDB.spells[_beKey]
         if d then
             d.inCombat = (this:GetChecked() == 1)
+            if not d.inCombat and not d.outCombat then
+                d.inCombat = true
+                this:SetChecked(1)
+            end
             BE_RefreshEditedBar()
         end
     end)
@@ -728,9 +786,104 @@ local function BE_PopulateContent(content, key)
         local d = DoiteAurasDB.spells[_beKey]
         if d then
             d.outCombat = (this:GetChecked() == 1)
+            if not d.outCombat and not d.inCombat then
+                d.outCombat = true
+                this:SetChecked(1)
+            end
             BE_RefreshEditedBar()
         end
     end)
+    y = y - 30
+
+    refs.cbPowerOnly = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
+    refs.cbPowerOnly:SetWidth(20); refs.cbPowerOnly:SetHeight(20)
+    refs.cbPowerOnly:SetPoint("TOPLEFT", content, "TOPLEFT", baseX, y)
+    refs.cbPowerOnly:SetChecked(data.powerOnly and 1 or 0)
+    refs.cbPowerOnly.text = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    refs.cbPowerOnly.text:SetPoint("LEFT", refs.cbPowerOnly, "RIGHT", 2, 0)
+    refs.cbPowerOnly.text:SetText("Power")
+    refs.cbPowerOnly:SetScript("OnClick", function()
+        if not _beKey then return end
+        local d = DoiteAurasDB.spells[_beKey]
+        if d then
+            d.powerOnly = (this:GetChecked() == 1)
+            BE_RefreshEditedBar()
+        end
+    end)
+    y = y - 30
+
+    refs.cbMyHP = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
+    refs.cbMyHP:SetWidth(20); refs.cbMyHP:SetHeight(20)
+    refs.cbMyHP:SetPoint("TOPLEFT", content, "TOPLEFT", baseX, y)
+    refs.cbMyHP.text = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    refs.cbMyHP.text:SetPoint("LEFT", refs.cbMyHP, "RIGHT", 2, 0)
+    refs.cbMyHP.text:SetText("MyHP")
+
+    refs.cbTargetHP = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
+    refs.cbTargetHP:SetWidth(20); refs.cbTargetHP:SetHeight(20)
+    refs.cbTargetHP:SetPoint("TOPLEFT", content, "TOPLEFT", baseX + 90, y)
+    refs.cbTargetHP.text = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    refs.cbTargetHP.text:SetPoint("LEFT", refs.cbTargetHP, "RIGHT", 2, 0)
+    refs.cbTargetHP.text:SetText("TargetHP")
+
+    refs.hpCompDD = BE_MakeDropdown(content, "DoiteBarsEdit_HpCompDD", baseX + 180, y + 6, 60, { ">=", "==", "<=" }, data.hpComp or ">=", function(picked)
+        if not _beKey then return end
+        local d = DoiteAurasDB.spells[_beKey]
+        if d then
+            d.hpComp = picked
+            BE_RefreshEditedBar()
+        end
+    end)
+
+    refs.hpValBox = CreateFrame("EditBox", nil, content, "InputBoxTemplate")
+    refs.hpValBox:SetWidth(36); refs.hpValBox:SetHeight(18)
+    refs.hpValBox:SetPoint("TOPLEFT", content, "TOPLEFT", baseX + 250, y - 1)
+    refs.hpValBox:SetAutoFocus(false)
+    refs.hpValBox:SetJustifyH("CENTER")
+    refs.hpValBox:SetText(tostring(tonumber(data.hpValue) or 0))
+    refs.hpPctLabel = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    refs.hpPctLabel:SetPoint("LEFT", refs.hpValBox, "RIGHT", 4, 0)
+    refs.hpPctLabel:SetText("%")
+
+    local function BE_UpdateHPWidgets()
+        local d = (_beKey and DoiteAurasDB and DoiteAurasDB.spells and DoiteAurasDB.spells[_beKey]) or data
+        local mode = d and d.hpMode
+        refs.cbMyHP:SetChecked(mode == "my" and 1 or 0)
+        refs.cbTargetHP:SetChecked(mode == "target" and 1 or 0)
+        local showExtra = (mode == "my" or mode == "target")
+        if showExtra then
+            refs.hpCompDD:Show(); refs.hpValBox:Show(); refs.hpPctLabel:Show()
+        else
+            refs.hpCompDD:Hide(); refs.hpValBox:Hide(); refs.hpPctLabel:Hide()
+        end
+    end
+
+    refs.cbMyHP:SetScript("OnClick", function()
+        if not _beKey then return end
+        local d = DoiteAurasDB.spells[_beKey]; if not d then return end
+        d.hpMode = (this:GetChecked() == 1) and "my" or nil
+        BE_UpdateHPWidgets()
+        BE_RefreshEditedBar()
+    end)
+    refs.cbTargetHP:SetScript("OnClick", function()
+        if not _beKey then return end
+        local d = DoiteAurasDB.spells[_beKey]; if not d then return end
+        d.hpMode = (this:GetChecked() == 1) and "target" or nil
+        BE_UpdateHPWidgets()
+        BE_RefreshEditedBar()
+    end)
+    refs.hpValBox:SetScript("OnEnterPressed", function() this:ClearFocus() end)
+    refs.hpValBox:SetScript("OnEditFocusLost", function()
+        if not _beKey then return end
+        local d = DoiteAurasDB.spells[_beKey]; if not d then return end
+        local v = tonumber(this:GetText()) or 0
+        if v < 0 then v = 0 end
+        if v > 100 then v = 100 end
+        d.hpValue = v
+        this:SetText(tostring(v))
+        BE_RefreshEditedBar()
+    end)
+    BE_UpdateHPWidgets()
     y = y - 35
 
     BE_MakeHeader(content, y, "POSITION & SIZE")
@@ -933,6 +1086,23 @@ end
 local function BE_UpdateSliderValues(refs, data)
     if refs.cbInCombat then refs.cbInCombat:SetChecked(data.inCombat and 1 or 0) end
     if refs.cbOutCombat then refs.cbOutCombat:SetChecked(data.outCombat and 1 or 0) end
+    if refs.cbPowerOnly then refs.cbPowerOnly:SetChecked(data.powerOnly and 1 or 0) end
+    if refs.cbMyHP then refs.cbMyHP:SetChecked(data.hpMode == "my" and 1 or 0) end
+    if refs.cbTargetHP then refs.cbTargetHP:SetChecked(data.hpMode == "target" and 1 or 0) end
+    if refs.hpCompDD then
+        refs.hpCompDD._selectedValue = data.hpComp or ">="
+        UIDropDownMenu_SetSelectedValue(refs.hpCompDD, refs.hpCompDD._selectedValue)
+        UIDropDownMenu_SetText(refs.hpCompDD._selectedValue, refs.hpCompDD)
+        if _GoldifyDD then _GoldifyDD(refs.hpCompDD) end
+        if data.hpMode == "my" or data.hpMode == "target" then refs.hpCompDD:Show() else refs.hpCompDD:Hide() end
+    end
+    if refs.hpValBox then
+        refs.hpValBox:SetText(tostring(tonumber(data.hpValue) or 0))
+        if data.hpMode == "my" or data.hpMode == "target" then refs.hpValBox:Show() else refs.hpValBox:Hide() end
+    end
+    if refs.hpPctLabel then
+        if data.hpMode == "my" or data.hpMode == "target" then refs.hpPctLabel:Show() else refs.hpPctLabel:Hide() end
+    end
     if refs.sliderX then refs.sliderX:SetValue(data.offsetX or 0) end
     if refs.sliderY then refs.sliderY:SetValue(data.offsetY or 0) end
     if refs.sliderW then refs.sliderW:SetValue(data.barWidth or 200) end
