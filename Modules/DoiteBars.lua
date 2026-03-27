@@ -508,12 +508,12 @@ end
 local function BE_MakeHeader(parent, y, labelText)
     local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     fs:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, y)
-    fs:SetText("|cff6FA8DC" .. labelText .. "|r")
+    fs:SetText(labelText)
 
     local sep = parent:CreateTexture(nil, "ARTWORK")
     sep:SetHeight(1)
-    sep:SetPoint("TOPLEFT",  parent, "TOPLEFT",  6, y - 14)
-    sep:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -6, y - 14)
+    sep:SetPoint("TOPLEFT",  parent, "TOPLEFT",  6, y - 12)
+    sep:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -6, y - 12)
     sep:SetTexture(1, 1, 1)
     if sep.SetVertexColor then sep:SetVertexColor(1, 1, 1, 0.25) end
 end
@@ -565,13 +565,18 @@ end
 ---------------------------------------------------------------
 local function BE_ShowColorPicker(r, g, b, a, changedCallback)
     if not ColorPickerFrame then return end
+    BE_ShowColorPicker._nonce = (BE_ShowColorPicker._nonce or 0) + 1
+    local myNonce = BE_ShowColorPicker._nonce
     ColorPickerFrame:SetColorRGB(r or 1, g or 1, b or 1)
     ColorPickerFrame.hasOpacity = (a ~= nil)
     ColorPickerFrame.opacity = a
     ColorPickerFrame.previousValues = { r or 1, g or 1, b or 1, a }
-    ColorPickerFrame.func = changedCallback
-    ColorPickerFrame.opacityFunc = changedCallback
-    ColorPickerFrame.cancelFunc = changedCallback
+    ColorPickerFrame.func = function(restore)
+        if myNonce ~= BE_ShowColorPicker._nonce then return end
+        changedCallback(restore)
+    end
+    ColorPickerFrame.opacityFunc = ColorPickerFrame.func
+    ColorPickerFrame.cancelFunc = ColorPickerFrame.func
     ColorPickerFrame:Hide()
     ColorPickerFrame:Show()
 end
@@ -678,10 +683,11 @@ local function BE_PopulateContent(content, key)
     if not data then return {} end
     DA_BarApplyDefaults(data)
 
-    local sliderW = math.floor((content:GetWidth() - 40 - 16) / 3)
+    local sliderW = math.floor((content:GetWidth() - 70 - 16) / 3)
     if sliderW < 80 then sliderW = 80 end
     local baseX = 10
     local gap   = 8
+    local col2Offset = 30
     local y     = -10
     local refs  = {}
 
@@ -726,7 +732,7 @@ local function BE_PopulateContent(content, key)
 
     local minX, maxX, minY, maxY = -1200, 1200, -1200, 1200
     local sX, _ = BE_MakeSlider(content, "DoiteBarsEdit_SliderX", "Horizontal Position", baseX, y, sliderW, minX, maxX, 1)
-    local sY, _ = BE_MakeSlider(content, "DoiteBarsEdit_SliderY", "Vertical Position", baseX + sliderW + gap, y, sliderW, minY, maxY, 1)
+    local sY, _ = BE_MakeSlider(content, "DoiteBarsEdit_SliderY", "Vertical Position", baseX + sliderW + gap + col2Offset, y, sliderW, minY, maxY, 1)
     refs.sliderX = sX
     refs.sliderY = sY
     sX:SetValue(data.offsetX)
@@ -741,10 +747,12 @@ local function BE_PopulateContent(content, key)
         local d = DoiteAurasDB.spells[_beKey]
         if d then d.offsetY = v; DoiteBars.CreateOrUpdateBar(_beKey, d) end
     end
-    y = y - 55
+    y = y - 85
 
     local sW, _ = BE_MakeSlider(content, "DoiteBarsEdit_SliderW", "Width",  baseX,                 y, sliderW, 20, 800, 1)
-    local sH, _ = BE_MakeSlider(content, "DoiteBarsEdit_SliderH", "Height", baseX + sliderW + gap, y, sliderW, 4,  200, 1)
+    local sH, _ = BE_MakeSlider(content, "DoiteBarsEdit_SliderH", "Height", baseX + sliderW + gap + col2Offset, y, sliderW, 4,  200, 1)
+    refs.sliderW = sW
+    refs.sliderH = sH
     sW:SetValue(data.barWidth)
     sH:SetValue(data.barHeight)
     sW.updateFunc = function(v)
@@ -835,6 +843,7 @@ local function BE_PopulateContent(content, key)
     y = y - 28
 
     local sFontSize, _ = BE_MakeSlider(content, "DoiteBarsEdit_FontSize", "Font Size", baseX, y, sliderW, 6, 32, 1)
+    refs.sFontSize = sFontSize
     sFontSize:SetValue(data.fontSize)
     sFontSize.updateFunc = function(v)
         if not _beKey then return end
@@ -891,91 +900,6 @@ local function BE_PopulateContent(content, key)
     )
     y = y - 30
 
-    refs.nameLabel = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    refs.nameLabel:SetPoint("TOPLEFT", content, "TOPLEFT", baseX, y)
-    refs.nameLabel:SetText("Name: " .. (data.displayName or key))
-    y = y - 16
-
-    refs.kindLabel = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    refs.kindLabel:SetPoint("TOPLEFT", content, "TOPLEFT", baseX, y)
-    refs.kindLabel:SetText("Kind: " .. (data.barType or "Powerbar"))
-
-    -- legacy button implementation removed
-    --[[
-    local fmtOptions = { "Actual", "Short", "Percent" }
-    local fmtBtns    = {}
-    local fmtX       = baseX
-    for i = 1, table.getn(fmtOptions) do
-        local opt = fmtOptions[i]
-        local btn = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
-        btn:SetWidth(70); btn:SetHeight(20)
-        btn:SetPoint("TOPLEFT", content, "TOPLEFT", fmtX, y)
-        btn:SetText(opt)
-        btn._fmtValue = opt
-        if opt == data.textFormat then
-            btn:SetText("|cff6FA8DC" .. opt .. "|r")
-        end
-        btn:SetScript("OnClick", function()
-            if not _beKey then return end
-            local d = DoiteAurasDB.spells[_beKey]
-            if not d then return end
-            d.textFormat = this._fmtValue
-            for _, fb in ipairs(fmtBtns) do
-                if fb._fmtValue == d.textFormat then
-                    fb:SetText("|cff6FA8DC" .. fb._fmtValue .. "|r")
-                else
-                    fb:SetText(fb._fmtValue)
-                end
-            end
-        end)
-        fmtBtns[i] = btn
-        fmtX = fmtX + 75
-    end
-    y = y - 35
-
-    -- Text position buttons
-    local posLabel = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    posLabel:SetPoint("TOPLEFT", content, "TOPLEFT", baseX, y)
-    posLabel:SetText("Text position:")
-    y = y - 20
-
-    local posOptions = { "Center", "TopLeft", "TopRight", "BottomLeft", "BottomRight" }
-    local posBtns    = {}
-    local posX       = baseX
-    for i = 1, table.getn(posOptions) do
-        local opt = posOptions[i]
-        local btn = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
-        btn:SetWidth(82); btn:SetHeight(20)
-        btn:SetPoint("TOPLEFT", content, "TOPLEFT", posX, y)
-        btn:SetText(opt)
-        btn._posValue = opt
-        if opt == data.textPosition then
-            btn:SetText("|cff6FA8DC" .. opt .. "|r")
-        end
-        btn:SetScript("OnClick", function()
-            if not _beKey then return end
-            local d = DoiteAurasDB.spells[_beKey]
-            if not d then return end
-            d.textPosition = this._posValue
-            DoiteBars.CreateOrUpdateBar(_beKey, d)
-            for _, pb in ipairs(posBtns) do
-                if pb._posValue == d.textPosition then
-                    pb:SetText("|cff6FA8DC" .. pb._posValue .. "|r")
-                else
-                    pb:SetText(pb._posValue)
-                end
-            end
-        end)
-        posBtns[i] = btn
-        if i == 3 then
-            y = y - 25
-            posX = baseX
-        else
-            posX = posX + 87
-        end
-    end
-    --]]
-
     return refs
 end
 
@@ -985,9 +909,6 @@ end
 local function BE_UpdateSliderValues(refs, data)
     if refs.cbInCombat then refs.cbInCombat:SetChecked(data.inCombat and 1 or 0) end
     if refs.cbOutCombat then refs.cbOutCombat:SetChecked(data.outCombat and 1 or 0) end
-    if refs.nameLabel then refs.nameLabel:SetText("Name: " .. (data.displayName or _beKey or "")) end
-    if refs.kindLabel then refs.kindLabel:SetText("Kind: " .. (data.barType or "Powerbar")) end
-
     if refs.sliderX then refs.sliderX:SetValue(data.offsetX or 0) end
     if refs.sliderY then refs.sliderY:SetValue(data.offsetY or 0) end
     if refs.sliderW then refs.sliderW:SetValue(data.barWidth or 200) end
@@ -1052,8 +973,8 @@ function DoiteBars.InjectEditControls(cf, key)
     if cf.sliderYBox then cf.sliderYBox:Hide() end
     if cf.sliderSizeBox then cf.sliderSizeBox:Hide() end
 
+    if cf.DoiteGroupUIRefresh then cf:DoiteGroupUIRefresh(key) end
     if cf.dgLine then cf.dgLine:Hide() end
-    if cf.DoiteGroupUIRefresh then cf:DoiteGroupUIRefresh(nil) end
     
     local bf = DoiteBars.GetBarFrame(key)
     if bf then bf:EnableMouse(true) end
