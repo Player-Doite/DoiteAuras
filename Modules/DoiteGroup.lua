@@ -1288,6 +1288,16 @@ function DoiteGroup._DG_UI_Refresh(ctx)
     return
   end
 
+  if d.type == "Bar" then
+    d.group = nil
+    d.isLeader = nil
+    d.category = "BARS"
+    state.mode = "category"
+    state.step = "incategory"
+    w.line:SetText("Included in Category: BARS")
+    return
+  end
+
   local detectedMode = nil
   if d.group and d.group ~= "" then
     detectedMode = "group"

@@ -1685,6 +1685,9 @@ local function DA_GetCategoryForEntry(entry)
     if cat and cat ~= "" and cat ~= "no" then
         return tostring(cat)
     end
+    if d.type == "Bar" then
+        return "BARS"
+    end
     return nil
 end
 
@@ -3529,6 +3532,7 @@ addBtn:SetScript("OnClick", function()
     DoiteAurasDB.spells[key] = {
       order       = nextOrder,
       type        = "Bar",
+      category    = "BARS",
       barType     = selectedKindKey,
       displayName = barLabel,
       shownName   = barLabel,

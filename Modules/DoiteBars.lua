@@ -98,12 +98,20 @@ local BAR_DEFAULTS = {
     fontSize      = 10,
 }
 
+local function DA_BarForceCategory(data)
+    if not data then return end
+    data.category = "BARS"
+    data.group = nil
+    data.isLeader = nil
+end
+
 local function DA_BarApplyDefaults(data)
     for k, v in pairs(BAR_DEFAULTS) do
         if data[k] == nil then
             data[k] = v
         end
     end
+    DA_BarForceCategory(data)
 end
 
 ---------------------------------------------------------------
@@ -407,6 +415,14 @@ local _beContainer = nil
 local _beSliderX = nil
 local _beSliderY = nil
 
+local function BE_RefreshEditedBar()
+    if not _beKey then return end
+    local d = DoiteAurasDB and DoiteAurasDB.spells and DoiteAurasDB.spells[_beKey]
+    if not d then return end
+    DoiteBars.CreateOrUpdateBar(_beKey, d)
+    DoiteBars.RefreshBar(_beKey, d)
+end
+
 ---------------------------------------------------------------
 -- Slider helper; parents to a given frame, mirrors MakeSlider
 ---------------------------------------------------------------
@@ -502,18 +518,96 @@ local function BE_MakeHeader(parent, y, labelText)
     if sep.SetVertexColor then sep:SetVertexColor(1, 1, 1, 0.25) end
 end
 
+local function BE_MakeDropdown(parent, name, x, y, width, options, selectedValue, onPick)
+    local dd = CreateFrame("Frame", name, parent, "UIDropDownMenuTemplate")
+    dd._selectedValue = selectedValue
+    dd:SetPoint("TOPLEFT", parent, "TOPLEFT", x - 16, y)
+    if UIDropDownMenu_SetWidth then
+        UIDropDownMenu_SetWidth(width, dd)
+    end
+
+    if UIDropDownMenu_Initialize then
+        UIDropDownMenu_Initialize(dd, function()
+            local i
+            for i = 1, table.getn(options) do
+                local opt = options[i]
+                local info = UIDropDownMenu_CreateInfo()
+                info.text = opt
+                info.value = opt
+                info.checked = (dd._selectedValue == opt)
+                info.func = function(button)
+                    local picked = (button and button.value) or opt
+                    dd._selectedValue = picked
+                    if UIDropDownMenu_SetSelectedValue then
+                        UIDropDownMenu_SetSelectedValue(dd, picked)
+                    end
+                    if UIDropDownMenu_SetText then
+                        UIDropDownMenu_SetText(picked, dd)
+                    end
+                    if onPick then onPick(picked) end
+                end
+                UIDropDownMenu_AddButton(info)
+            end
+        end)
+    end
+
+    if UIDropDownMenu_SetSelectedValue then
+        UIDropDownMenu_SetSelectedValue(dd, selectedValue)
+    end
+    if UIDropDownMenu_SetText then
+        UIDropDownMenu_SetText(selectedValue or "", dd)
+    end
+    return dd
+end
+
 ---------------------------------------------------------------
--- RGB slider trio
+-- Color picker helpers
 ---------------------------------------------------------------
-local function BE_MakeRGBSliders(parent, namePrefix, baseX, baseY, sliderW, onChangeFn)
-    local gap = 8
-    local sR, _ = BE_MakeSlider(parent, namePrefix .. "_R", "Red",   baseX,                    baseY, sliderW, 0, 100, 1)
-    local sG, _ = BE_MakeSlider(parent, namePrefix .. "_G", "Green", baseX + sliderW + gap,     baseY, sliderW, 0, 100, 1)
-    local sB, _ = BE_MakeSlider(parent, namePrefix .. "_B", "Blue",  baseX + 2*(sliderW + gap), baseY, sliderW, 0, 100, 1)
-    sR.updateFunc = function(v) onChangeFn("r", v / 100) end
-    sG.updateFunc = function(v) onChangeFn("g", v / 100) end
-    sB.updateFunc = function(v) onChangeFn("b", v / 100) end
-    return sR, sG, sB
+local function BE_ShowColorPicker(r, g, b, a, changedCallback)
+    if not ColorPickerFrame then return end
+    ColorPickerFrame:SetColorRGB(r or 1, g or 1, b or 1)
+    ColorPickerFrame.hasOpacity = (a ~= nil)
+    ColorPickerFrame.opacity = a
+    ColorPickerFrame.previousValues = { r or 1, g or 1, b or 1, a }
+    ColorPickerFrame.func = changedCallback
+    ColorPickerFrame.opacityFunc = changedCallback
+    ColorPickerFrame.cancelFunc = changedCallback
+    ColorPickerFrame:Hide()
+    ColorPickerFrame:Show()
+end
+
+local function BE_SetSwatchColor(btn, r, g, b, a)
+    if not btn or not btn.swatch then return end
+    btn.swatch:SetTexture(r or 1, g or 1, b or 1, a or 1)
+end
+
+local function BE_MakeColorSwatch(parent, x, y, labelText, onClick)
+    local lbl = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    lbl:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
+    lbl:SetText(labelText)
+
+    local btn = CreateFrame("Button", nil, parent)
+    btn:SetWidth(22)
+    btn:SetHeight(22)
+    btn:SetPoint("LEFT", lbl, "RIGHT", 8, 0)
+    btn:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        tile = true, tileSize = 8, edgeSize = 1,
+        insets = { left = 1, right = 1, top = 1, bottom = 1 },
+    })
+    btn:SetBackdropColor(0, 0, 0, 1)
+    btn:SetBackdropBorderColor(1, 1, 1, 1)
+
+    btn.swatch = btn:CreateTexture(nil, "ARTWORK")
+    btn.swatch:SetPoint("TOPLEFT", btn, "TOPLEFT", 2, -2)
+    btn.swatch:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -2, 2)
+    btn.swatch:SetTexture(1, 1, 1, 1)
+
+    btn:SetScript("OnClick", function()
+        if onClick then onClick() end
+    end)
+    return btn, lbl
 end
 
 ---------------------------------------------------------------
@@ -591,19 +685,6 @@ local function BE_PopulateContent(content, key)
     local y     = -10
     local refs  = {}
 
-    BE_MakeHeader(content, y, "BAR INFO")
-    y = y - 28
-
-    refs.nameLabel = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    refs.nameLabel:SetPoint("TOPLEFT", content, "TOPLEFT", baseX, y)
-    refs.nameLabel:SetText("Name: " .. (data.displayName or key))
-    y = y - 16
-
-    refs.kindLabel = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    refs.kindLabel:SetPoint("TOPLEFT", content, "TOPLEFT", baseX, y)
-    refs.kindLabel:SetText("Kind: " .. (data.barType or "Powerbar"))
-    y = y - 26
-
     BE_MakeHeader(content, y, "VISIBILITY")
     y = y - 28
 
@@ -611,27 +692,32 @@ local function BE_PopulateContent(content, key)
     refs.cbInCombat:SetWidth(20); refs.cbInCombat:SetHeight(20)
     refs.cbInCombat:SetPoint("TOPLEFT", content, "TOPLEFT", baseX, y)
     refs.cbInCombat:SetChecked(data.inCombat and 1 or 0)
-    local lblIn = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    lblIn:SetPoint("LEFT", refs.cbInCombat, "RIGHT", 2, 0)
-    lblIn:SetText("Show in combat")
+    refs.lblIn = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    refs.lblIn:SetPoint("LEFT", refs.cbInCombat, "RIGHT", 2, 0)
+    refs.lblIn:SetText("Show in combat")
     refs.cbInCombat:SetScript("OnClick", function()
         if not _beKey then return end
         local d = DoiteAurasDB.spells[_beKey]
-        if d then d.inCombat = (this:GetChecked() == 1) end
+        if d then
+            d.inCombat = (this:GetChecked() == 1)
+            BE_RefreshEditedBar()
+        end
     end)
 
     refs.cbOutCombat = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
     refs.cbOutCombat:SetWidth(20); refs.cbOutCombat:SetHeight(20)
-    refs.cbOutCombat:SetPoint("TOPLEFT", content, "TOPLEFT", baseX + 160, y)
+    refs.cbOutCombat:SetPoint("TOPLEFT", content, "TOPLEFT", baseX + 110, y)
     refs.cbOutCombat:SetChecked(data.outCombat and 1 or 0)
-    local lblOut = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    lblOut:SetPoint("LEFT", refs.cbOutCombat, "RIGHT", 2, 0)
-    lblOut:SetText("Show out of combat")
-    lblOut:SetWidth(120)
+    refs.lblOut = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    refs.lblOut:SetPoint("LEFT", refs.cbOutCombat, "RIGHT", 0, 0)
+    refs.lblOut:SetText("Show out of combat")
     refs.cbOutCombat:SetScript("OnClick", function()
         if not _beKey then return end
         local d = DoiteAurasDB.spells[_beKey]
-        if d then d.outCombat = (this:GetChecked() == 1) end
+        if d then
+            d.outCombat = (this:GetChecked() == 1)
+            BE_RefreshEditedBar()
+        end
     end)
     y = y - 35
 
@@ -673,62 +759,77 @@ local function BE_PopulateContent(content, key)
     end
     y = y - 55
 
-    BE_MakeHeader(content, y, "BAR COLOR  (set R to -1 to use default)")
+    BE_MakeHeader(content, y, "BAR COLOR")
     y = y - 28
 
-    local sBarR, sBarG, sBarB = BE_MakeRGBSliders(content, "DoiteBarsEdit_BarRGB", baseX, y, sliderW,
-        function(channel, val)
-            if not _beKey then return end
-            local d = DoiteAurasDB.spells[_beKey]
-            if not d then return end
-            if channel == "r" then d.barR = val
-            elseif channel == "g" then d.barG = val
-            else d.barB = val end
-        end)
-    sBarR:SetMinMaxValues(-1, 100)
-    sBarR:SetValue(data.barR >= 0 and math.floor(data.barR * 100 + 0.5) or -1)
-    sBarG:SetValue(data.barG >= 0 and math.floor(data.barG * 100 + 0.5) or -1)
-    sBarB:SetValue(data.barB >= 0 and math.floor(data.barB * 100 + 0.5) or -1)
-    y = y - 55
-
-    local sBarA, _ = BE_MakeSlider(content, "DoiteBarsEdit_BarAlpha", "Bar Opacity", baseX, y, sliderW, 0, 100, 1)
-    sBarA:SetValue(math.floor(data.barAlpha * 100 + 0.5))
-    sBarA.updateFunc = function(v)
+    refs.barUseDefault = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
+    refs.barUseDefault:SetWidth(20); refs.barUseDefault:SetHeight(20)
+    refs.barUseDefault:SetPoint("TOPLEFT", content, "TOPLEFT", baseX, y)
+    refs.barUseDefault:SetChecked((data.barR or -1) < 0 and 1 or 0)
+    refs.barUseDefault.text = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    refs.barUseDefault.text:SetPoint("LEFT", refs.barUseDefault, "RIGHT", 2, 0)
+    refs.barUseDefault.text:SetText("Use default color")
+    refs.barUseDefault:SetScript("OnClick", function()
         if not _beKey then return end
         local d = DoiteAurasDB.spells[_beKey]
-        if d then d.barAlpha = v / 100 end
-    end
-    y = y - 55
+        if not d then return end
+        if this:GetChecked() == 1 then
+            d.barR, d.barG, d.barB = -1, -1, -1
+        else
+            if (d.barR or -1) < 0 then
+                d.barR, d.barG, d.barB = 0, 0.44, 0.87
+            end
+        end
+        BE_RefreshEditedBar()
+    end)
+
+    refs.barColorSwatch = BE_MakeColorSwatch(content, baseX + 160, y, "Color:", function()
+        if not _beKey then return end
+        local d = DoiteAurasDB.spells[_beKey]
+        if not d then return end
+        local sr, sg, sb = d.barR, d.barG, d.barB
+        if not sr or sr < 0 then sr, sg, sb = 0, 0.44, 0.87 end
+        local sa = d.barAlpha or 1
+        BE_ShowColorPicker(sr, sg, sb, sa, function(restore)
+            local nr, ng, nb, na
+            if restore then
+                nr, ng, nb, na = unpack(restore)
+            else
+                na = OpacitySliderFrame and OpacitySliderFrame:GetValue() or sa
+                nr, ng, nb = ColorPickerFrame:GetColorRGB()
+            end
+            d.barR, d.barG, d.barB = nr, ng, nb
+            d.barAlpha = na or 1
+            if refs.barUseDefault then refs.barUseDefault:SetChecked(0) end
+            BE_SetSwatchColor(refs.barColorSwatch, nr, ng, nb, na)
+            BE_RefreshEditedBar()
+        end)
+    end)
+    y = y - 40
 
     BE_MakeHeader(content, y, "BACKGROUND COLOR")
     y = y - 28
 
-    local sBgR, sBgG, sBgB = BE_MakeRGBSliders(content, "DoiteBarsEdit_BgRGB", baseX, y, sliderW,
-        function(channel, val)
-            if not _beKey then return end
-            local d = DoiteAurasDB.spells[_beKey]
-            if not d then return end
-            if channel == "r" then d.bgR = val
-            elseif channel == "g" then d.bgG = val
-            else d.bgB = val end
-            DoiteBars.CreateOrUpdateBar(_beKey, d)
-        end)
-    sBgR:SetValue(math.floor(data.bgR * 100 + 0.5))
-    sBgG:SetValue(math.floor(data.bgG * 100 + 0.5))
-    sBgB:SetValue(math.floor(data.bgB * 100 + 0.5))
-    y = y - 55
-
-    local sBgA, _ = BE_MakeSlider(content, "DoiteBarsEdit_BgAlpha", "Background Opacity", baseX, y, sliderW, 0, 100, 1)
-    sBgA:SetValue(math.floor(data.bgAlpha * 100 + 0.5))
-    sBgA.updateFunc = function(v)
+    refs.bgColorSwatch = BE_MakeColorSwatch(content, baseX, y, "Background:", function()
         if not _beKey then return end
         local d = DoiteAurasDB.spells[_beKey]
-        if d then
-            d.bgAlpha = v / 100
-            DoiteBars.CreateOrUpdateBar(_beKey, d)
-        end
-    end
-    y = y - 55
+        if not d then return end
+        local sr, sg, sb, sa = d.bgR or 0, d.bgG or 0, d.bgB or 0, d.bgAlpha or 0.7
+        BE_ShowColorPicker(sr, sg, sb, sa, function(restore)
+            local nr, ng, nb, na
+            if restore then
+                nr, ng, nb, na = unpack(restore)
+            else
+                na = OpacitySliderFrame and OpacitySliderFrame:GetValue() or sa
+                nr, ng, nb = ColorPickerFrame:GetColorRGB()
+            end
+            d.bgR, d.bgG, d.bgB = nr, ng, nb
+            d.bgAlpha = na or 0.7
+            BE_SetSwatchColor(refs.bgColorSwatch, nr, ng, nb, na)
+            BE_RefreshEditedBar()
+        end)
+    end)
+    y = y - 40
 
     BE_MakeHeader(content, y, "TEXT")
     y = y - 28
@@ -745,12 +846,62 @@ local function BE_PopulateContent(content, key)
     end
     y = y - 55
 
-    -- Format buttons
+    -- Format dropdown
     local fmtLabel = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     fmtLabel:SetPoint("TOPLEFT", content, "TOPLEFT", baseX, y)
     fmtLabel:SetText("Format:")
-    y = y - 20
+    refs.fmtDD = BE_MakeDropdown(
+        content,
+        "DoiteBarsEdit_FormatDD",
+        baseX + 90,
+        y + 6,
+        110,
+        { "Actual", "Short", "Percent" },
+        data.textFormat or "Actual",
+        function(picked)
+            if not _beKey then return end
+            local d = DoiteAurasDB.spells[_beKey]
+            if d then
+                d.textFormat = picked
+                BE_RefreshEditedBar()
+            end
+        end
+    )
+    y = y - 30
 
+    -- Text position dropdown
+    local posLabel = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    posLabel:SetPoint("TOPLEFT", content, "TOPLEFT", baseX, y)
+    posLabel:SetText("Text position:")
+    refs.posDD = BE_MakeDropdown(
+        content,
+        "DoiteBarsEdit_TextPosDD",
+        baseX + 90,
+        y + 6,
+        130,
+        { "Center", "TopLeft", "TopRight", "BottomLeft", "BottomRight" },
+        data.textPosition or "Center",
+        function(picked)
+            if not _beKey then return end
+            local d = DoiteAurasDB.spells[_beKey]
+            if not d then return end
+            d.textPosition = picked
+            BE_RefreshEditedBar()
+        end
+    )
+    y = y - 30
+
+    refs.nameLabel = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    refs.nameLabel:SetPoint("TOPLEFT", content, "TOPLEFT", baseX, y)
+    refs.nameLabel:SetText("Name: " .. (data.displayName or key))
+    y = y - 16
+
+    refs.kindLabel = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    refs.kindLabel:SetPoint("TOPLEFT", content, "TOPLEFT", baseX, y)
+    refs.kindLabel:SetText("Kind: " .. (data.barType or "Powerbar"))
+
+    -- legacy button implementation removed
+    --[[
     local fmtOptions = { "Actual", "Short", "Percent" }
     local fmtBtns    = {}
     local fmtX       = baseX
@@ -823,6 +974,7 @@ local function BE_PopulateContent(content, key)
             posX = posX + 87
         end
     end
+    --]]
 
     return refs
 end
@@ -831,22 +983,36 @@ end
 -- UpdateSliderValues : Syncs slider values to current pos
 ---------------------------------------------------------------
 local function BE_UpdateSliderValues(refs, data)
+    if refs.cbInCombat then refs.cbInCombat:SetChecked(data.inCombat and 1 or 0) end
+    if refs.cbOutCombat then refs.cbOutCombat:SetChecked(data.outCombat and 1 or 0) end
+    if refs.nameLabel then refs.nameLabel:SetText("Name: " .. (data.displayName or _beKey or "")) end
+    if refs.kindLabel then refs.kindLabel:SetText("Kind: " .. (data.barType or "Powerbar")) end
+
     if refs.sliderX then refs.sliderX:SetValue(data.offsetX or 0) end
     if refs.sliderY then refs.sliderY:SetValue(data.offsetY or 0) end
     if refs.sliderW then refs.sliderW:SetValue(data.barWidth or 200) end
     if refs.sliderH then refs.sliderH:SetValue(data.barHeight or 24) end
-    -- bar color
-    if refs.sBarR then refs.sBarR:SetValue(data.barR >= 0 and math.floor(data.barR * 100 + 0.5) or -1) end
-    if refs.sBarG then refs.sBarG:SetValue(data.barG >= 0 and math.floor(data.barG * 100 + 0.5) or -1) end
-    if refs.sBarB then refs.sBarB:SetValue(data.barB >= 0 and math.floor(data.barB * 100 + 0.5) or -1) end
-    if refs.sBarA then refs.sBarA:SetValue(math.floor(data.barAlpha * 100 + 0.5)) end
-    -- bg color
-    if refs.sBgR then refs.sBgR:SetValue(math.floor(data.bgR * 100 + 0.5)) end
-    if refs.sBgG then refs.sBgG:SetValue(math.floor(data.bgG * 100 + 0.5)) end
-    if refs.sBgB then refs.sBgB:SetValue(math.floor(data.bgB * 100 + 0.5)) end
-    if refs.sBgA then refs.sBgA:SetValue(math.floor(data.bgAlpha * 100 + 0.5)) end
+    if refs.barUseDefault then refs.barUseDefault:SetChecked((data.barR or -1) < 0 and 1 or 0) end
+    if refs.barColorSwatch then
+        local sr, sg, sb = data.barR, data.barG, data.barB
+        if not sr or sr < 0 then sr, sg, sb = 0, 0.44, 0.87 end
+        BE_SetSwatchColor(refs.barColorSwatch, sr, sg, sb, data.barAlpha or 1)
+    end
+    if refs.bgColorSwatch then
+        BE_SetSwatchColor(refs.bgColorSwatch, data.bgR or 0, data.bgG or 0, data.bgB or 0, data.bgAlpha or 0.7)
+    end
     -- text
     if refs.sFontSize then refs.sFontSize:SetValue(data.fontSize or 10) end
+    if refs.fmtDD and UIDropDownMenu_SetSelectedValue then
+        refs.fmtDD._selectedValue = data.textFormat or "Actual"
+        UIDropDownMenu_SetSelectedValue(refs.fmtDD, data.textFormat or "Actual")
+        UIDropDownMenu_SetText(data.textFormat or "Actual", refs.fmtDD)
+    end
+    if refs.posDD and UIDropDownMenu_SetSelectedValue then
+        refs.posDD._selectedValue = data.textPosition or "Center"
+        UIDropDownMenu_SetSelectedValue(refs.posDD, data.textPosition or "Center")
+        UIDropDownMenu_SetText(data.textPosition or "Center", refs.posDD)
+    end
 end
 
 ---------------------------------------------------------------
@@ -871,11 +1037,23 @@ function DoiteBars.InjectEditControls(cf, key)
         local container, content = BE_BuildContainer(cf)
         cf.BarEditContainer = container
         cf.BarEditContent = content
-        cf.beRefs = BE_PopulateContent(content, key) 
+        cf.beRefs = BE_PopulateContent(content, key)
     end
 
     BE_UpdateSliderValues(cf.beRefs, data)
     cf.BarEditContainer:Show()
+
+    if cf.groupTitle3 then cf.groupTitle3:Hide() end
+    if cf.sep3 then cf.sep3:Hide() end
+    if cf.sliderX then cf.sliderX:Hide() end
+    if cf.sliderY then cf.sliderY:Hide() end
+    if cf.sliderSize then cf.sliderSize:Hide() end
+    if cf.sliderXBox then cf.sliderXBox:Hide() end
+    if cf.sliderYBox then cf.sliderYBox:Hide() end
+    if cf.sliderSizeBox then cf.sliderSizeBox:Hide() end
+
+    if cf.dgLine then cf.dgLine:Hide() end
+    if cf.DoiteGroupUIRefresh then cf:DoiteGroupUIRefresh(nil) end
     
     local bf = DoiteBars.GetBarFrame(key)
     if bf then bf:EnableMouse(true) end
