@@ -557,8 +557,8 @@ end
 ---------------------------------------------------------------
 local function BE_MakeHeader(parent, y, labelText)
     local holder = CreateFrame("Frame", nil, parent)
-    holder:SetPoint("TOPLEFT", parent, "TOPLEFT", 10, y)
-    holder:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -10, y)
+    holder:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, y)
+    holder:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, y)
     holder:SetHeight(16)
 
     local label = holder:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -927,7 +927,7 @@ local function BE_PopulateContent(content, key)
     refs.cbTargetHP.text:SetPoint("LEFT", refs.cbTargetHP, "RIGHT", 2, 0)
     refs.cbTargetHP.text:SetText("Target HP")
 
-    refs.hpCompDD = BE_MakeDropdown(content, "DoiteBarsEdit_HpCompDD", baseX + 130, y + 3, 50, { ">=", "==", "<=" }, data.hpComp or ">=", function(picked)
+    refs.hpCompDD = BE_MakeDropdown(content, "DoiteBarsEdit_HpCompDD", baseX + 145, y + 3, 50, { ">=", "==", "<=" }, data.hpComp or ">=", function(picked)
         if not _beKey then return end
         local d = DoiteAurasDB.spells[_beKey]
         if d then
@@ -938,7 +938,7 @@ local function BE_PopulateContent(content, key)
 
     refs.hpValBox = CreateFrame("EditBox", nil, content, "InputBoxTemplate")
     refs.hpValBox:SetWidth(40); refs.hpValBox:SetHeight(18)
-    refs.hpValBox:SetPoint("TOPLEFT", content, "TOPLEFT", baseX + 225, y - 2)
+    refs.hpValBox:SetPoint("TOPLEFT", content, "TOPLEFT", baseX + 220, y - 2)
     refs.hpValBox:SetAutoFocus(false)
     refs.hpValBox:SetJustifyH("CENTER")
     refs.hpValBox:SetTextColor(1, 0.82, 0)
