@@ -626,16 +626,26 @@ local function BE_ShowColorPicker(r, g, b, a, changedCallback)
     if not ColorPickerFrame._daMovable then
         ColorPickerFrame._daMovable = true
         if ColorPickerFrame.SetMovable then ColorPickerFrame:SetMovable(true) end
-        if ColorPickerFrame.EnableMouse then ColorPickerFrame:EnableMouse(true) end
-        if ColorPickerFrame.RegisterForDrag then ColorPickerFrame:RegisterForDrag("LeftButton") end
         if ColorPickerFrame.SetClampedToScreen then ColorPickerFrame:SetClampedToScreen(true) end
-        if ColorPickerFrame.SetScript then
-            ColorPickerFrame:SetScript("OnDragStart", function()
-                if this and this.StartMoving then this:StartMoving() end
+
+        if not ColorPickerFrame._daDragHandle then
+            local h = CreateFrame("Frame", nil, ColorPickerFrame)
+            h:SetPoint("TOPLEFT", ColorPickerFrame, "TOPLEFT", 8, -6)
+            h:SetPoint("TOPRIGHT", ColorPickerFrame, "TOPRIGHT", -28, -6)
+            h:SetHeight(18)
+            h:EnableMouse(true)
+            h:RegisterForDrag("LeftButton")
+            h:SetScript("OnDragStart", function()
+                if ColorPickerFrame and ColorPickerFrame.StartMoving then
+                    ColorPickerFrame:StartMoving()
+                end
             end)
-            ColorPickerFrame:SetScript("OnDragStop", function()
-                if this and this.StopMovingOrSizing then this:StopMovingOrSizing() end
+            h:SetScript("OnDragStop", function()
+                if ColorPickerFrame and ColorPickerFrame.StopMovingOrSizing then
+                    ColorPickerFrame:StopMovingOrSizing()
+                end
             end)
+            ColorPickerFrame._daDragHandle = h
         end
     end
     _G["DoiteBars_ColorPickerNonce"] = (_G["DoiteBars_ColorPickerNonce"] or 0) + 1
