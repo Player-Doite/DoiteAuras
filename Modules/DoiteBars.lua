@@ -86,6 +86,8 @@ local BAR_DEFAULTS = {
     inCombat      = true,
     outCombat     = true,
     powerOnly     = false,
+    powerComp     = ">=",
+    powerValue    = 0,
     hpMode        = nil,      -- nil | "my" | "target"
     hpComp        = ">=",
     hpValue       = 0,
@@ -129,8 +131,11 @@ end
 
 local function DA_BarPassesExtraConditions(data)
     if data.powerOnly then
-        local p = UnitMana and UnitMana("player") or 0
-        if (p or 0) <= 0 then
+        local cur = UnitMana and UnitMana("player") or 0
+        local max = UnitManaMax and UnitManaMax("player") or 0
+        local pct = (max and max > 0) and ((cur / max) * 100) or 0
+        local val = tonumber(data.powerValue) or 0
+        if not DA_BarCompare(pct, data.powerComp or ">=", val) then
             return false
         end
     end
@@ -417,7 +422,11 @@ barEventFrame:SetScript("OnEvent", function()
         event == "UNIT_RAGE" or event == "UNIT_MAXRAGE" or
         event == "UNIT_ENERGY" or event == "UNIT_MAXENERGY" or
         event == "UNIT_FOCUS" or event == "UNIT_MAXFOCUS" then
-            if arg1 ~= "player" then return end
+            if event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH" then
+                if arg1 ~= "player" and arg1 ~= "target" then return end
+            else
+                if arg1 ~= "player" then return end
+            end
     end
     DoiteBars.RefreshAll()
 end)
@@ -852,14 +861,56 @@ local function BE_PopulateContent(content, key)
     refs.cbPowerOnly.text = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     refs.cbPowerOnly.text:SetPoint("LEFT", refs.cbPowerOnly, "RIGHT", 2, 0)
     refs.cbPowerOnly.text:SetText("Power")
+
+    refs.powerCompDD = BE_MakeDropdown(content, "DoiteBarsEdit_PowerCompDD", baseX + 118, y + 6, 60, { ">=", "==", "<=" }, data.powerComp or ">=", function(picked)
+        if not _beKey then return end
+        local d = DoiteAurasDB.spells[_beKey]
+        if d then
+            d.powerComp = picked
+            BE_RefreshEditedBar()
+        end
+    end)
+    refs.powerValBox = CreateFrame("EditBox", nil, content, "InputBoxTemplate")
+    refs.powerValBox:SetWidth(36); refs.powerValBox:SetHeight(18)
+    refs.powerValBox:SetPoint("TOPLEFT", content, "TOPLEFT", baseX + 188, y - 1)
+    refs.powerValBox:SetAutoFocus(false)
+    refs.powerValBox:SetJustifyH("CENTER")
+    refs.powerValBox:SetText(tostring(tonumber(data.powerValue) or 0))
+    refs.powerPctLabel = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    refs.powerPctLabel:SetPoint("LEFT", refs.powerValBox, "RIGHT", 4, 0)
+    refs.powerPctLabel:SetText("%")
+
+    local function BE_UpdatePowerWidgets()
+        local d = (_beKey and DoiteAurasDB and DoiteAurasDB.spells and DoiteAurasDB.spells[_beKey]) or data
+        local show = (d and d.powerOnly) and true or false
+        if show then
+            refs.powerCompDD:Show(); refs.powerValBox:Show(); refs.powerPctLabel:Show()
+        else
+            refs.powerCompDD:Hide(); refs.powerValBox:Hide(); refs.powerPctLabel:Hide()
+        end
+    end
+
     refs.cbPowerOnly:SetScript("OnClick", function()
         if not _beKey then return end
         local d = DoiteAurasDB.spells[_beKey]
         if d then
             d.powerOnly = (this:GetChecked() == 1)
+            BE_UpdatePowerWidgets()
             BE_RefreshEditedBar()
         end
     end)
+    refs.powerValBox:SetScript("OnEnterPressed", function() this:ClearFocus() end)
+    refs.powerValBox:SetScript("OnEditFocusLost", function()
+        if not _beKey then return end
+        local d = DoiteAurasDB.spells[_beKey]; if not d then return end
+        local v = tonumber(this:GetText()) or 0
+        if v < 0 then v = 0 end
+        if v > 100 then v = 100 end
+        d.powerValue = v
+        this:SetText(tostring(v))
+        BE_RefreshEditedBar()
+    end)
+    BE_UpdatePowerWidgets()
     y = y - 30
 
     refs.cbMyHP = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
@@ -871,12 +922,12 @@ local function BE_PopulateContent(content, key)
 
     refs.cbTargetHP = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
     refs.cbTargetHP:SetWidth(20); refs.cbTargetHP:SetHeight(20)
-    refs.cbTargetHP:SetPoint("TOPLEFT", content, "TOPLEFT", baseX + 90, y)
+    refs.cbTargetHP:SetPoint("TOPLEFT", content, "TOPLEFT", baseX + 62, y)
     refs.cbTargetHP.text = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     refs.cbTargetHP.text:SetPoint("LEFT", refs.cbTargetHP, "RIGHT", 2, 0)
     refs.cbTargetHP.text:SetText("TargetHP")
 
-    refs.hpCompDD = BE_MakeDropdown(content, "DoiteBarsEdit_HpCompDD", baseX + 180, y + 6, 60, { ">=", "==", "<=" }, data.hpComp or ">=", function(picked)
+    refs.hpCompDD = BE_MakeDropdown(content, "DoiteBarsEdit_HpCompDD", baseX + 118, y + 6, 60, { ">=", "==", "<=" }, data.hpComp or ">=", function(picked)
         if not _beKey then return end
         local d = DoiteAurasDB.spells[_beKey]
         if d then
@@ -887,7 +938,7 @@ local function BE_PopulateContent(content, key)
 
     refs.hpValBox = CreateFrame("EditBox", nil, content, "InputBoxTemplate")
     refs.hpValBox:SetWidth(36); refs.hpValBox:SetHeight(18)
-    refs.hpValBox:SetPoint("TOPLEFT", content, "TOPLEFT", baseX + 250, y - 1)
+    refs.hpValBox:SetPoint("TOPLEFT", content, "TOPLEFT", baseX + 188, y - 1)
     refs.hpValBox:SetAutoFocus(false)
     refs.hpValBox:SetJustifyH("CENTER")
     refs.hpValBox:SetText(tostring(tonumber(data.hpValue) or 0))
@@ -937,7 +988,7 @@ local function BE_PopulateContent(content, key)
     y = y - 35
 
     BE_MakeHeader(content, y, "POSITION & SIZE")
-    y = y - 28
+    y = y - 33
 
     local minX, maxX, minY, maxY = -1200, 1200, -1200, 1200
     local sX, _ = BE_MakeSlider(content, "DoiteBarsEdit_SliderX", "Horizontal Position", baseX, y, sliderW, minX, maxX, 1)
@@ -956,7 +1007,7 @@ local function BE_PopulateContent(content, key)
         local d = DoiteAurasDB.spells[_beKey]
         if d then d.offsetY = v; DoiteBars.CreateOrUpdateBar(_beKey, d) end
     end
-    y = y - 85
+    y = y - 75
 
     local sW, _ = BE_MakeSlider(content, "DoiteBarsEdit_SliderW", "Width",  baseX,                 y, sliderW, 20, 800, 1)
     local sH, _ = BE_MakeSlider(content, "DoiteBarsEdit_SliderH", "Height", baseX + sliderW + gap + col2Offset, y, sliderW, 4,  200, 1)
@@ -981,7 +1032,7 @@ local function BE_PopulateContent(content, key)
 
     refs.barUseDefault = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
     refs.barUseDefault:SetWidth(20); refs.barUseDefault:SetHeight(20)
-    refs.barUseDefault:SetPoint("TOPLEFT", content, "TOPLEFT", baseX, y)
+    refs.barUseDefault:SetPoint("TOPLEFT", content, "TOPLEFT", baseX, y + 4)
     refs.barUseDefault:SetChecked((data.barR or -1) < 0 and 1 or 0)
     refs.barUseDefault.text = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     refs.barUseDefault.text:SetPoint("LEFT", refs.barUseDefault, "RIGHT", 2, 0)
@@ -1026,7 +1077,7 @@ local function BE_PopulateContent(content, key)
 
     refs.bgUseDefault = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
     refs.bgUseDefault:SetWidth(20); refs.bgUseDefault:SetHeight(20)
-    refs.bgUseDefault:SetPoint("TOPLEFT", content, "TOPLEFT", baseX, y)
+    refs.bgUseDefault:SetPoint("TOPLEFT", content, "TOPLEFT", baseX, y + 4)
     refs.bgUseDefault:SetChecked(data.bgUseDefault and 1 or 0)
     refs.bgUseDefault.text = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     refs.bgUseDefault.text:SetPoint("LEFT", refs.bgUseDefault, "RIGHT", 2, 0)
@@ -1137,6 +1188,20 @@ local function BE_UpdateSliderValues(refs, data)
     if refs.cbInCombat then refs.cbInCombat:SetChecked(data.inCombat and 1 or 0) end
     if refs.cbOutCombat then refs.cbOutCombat:SetChecked(data.outCombat and 1 or 0) end
     if refs.cbPowerOnly then refs.cbPowerOnly:SetChecked(data.powerOnly and 1 or 0) end
+    if refs.powerCompDD then
+        refs.powerCompDD._selectedValue = data.powerComp or ">="
+        UIDropDownMenu_SetSelectedValue(refs.powerCompDD, refs.powerCompDD._selectedValue)
+        UIDropDownMenu_SetText(refs.powerCompDD._selectedValue, refs.powerCompDD)
+        if _GoldifyDD then _GoldifyDD(refs.powerCompDD) end
+        if data.powerOnly then refs.powerCompDD:Show() else refs.powerCompDD:Hide() end
+    end
+    if refs.powerValBox then
+        refs.powerValBox:SetText(tostring(tonumber(data.powerValue) or 0))
+        if data.powerOnly then refs.powerValBox:Show() else refs.powerValBox:Hide() end
+    end
+    if refs.powerPctLabel then
+        if data.powerOnly then refs.powerPctLabel:Show() else refs.powerPctLabel:Hide() end
+    end
     if refs.cbMyHP then refs.cbMyHP:SetChecked(data.hpMode == "my" and 1 or 0) end
     if refs.cbTargetHP then refs.cbTargetHP:SetChecked(data.hpMode == "target" and 1 or 0) end
     if refs.hpCompDD then
