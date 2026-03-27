@@ -774,19 +774,18 @@ local function BE_BuildContainer(cf)
     container:SetBackdropColor(0, 0, 0, 0.7)
 
     -- Scrollframe
-    -- Using default blizzard template to get standard scrollbar etc
+    -- Match the same outside-scrollbar placement pattern used in DoiteEdit list container.
     local scrollFrame = CreateFrame("ScrollFrame", "DoiteBarsEditScroll", container, "UIPanelScrollFrameTemplate")
-    -- Positioning the scrollbar in the container:
-    -- -25 on the right leaves space for the scrollbar (surely)
-    scrollFrame:SetPoint("TOPLEFT", container, "TOPLEFT", 5, -5)
-    scrollFrame:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", -25, 5)
+    scrollFrame:SetWidth(cW - 20)
+    scrollFrame:SetHeight(cH - 9)
+    scrollFrame:SetPoint("TOPLEFT", container, "TOPLEFT", 12, -5)
 
     -- Enables mouse scrolling
     if scrollFrame.EnableMouseWheel then scrollFrame:EnableMouseWheel(true) end
 
     -- the content inside of the scrollframe
     local content = CreateFrame("Frame", "DoiteBarsEditContent", scrollFrame)
-    content:SetWidth(cW - 22)
+    content:SetWidth(cW - 20)
     content:SetHeight(1200) -- Increase/decrease this depending on the amount of options in the frame
     scrollFrame:SetScrollChild(content) -- tells scrollframe that it needs to move content
 
@@ -875,6 +874,7 @@ local function BE_PopulateContent(content, key)
     refs.powerValBox:SetPoint("TOPLEFT", content, "TOPLEFT", baseX + 160, y - 2)
     refs.powerValBox:SetAutoFocus(false)
     refs.powerValBox:SetJustifyH("CENTER")
+    refs.powerValBox:SetTextColor(1, 0.82, 0)
     refs.powerValBox:SetText(tostring(tonumber(data.powerValue) or 0))
     refs.powerPctLabel = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     refs.powerPctLabel:SetPoint("LEFT", refs.powerValBox, "RIGHT", 4, 0)
@@ -941,6 +941,7 @@ local function BE_PopulateContent(content, key)
     refs.hpValBox:SetPoint("TOPLEFT", content, "TOPLEFT", baseX + 225, y - 2)
     refs.hpValBox:SetAutoFocus(false)
     refs.hpValBox:SetJustifyH("CENTER")
+    refs.hpValBox:SetTextColor(1, 0.82, 0)
     refs.hpValBox:SetText(tostring(tonumber(data.hpValue) or 0))
     refs.hpPctLabel = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     refs.hpPctLabel:SetPoint("LEFT", refs.hpValBox, "RIGHT", 4, 0)
