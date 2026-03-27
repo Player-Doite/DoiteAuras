@@ -623,6 +623,21 @@ end
 ---------------------------------------------------------------
 local function BE_ShowColorPicker(r, g, b, a, changedCallback)
     if not ColorPickerFrame then return end
+    if not ColorPickerFrame._daMovable then
+        ColorPickerFrame._daMovable = true
+        if ColorPickerFrame.SetMovable then ColorPickerFrame:SetMovable(true) end
+        if ColorPickerFrame.EnableMouse then ColorPickerFrame:EnableMouse(true) end
+        if ColorPickerFrame.RegisterForDrag then ColorPickerFrame:RegisterForDrag("LeftButton") end
+        if ColorPickerFrame.SetClampedToScreen then ColorPickerFrame:SetClampedToScreen(true) end
+        if ColorPickerFrame.SetScript then
+            ColorPickerFrame:SetScript("OnDragStart", function()
+                if this and this.StartMoving then this:StartMoving() end
+            end)
+            ColorPickerFrame:SetScript("OnDragStop", function()
+                if this and this.StopMovingOrSizing then this:StopMovingOrSizing() end
+            end)
+        end
+    end
     _G["DoiteBars_ColorPickerNonce"] = (_G["DoiteBars_ColorPickerNonce"] or 0) + 1
     local myNonce = _G["DoiteBars_ColorPickerNonce"]
     ColorPickerFrame:SetColorRGB(r or 1, g or 1, b or 1)
