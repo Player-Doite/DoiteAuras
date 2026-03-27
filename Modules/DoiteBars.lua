@@ -862,7 +862,7 @@ local function BE_PopulateContent(content, key)
     refs.cbPowerOnly.text:SetPoint("LEFT", refs.cbPowerOnly, "RIGHT", 2, 0)
     refs.cbPowerOnly.text:SetText("Power")
 
-    refs.powerCompDD = BE_MakeDropdown(content, "DoiteBarsEdit_PowerCompDD", baseX + 118, y + 6, 60, { ">=", "==", "<=" }, data.powerComp or ">=", function(picked)
+    refs.powerCompDD = BE_MakeDropdown(content, "DoiteBarsEdit_PowerCompDD", baseX + 65, y + 3, 50, { ">=", "==", "<=" }, data.powerComp or ">=", function(picked)
         if not _beKey then return end
         local d = DoiteAurasDB.spells[_beKey]
         if d then
@@ -871,14 +871,14 @@ local function BE_PopulateContent(content, key)
         end
     end)
     refs.powerValBox = CreateFrame("EditBox", nil, content, "InputBoxTemplate")
-    refs.powerValBox:SetWidth(36); refs.powerValBox:SetHeight(18)
-    refs.powerValBox:SetPoint("TOPLEFT", content, "TOPLEFT", baseX + 188, y - 1)
+    refs.powerValBox:SetWidth(40); refs.powerValBox:SetHeight(18)
+    refs.powerValBox:SetPoint("TOPLEFT", content, "TOPLEFT", baseX + 160, y - 2)
     refs.powerValBox:SetAutoFocus(false)
     refs.powerValBox:SetJustifyH("CENTER")
     refs.powerValBox:SetText(tostring(tonumber(data.powerValue) or 0))
     refs.powerPctLabel = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     refs.powerPctLabel:SetPoint("LEFT", refs.powerValBox, "RIGHT", 4, 0)
-    refs.powerPctLabel:SetText("%")
+    refs.powerPctLabel:SetText("(%)")
 
     local function BE_UpdatePowerWidgets()
         local d = (_beKey and DoiteAurasDB and DoiteAurasDB.spells and DoiteAurasDB.spells[_beKey]) or data
@@ -918,16 +918,16 @@ local function BE_PopulateContent(content, key)
     refs.cbMyHP:SetPoint("TOPLEFT", content, "TOPLEFT", baseX, y)
     refs.cbMyHP.text = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     refs.cbMyHP.text:SetPoint("LEFT", refs.cbMyHP, "RIGHT", 2, 0)
-    refs.cbMyHP.text:SetText("MyHP")
+    refs.cbMyHP.text:SetText("My HP")
 
     refs.cbTargetHP = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
     refs.cbTargetHP:SetWidth(20); refs.cbTargetHP:SetHeight(20)
-    refs.cbTargetHP:SetPoint("TOPLEFT", content, "TOPLEFT", baseX + 62, y)
+    refs.cbTargetHP:SetPoint("TOPLEFT", content, "TOPLEFT", baseX + 65, y)
     refs.cbTargetHP.text = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     refs.cbTargetHP.text:SetPoint("LEFT", refs.cbTargetHP, "RIGHT", 2, 0)
-    refs.cbTargetHP.text:SetText("TargetHP")
+    refs.cbTargetHP.text:SetText("Target HP")
 
-    refs.hpCompDD = BE_MakeDropdown(content, "DoiteBarsEdit_HpCompDD", baseX + 118, y + 6, 60, { ">=", "==", "<=" }, data.hpComp or ">=", function(picked)
+    refs.hpCompDD = BE_MakeDropdown(content, "DoiteBarsEdit_HpCompDD", baseX + 130, y + 3, 50, { ">=", "==", "<=" }, data.hpComp or ">=", function(picked)
         if not _beKey then return end
         local d = DoiteAurasDB.spells[_beKey]
         if d then
@@ -937,14 +937,14 @@ local function BE_PopulateContent(content, key)
     end)
 
     refs.hpValBox = CreateFrame("EditBox", nil, content, "InputBoxTemplate")
-    refs.hpValBox:SetWidth(36); refs.hpValBox:SetHeight(18)
-    refs.hpValBox:SetPoint("TOPLEFT", content, "TOPLEFT", baseX + 188, y - 1)
+    refs.hpValBox:SetWidth(40); refs.hpValBox:SetHeight(18)
+    refs.hpValBox:SetPoint("TOPLEFT", content, "TOPLEFT", baseX + 225, y - 2)
     refs.hpValBox:SetAutoFocus(false)
     refs.hpValBox:SetJustifyH("CENTER")
     refs.hpValBox:SetText(tostring(tonumber(data.hpValue) or 0))
     refs.hpPctLabel = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     refs.hpPctLabel:SetPoint("LEFT", refs.hpValBox, "RIGHT", 4, 0)
-    refs.hpPctLabel:SetText("%")
+    refs.hpPctLabel:SetText("(%)")
 
     local function BE_UpdateHPWidgets()
         local d = (_beKey and DoiteAurasDB and DoiteAurasDB.spells and DoiteAurasDB.spells[_beKey]) or data
