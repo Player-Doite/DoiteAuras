@@ -635,10 +635,16 @@ local function BE_ShowColorPicker(r, g, b, a, changedCallback)
     end
     ColorPickerFrame.opacityFunc = ColorPickerFrame.func
     ColorPickerFrame.cancelFunc = ColorPickerFrame.func
-    if ColorPickerFrame.SetFrameStrata then ColorPickerFrame:SetFrameStrata("DIALOG") end
+    if ColorPickerFrame.SetToplevel then ColorPickerFrame:SetToplevel(true) end
+    if ColorPickerFrame.SetParent then ColorPickerFrame:SetParent(UIParent) end
+    if ColorPickerFrame.SetFrameStrata then ColorPickerFrame:SetFrameStrata("TOOLTIP") end
+    if ColorPickerFrame.SetFrameLevel then ColorPickerFrame:SetFrameLevel(100000) end
     if ColorPickerFrame.Raise then ColorPickerFrame:Raise() end
     ColorPickerFrame:Hide()
     ColorPickerFrame:Show()
+    if ColorPickerFrame.SetFrameStrata then ColorPickerFrame:SetFrameStrata("TOOLTIP") end
+    if ColorPickerFrame.SetFrameLevel then ColorPickerFrame:SetFrameLevel(100000) end
+    if ColorPickerFrame.Raise then ColorPickerFrame:Raise() end
 end
 
 local function BE_SetSwatchColor(btn, r, g, b, a)
