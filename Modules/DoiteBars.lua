@@ -101,6 +101,8 @@ local BAR_DEFAULTS = {
     bgAlpha       = 0.7,
     textFormat    = "Actual",
     textPosition  = "Center",
+    orientation   = "Horizontal",
+    direction     = "Left to right",
     fontSize      = 10,
 }
 
@@ -119,6 +121,16 @@ local function DA_BarApplyDefaults(data)
     end
     if data.bgUseDefault == nil then
         data.bgUseDefault = (data.bgR == 0 and data.bgG == 0 and data.bgB == 0 and data.bgAlpha == 0.7)
+    end
+    if data.orientation ~= "Vertical" then
+        data.orientation = "Horizontal"
+    end
+    if not data.direction or data.direction == "" then
+        if data.orientation == "Vertical" then
+            data.direction = "From up to down"
+        else
+            data.direction = "Left to right"
+        end
     end
     DA_BarForceCategory(data)
 end
@@ -471,6 +483,74 @@ local function BE_RefreshEditedBar()
     if not d then return end
     DoiteBars.CreateOrUpdateBar(_beKey, d)
     DoiteBars.RefreshBar(_beKey, d)
+end
+
+local function BE_GetDirectionOptions(orientation)
+    if orientation == "Vertical" then
+        return { "From down to up", "From up to down" }
+    end
+    return { "Left to right", "Right to left" }
+end
+
+local function BE_InitDirectionDropdown(dd, data)
+    if not dd then return end
+    local opts = BE_GetDirectionOptions(data and data.orientation)
+    local cur = data and data.direction or opts[1]
+    local valid = false
+    local i
+    for i = 1, table.getn(opts) do
+        if opts[i] == cur then valid = true break end
+    end
+    if not valid then
+        cur = opts[1]
+        if data then data.direction = cur end
+    end
+
+    if UIDropDownMenu_Initialize then
+        UIDropDownMenu_Initialize(dd, function()
+            local j
+            for j = 1, table.getn(opts) do
+                local opt = opts[j]
+                local info = UIDropDownMenu_CreateInfo()
+                info.text = opt
+                info.value = opt
+                info.checked = (opt == cur)
+                info.func = function(button)
+                    local picked = (button and button.value) or opt
+                    if _beKey and DoiteAurasDB and DoiteAurasDB.spells and DoiteAurasDB.spells[_beKey] then
+                        DoiteAurasDB.spells[_beKey].direction = picked
+                    end
+                    UIDropDownMenu_SetSelectedValue(dd, picked)
+                    UIDropDownMenu_SetText(picked, dd)
+                end
+                UIDropDownMenu_AddButton(info)
+            end
+        end)
+    end
+    UIDropDownMenu_SetSelectedValue(dd, cur)
+    UIDropDownMenu_SetText(cur, dd)
+    if _GoldifyDD then _GoldifyDD(dd) end
+end
+
+local function BE_EnsureTopDropdowns(cf)
+    if not cf then return end
+    if cf.beOrientationDD then return end
+
+    cf.beOrientationLabel = cf:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    cf.beOrientationLabel:SetPoint("TOPLEFT", cf, "TOPLEFT", 20, -68)
+    cf.beOrientationLabel:SetText("Orientation")
+
+    cf.beOrientationDD = CreateFrame("Frame", "DoiteBarsEdit_OrientationDD", cf, "UIDropDownMenuTemplate")
+    cf.beOrientationDD:SetPoint("TOPLEFT", cf, "TOPLEFT", 105, -63)
+    if UIDropDownMenu_SetWidth then UIDropDownMenu_SetWidth(130, cf.beOrientationDD) end
+
+    cf.beDirectionLabel = cf:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    cf.beDirectionLabel:SetPoint("TOPLEFT", cf, "TOPLEFT", 20, -96)
+    cf.beDirectionLabel:SetText("Direction")
+
+    cf.beDirectionDD = CreateFrame("Frame", "DoiteBarsEdit_DirectionDD", cf, "UIDropDownMenuTemplate")
+    cf.beDirectionDD:SetPoint("TOPLEFT", cf, "TOPLEFT", 105, -91)
+    if UIDropDownMenu_SetWidth then UIDropDownMenu_SetWidth(150, cf.beDirectionDD) end
 end
 
 ---------------------------------------------------------------
@@ -1266,6 +1346,7 @@ function DoiteBars.InjectEditControls(cf, key)
     end
 
     if cf.condListContainer then cf.condListContainer:Hide() end
+    BE_EnsureTopDropdowns(cf)
 
     if not cf.BarEditContainer then
         local container, content = BE_BuildContainer(cf)
@@ -1276,6 +1357,47 @@ function DoiteBars.InjectEditControls(cf, key)
 
     BE_UpdateSliderValues(cf.beRefs, data)
     cf.BarEditContainer:Show()
+
+    if cf.beOrientationLabel then cf.beOrientationLabel:Show() end
+    if cf.beOrientationDD then
+        local opts = { "Horizontal", "Vertical" }
+        local cur = data.orientation or "Horizontal"
+        UIDropDownMenu_Initialize(cf.beOrientationDD, function()
+            local i
+            for i = 1, table.getn(opts) do
+                local opt = opts[i]
+                local info = UIDropDownMenu_CreateInfo()
+                info.text = opt
+                info.value = opt
+                info.checked = (opt == cur)
+                info.func = function(button)
+                    local picked = (button and button.value) or opt
+                    if not _beKey then return end
+                    local d = DoiteAurasDB.spells[_beKey]
+                    if not d then return end
+                    d.orientation = picked
+                    if picked == "Vertical" then
+                        d.direction = "From up to down"
+                    else
+                        d.direction = "Left to right"
+                    end
+                    UIDropDownMenu_SetSelectedValue(cf.beOrientationDD, picked)
+                    UIDropDownMenu_SetText(picked, cf.beOrientationDD)
+                    BE_InitDirectionDropdown(cf.beDirectionDD, d)
+                end
+                UIDropDownMenu_AddButton(info)
+            end
+        end)
+        UIDropDownMenu_SetSelectedValue(cf.beOrientationDD, cur)
+        UIDropDownMenu_SetText(cur, cf.beOrientationDD)
+        if _GoldifyDD then _GoldifyDD(cf.beOrientationDD) end
+        cf.beOrientationDD:Show()
+    end
+    if cf.beDirectionLabel then cf.beDirectionLabel:Show() end
+    if cf.beDirectionDD then
+        BE_InitDirectionDropdown(cf.beDirectionDD, data)
+        cf.beDirectionDD:Show()
+    end
 
     if cf.groupTitle3 then cf.groupTitle3:Hide() end
     if cf.sep3 then cf.sep3:Hide() end
@@ -1302,6 +1424,10 @@ function DoiteBars.CleanupCondFrame(cf)
     if cf.BarEditContainer then
         cf.BarEditContainer:Hide()
     end
+    if cf.beOrientationLabel then cf.beOrientationLabel:Hide() end
+    if cf.beOrientationDD then cf.beOrientationDD:Hide() end
+    if cf.beDirectionLabel then cf.beDirectionLabel:Hide() end
+    if cf.beDirectionDD then cf.beDirectionDD:Hide() end
     if cf.beNameLbl then cf.beNameLbl:Hide() end
     if cf.beKindLbl then cf.beKindLbl:Hide() end
 
