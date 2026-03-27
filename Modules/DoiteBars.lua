@@ -635,16 +635,35 @@ local function BE_ShowColorPicker(r, g, b, a, changedCallback)
     end
     ColorPickerFrame.opacityFunc = ColorPickerFrame.func
     ColorPickerFrame.cancelFunc = ColorPickerFrame.func
-    if ColorPickerFrame.SetToplevel then ColorPickerFrame:SetToplevel(true) end
-    if ColorPickerFrame.SetParent then ColorPickerFrame:SetParent(UIParent) end
-    if ColorPickerFrame.SetFrameStrata then ColorPickerFrame:SetFrameStrata("TOOLTIP") end
-    if ColorPickerFrame.SetFrameLevel then ColorPickerFrame:SetFrameLevel(100000) end
-    if ColorPickerFrame.Raise then ColorPickerFrame:Raise() end
+    local function BE_BringColorPickerToFront()
+        if ColorPickerFrame.SetToplevel then ColorPickerFrame:SetToplevel(true) end
+        if ColorPickerFrame.SetParent then ColorPickerFrame:SetParent(UIParent) end
+        if ColorPickerFrame.SetFrameStrata then ColorPickerFrame:SetFrameStrata("TOOLTIP") end
+        if ColorPickerFrame.SetFrameLevel then ColorPickerFrame:SetFrameLevel(10000) end
+        if ColorPickerFrame.Raise then ColorPickerFrame:Raise() end
+
+        local base = ColorPickerFrame.GetFrameLevel and ColorPickerFrame:GetFrameLevel() or 10000
+        local children = {
+            _G["OpacitySliderFrame"],
+            _G["ColorPickerOkayButton"],
+            _G["ColorPickerCancelButton"],
+        }
+        local i
+        for i = 1, table.getn(children) do
+            local cf = children[i]
+            if cf then
+                if cf.SetFrameStrata then cf:SetFrameStrata("TOOLTIP") end
+                if cf.SetFrameLevel then cf:SetFrameLevel(base + 5 + i) end
+                if cf.SetToplevel then cf:SetToplevel(true) end
+                if cf.Raise then cf:Raise() end
+            end
+        end
+    end
+
+    BE_BringColorPickerToFront()
     ColorPickerFrame:Hide()
     ColorPickerFrame:Show()
-    if ColorPickerFrame.SetFrameStrata then ColorPickerFrame:SetFrameStrata("TOOLTIP") end
-    if ColorPickerFrame.SetFrameLevel then ColorPickerFrame:SetFrameLevel(100000) end
-    if ColorPickerFrame.Raise then ColorPickerFrame:Raise() end
+    BE_BringColorPickerToFront()
 end
 
 local function BE_SetSwatchColor(btn, r, g, b, a)
