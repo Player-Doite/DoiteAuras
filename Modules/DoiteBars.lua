@@ -111,6 +111,9 @@ local function DA_BarApplyDefaults(data)
             data[k] = v
         end
     end
+    if data.bgUseDefault == nil then
+        data.bgUseDefault = (data.bgR == 0 and data.bgG == 0 and data.bgB == 0 and data.bgAlpha == 0.7)
+    end
     DA_BarForceCategory(data)
 end
 
@@ -512,8 +515,8 @@ local function BE_MakeHeader(parent, y, labelText)
 
     local sep = parent:CreateTexture(nil, "ARTWORK")
     sep:SetHeight(1)
-    sep:SetPoint("TOPLEFT",  parent, "TOPLEFT",  6, y - 12)
-    sep:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -6, y - 12)
+    sep:SetPoint("TOPLEFT",  parent, "TOPLEFT",  6, y - 14)
+    sep:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -6, y - 14)
     sep:SetTexture(1, 1, 1)
     if sep.SetVertexColor then sep:SetVertexColor(1, 1, 1, 0.25) end
 end
@@ -557,6 +560,9 @@ local function BE_MakeDropdown(parent, name, x, y, width, options, selectedValue
     if UIDropDownMenu_SetText then
         UIDropDownMenu_SetText(selectedValue or "", dd)
     end
+    if _GoldifyDD then
+        _GoldifyDD(dd)
+    end
     return dd
 end
 
@@ -565,14 +571,14 @@ end
 ---------------------------------------------------------------
 local function BE_ShowColorPicker(r, g, b, a, changedCallback)
     if not ColorPickerFrame then return end
-    BE_ShowColorPicker._nonce = (BE_ShowColorPicker._nonce or 0) + 1
-    local myNonce = BE_ShowColorPicker._nonce
+    _G["DoiteBars_ColorPickerNonce"] = (_G["DoiteBars_ColorPickerNonce"] or 0) + 1
+    local myNonce = _G["DoiteBars_ColorPickerNonce"]
     ColorPickerFrame:SetColorRGB(r or 1, g or 1, b or 1)
     ColorPickerFrame.hasOpacity = (a ~= nil)
     ColorPickerFrame.opacity = a
     ColorPickerFrame.previousValues = { r or 1, g or 1, b or 1, a }
     ColorPickerFrame.func = function(restore)
-        if myNonce ~= BE_ShowColorPicker._nonce then return end
+        if myNonce ~= _G["DoiteBars_ColorPickerNonce"] then return end
         changedCallback(restore)
     end
     ColorPickerFrame.opacityFunc = ColorPickerFrame.func
@@ -767,7 +773,7 @@ local function BE_PopulateContent(content, key)
     end
     y = y - 55
 
-    BE_MakeHeader(content, y, "BAR COLOR")
+    BE_MakeHeader(content, y, "COLOR")
     y = y - 28
 
     refs.barUseDefault = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
@@ -791,7 +797,7 @@ local function BE_PopulateContent(content, key)
         BE_RefreshEditedBar()
     end)
 
-    refs.barColorSwatch = BE_MakeColorSwatch(content, baseX + 160, y, "Color:", function()
+    refs.barColorSwatch = BE_MakeColorSwatch(content, baseX + 160, y, "Bar:", function()
         if not _beKey then return end
         local d = DoiteAurasDB.spells[_beKey]
         if not d then return end
@@ -815,10 +821,26 @@ local function BE_PopulateContent(content, key)
     end)
     y = y - 40
 
-    BE_MakeHeader(content, y, "BACKGROUND COLOR")
-    y = y - 28
+    refs.bgUseDefault = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
+    refs.bgUseDefault:SetWidth(20); refs.bgUseDefault:SetHeight(20)
+    refs.bgUseDefault:SetPoint("TOPLEFT", content, "TOPLEFT", baseX, y)
+    refs.bgUseDefault:SetChecked(data.bgUseDefault and 1 or 0)
+    refs.bgUseDefault.text = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    refs.bgUseDefault.text:SetPoint("LEFT", refs.bgUseDefault, "RIGHT", 2, 0)
+    refs.bgUseDefault.text:SetText("Use default background")
+    refs.bgUseDefault:SetScript("OnClick", function()
+        if not _beKey then return end
+        local d = DoiteAurasDB.spells[_beKey]
+        if not d then return end
+        local checked = (this:GetChecked() == 1)
+        d.bgUseDefault = checked and true or false
+        if checked then
+            d.bgR, d.bgG, d.bgB, d.bgAlpha = 0, 0, 0, 0.7
+        end
+        BE_RefreshEditedBar()
+    end)
 
-    refs.bgColorSwatch = BE_MakeColorSwatch(content, baseX, y, "Background:", function()
+    refs.bgColorSwatch = BE_MakeColorSwatch(content, baseX + 160, y, "Background:", function()
         if not _beKey then return end
         local d = DoiteAurasDB.spells[_beKey]
         if not d then return end
@@ -833,6 +855,8 @@ local function BE_PopulateContent(content, key)
             end
             d.bgR, d.bgG, d.bgB = nr, ng, nb
             d.bgAlpha = na or 0.7
+            d.bgUseDefault = false
+            if refs.bgUseDefault then refs.bgUseDefault:SetChecked(0) end
             BE_SetSwatchColor(refs.bgColorSwatch, nr, ng, nb, na)
             BE_RefreshEditedBar()
         end)
@@ -914,6 +938,7 @@ local function BE_UpdateSliderValues(refs, data)
     if refs.sliderW then refs.sliderW:SetValue(data.barWidth or 200) end
     if refs.sliderH then refs.sliderH:SetValue(data.barHeight or 24) end
     if refs.barUseDefault then refs.barUseDefault:SetChecked((data.barR or -1) < 0 and 1 or 0) end
+    if refs.bgUseDefault then refs.bgUseDefault:SetChecked(data.bgUseDefault and 1 or 0) end
     if refs.barColorSwatch then
         local sr, sg, sb = data.barR, data.barG, data.barB
         if not sr or sr < 0 then sr, sg, sb = 0, 0.44, 0.87 end
@@ -928,11 +953,13 @@ local function BE_UpdateSliderValues(refs, data)
         refs.fmtDD._selectedValue = data.textFormat or "Actual"
         UIDropDownMenu_SetSelectedValue(refs.fmtDD, data.textFormat or "Actual")
         UIDropDownMenu_SetText(data.textFormat or "Actual", refs.fmtDD)
+        if _GoldifyDD then _GoldifyDD(refs.fmtDD) end
     end
     if refs.posDD and UIDropDownMenu_SetSelectedValue then
         refs.posDD._selectedValue = data.textPosition or "Center"
         UIDropDownMenu_SetSelectedValue(refs.posDD, data.textPosition or "Center")
         UIDropDownMenu_SetText(data.textPosition or "Center", refs.posDD)
+        if _GoldifyDD then _GoldifyDD(refs.posDD) end
     end
 end
 
