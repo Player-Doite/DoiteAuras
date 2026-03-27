@@ -606,38 +606,43 @@ end
 local barDropDown = CreateFrame("Frame", "DoiteAurasBarDropDown", frame, "UIDropDownMenuTemplate")
 barDropDown:SetPoint("TOPLEFT", input, "TOPLEFT", -23, 3)
 
--- Populate Bars dropdown
-UIDropDownMenu_Initialize(barDropDown, function()
-    local info
-
-    info = {}
-    info.text = "Healthbar"
-    info.func = function()
-        UIDropDownMenu_SetText("Healthbar", barDropDown)
+local function DA_RebuildBarDropDown()
+    if not barDropDown then return end
+    if UIDropDownMenu_Initialize then
+        UIDropDownMenu_Initialize(barDropDown, function()
+            local added = false
+            if DoiteBars and DoiteBars.KindOrder and DoiteBars.Kinds then
+                local i
+                for i = 1, table.getn(DoiteBars.KindOrder) do
+                    local kindKey = DoiteBars.KindOrder[i]
+                    local kd = DoiteBars.Kinds[kindKey]
+                    if kd and kd.label then
+                        local info = UIDropDownMenu_CreateInfo()
+                        info.text = kd.label
+                        info.value = kd.label
+                        info.func = function()
+                            UIDropDownMenu_SetText(kd.label, barDropDown)
+                        end
+                        UIDropDownMenu_AddButton(info)
+                        added = true
+                    end
+                end
+            end
+            if not added then
+                local info = UIDropDownMenu_CreateInfo()
+                info.text = "No bars available"
+                info.notCheckable = true
+                info.func = function() end
+                UIDropDownMenu_AddButton(info)
+            end
+        end)
     end
-    UIDropDownMenu_AddButton(info)
-
-    info = {}
-    info.text = "Powerbar"
-    info.func = function()
-        UIDropDownMenu_SetText("Powerbar", barDropDown)
+    if UIDropDownMenu_SetText then
+        UIDropDownMenu_SetText("Select from dropdown", barDropDown)
     end
-    UIDropDownMenu_AddButton(info)
+end
 
-    info = {}
-    info.text = "Swing/wand timer (coming soon)"
-    info.func = function()
-        UIDropDownMenu_SetText("Swing/wand timer (coming soon)", barDropDown)
-    end
-    UIDropDownMenu_AddButton(info)
-
-    info = {}
-    info.text = "Castbar (coming soon)"
-    info.func = function()
-        UIDropDownMenu_SetText("Castbar (coming soon)", barDropDown)
-    end
-    UIDropDownMenu_AddButton(info)
-end)
+DA_RebuildBarDropDown()
 
 UIDropDownMenu_SetWidth(230, barDropDown)
 UIDropDownMenu_SetText("Select from dropdown", barDropDown)
@@ -2662,6 +2667,15 @@ local function RefreshIcons(force)
             used[key] = true
         end
 
+        if data and data.type == "Bar" then
+            if DoiteBars and DoiteBars.CreateOrUpdateBar and DoiteBars.RefreshBar then
+                local bf = DoiteBars.CreateOrUpdateBar(key, data)
+                if bf then
+                    DoiteBars.RefreshBar(key, data)
+                end
+            end
+        else
+
         -- Prefer the local icons[] cache to avoid per-icon string concat + _G lookup
         local f = (icons and icons[key]) or nil
         if not f then
@@ -2847,6 +2861,7 @@ local function RefreshIcons(force)
             f:Show()
         else
             f:Hide()
+        end
         end
     end
 
