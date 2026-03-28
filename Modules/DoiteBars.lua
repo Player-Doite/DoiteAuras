@@ -134,13 +134,6 @@ local function DA_IsTextureValid(path)
         or path == "Interface\\Buttons\\WHITE8X8"
 end
 
-local function DA_TexturePad(path)
-    if path == "Interface\\TargetingFrame\\UI-StatusBar" then
-        return 0.08
-    end
-    return 0
-end
-
 local function DA_BarApplyDefaults(data)
     for k, v in pairs(BAR_DEFAULTS) do
         if data[k] == nil then
@@ -182,20 +175,16 @@ local function DA_BarApplyFill(frame, data, cur, max)
     if innerW < 0 then innerW = 0 end
     if innerH < 0 then innerH = 0 end
 
-    local pad = DA_TexturePad(data and data.fillTexture)
-    local t0 = pad
-    local t1 = 1 - pad
-
     frame.fill:ClearAllPoints()
     if data.orientation == "Vertical" then
         if frame.fill.SetTexCoord then
             -- rotate texture so vertical bars use vertical texture flow
             if data.direction == "From down to up" then
                 -- 90° CCW
-                frame.fill:SetTexCoord(t1, t0, t0, t0, t1, t1, t0, t1)
+                frame.fill:SetTexCoord(1, 0, 0, 0, 1, 1, 0, 1)
             else
                 -- 90° CW
-                frame.fill:SetTexCoord(t0, t1, t1, t1, t0, t0, t1, t0)
+                frame.fill:SetTexCoord(0, 1, 1, 1, 0, 0, 1, 0)
             end
         end
         local fh = math.floor(innerH * pct + 0.5)
@@ -217,9 +206,9 @@ local function DA_BarApplyFill(frame, data, cur, max)
     else
         if frame.fill.SetTexCoord then
             if data.direction == "Left to right" then
-                frame.fill:SetTexCoord(t1, t0, t0, 1)
+                frame.fill:SetTexCoord(1, 0, 0, 1)
             else
-                frame.fill:SetTexCoord(t0, t1, t0, 1)
+                frame.fill:SetTexCoord(0, 1, 0, 1)
             end
         end
         local fw = math.floor(innerW * pct + 0.5)
