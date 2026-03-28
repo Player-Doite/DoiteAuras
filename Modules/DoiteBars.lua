@@ -1009,6 +1009,12 @@ end
 ---------------------------------------------------------------
 -- Color picker helpers
 ---------------------------------------------------------------
+local function BE_HideColorPicker()
+    if not ColorPickerFrame then return end
+    _G["DoiteBars_ColorPickerNonce"] = (_G["DoiteBars_ColorPickerNonce"] or 0) + 1
+    if ColorPickerFrame.Hide then ColorPickerFrame:Hide() end
+end
+
 local function BE_ShowColorPicker(r, g, b, a, changedCallback)
     if not ColorPickerFrame then return end
     if not ColorPickerFrame._daMovable then
@@ -1024,6 +1030,16 @@ local function BE_ShowColorPicker(r, g, b, a, changedCallback)
             h:SetHeight(18)
             h:EnableMouse(true)
             h:RegisterForDrag("LeftButton")
+            h:SetScript("OnMouseDown", function()
+                if ColorPickerFrame and ColorPickerFrame.StartMoving then
+                    ColorPickerFrame:StartMoving()
+                end
+            end)
+            h:SetScript("OnMouseUp", function()
+                if ColorPickerFrame and ColorPickerFrame.StopMovingOrSizing then
+                    ColorPickerFrame:StopMovingOrSizing()
+                end
+            end)
             h:SetScript("OnDragStart", function()
                 if ColorPickerFrame and ColorPickerFrame.StartMoving then
                     ColorPickerFrame:StartMoving()
@@ -1075,7 +1091,7 @@ local function BE_ShowColorPicker(r, g, b, a, changedCallback)
     end
 
     BE_BringColorPickerToFront()
-    ColorPickerFrame:Hide()
+    BE_HideColorPicker()
     ColorPickerFrame:Show()
     BE_BringColorPickerToFront()
 end
@@ -1648,6 +1664,15 @@ end
 function DoiteBars.InjectEditControls(cf, key)
     if not cf or not key then return end
 
+    if cf.HookScript and not cf._daBarsHideHooked then
+        cf:HookScript("OnHide", function() BE_HideColorPicker() end)
+        cf._daBarsHideHooked = true
+    end
+    if DoiteAurasFrame and DoiteAurasFrame.HookScript and not DoiteAurasFrame._daBarsHideHooked then
+        DoiteAurasFrame:HookScript("OnHide", function() BE_HideColorPicker() end)
+        DoiteAurasFrame._daBarsHideHooked = true
+    end
+
     _beKey = key
     local data = DoiteAurasDB and DoiteAurasDB.spells and DoiteAurasDB.spells[key]
     if not data then return end
@@ -1738,6 +1763,7 @@ end
 ---------------------------------------------------------------
 function DoiteBars.CleanupCondFrame(cf)
     if not cf then return end
+    BE_HideColorPicker()
     
     if cf.BarEditContainer then
         cf.BarEditContainer:Hide()
