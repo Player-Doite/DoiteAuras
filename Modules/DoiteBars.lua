@@ -153,6 +153,58 @@ local function DA_BarCompare(left, comp, right)
     return left >= right
 end
 
+local function DA_BarApplyFill(frame, data, cur, max)
+    if not frame or not frame.bar or not frame.fill then return end
+    local m = tonumber(max) or 0
+    local c = tonumber(cur) or 0
+    if m <= 0 then m = 1 end
+    if c < 0 then c = 0 end
+    if c > m then c = m end
+    local pct = c / m
+
+    local innerW = (frame.bar.GetWidth and frame.bar:GetWidth() or 0)
+    local innerH = (frame.bar.GetHeight and frame.bar:GetHeight() or 0)
+    if innerW < 0 then innerW = 0 end
+    if innerH < 0 then innerH = 0 end
+
+    frame.fill:ClearAllPoints()
+    if data.orientation == "Vertical" then
+        local fh = math.floor(innerH * pct + 0.5)
+        if fh < 1 and pct > 0 then fh = 1 end
+        if fh <= 0 then
+            frame.fill:Hide()
+            return
+        end
+        frame.fill:Show()
+        if data.direction == "From down to up" then
+            frame.fill:SetPoint("TOPLEFT", frame.bar, "TOPLEFT", 0, 0)
+            frame.fill:SetPoint("TOPRIGHT", frame.bar, "TOPRIGHT", 0, 0)
+            frame.fill:SetHeight(fh)
+        else
+            frame.fill:SetPoint("BOTTOMLEFT", frame.bar, "BOTTOMLEFT", 0, 0)
+            frame.fill:SetPoint("BOTTOMRIGHT", frame.bar, "BOTTOMRIGHT", 0, 0)
+            frame.fill:SetHeight(fh)
+        end
+    else
+        local fw = math.floor(innerW * pct + 0.5)
+        if fw < 1 and pct > 0 then fw = 1 end
+        if fw <= 0 then
+            frame.fill:Hide()
+            return
+        end
+        frame.fill:Show()
+        if data.direction == "Left to right" then
+            frame.fill:SetPoint("TOPLEFT", frame.bar, "TOPLEFT", 0, 0)
+            frame.fill:SetPoint("BOTTOMLEFT", frame.bar, "BOTTOMLEFT", 0, 0)
+            frame.fill:SetWidth(fw)
+        else
+            frame.fill:SetPoint("TOPRIGHT", frame.bar, "TOPRIGHT", 0, 0)
+            frame.fill:SetPoint("BOTTOMRIGHT", frame.bar, "BOTTOMRIGHT", 0, 0)
+            frame.fill:SetWidth(fw)
+        end
+    end
+end
+
 local function DA_BarPassesExtraConditions(data)
     if data.powerOnly then
         local cur = UnitMana and UnitMana("player") or 0
@@ -214,6 +266,9 @@ function DoiteBars.CreateOrUpdateBar(key, data)
         f.bar:SetMinMaxValues(0, 1)
         f.bar:SetValue(1)
         f.bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+        f.fill = f.bar:CreateTexture(nil, "ARTWORK")
+        f.fill:SetTexture("Interface\\TargetingFrame\\UI-StatusBar")
+        f.fill:SetAllPoints(f.bar)
 
         -- Label
         f.label = f.bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -414,11 +469,12 @@ function DoiteBars.RefreshBar(key, data)
     else
         r, g, b = kind.r, kind.g, kind.b
     end
-    f.bar:SetStatusBarColor(r, g, b, data.barAlpha)
+    if f.fill and f.fill.SetVertexColor then
+        f.fill:SetVertexColor(r, g, b, data.barAlpha or 1)
+    end
 
     -- Fill value
-    f.bar:SetMinMaxValues(0, max)
-    f.bar:SetValue(math.min(cur, max))
+    DA_BarApplyFill(f, data, cur, max)
 
     -- Label text
     if f.label then
