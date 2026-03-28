@@ -539,6 +539,7 @@ local function BE_EnsureTopDropdowns(cf)
     cf.beOrientationLabel = cf:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     cf.beOrientationLabel:SetPoint("TOPLEFT", cf, "TOPLEFT", 20, -68)
     cf.beOrientationLabel:SetText("Orientation")
+    if cf.beOrientationLabel.SetTextColor then cf.beOrientationLabel:SetTextColor(1, 1, 1) end
 
     cf.beOrientationDD = CreateFrame("Frame", "DoiteBarsEdit_OrientationDD", cf, "UIDropDownMenuTemplate")
     cf.beOrientationDD:SetPoint("TOPLEFT", cf, "TOPLEFT", 105, -63)
@@ -547,6 +548,7 @@ local function BE_EnsureTopDropdowns(cf)
     cf.beDirectionLabel = cf:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     cf.beDirectionLabel:SetPoint("TOPLEFT", cf, "TOPLEFT", 20, -96)
     cf.beDirectionLabel:SetText("Direction")
+    if cf.beDirectionLabel.SetTextColor then cf.beDirectionLabel:SetTextColor(1, 1, 1) end
 
     cf.beDirectionDD = CreateFrame("Frame", "DoiteBarsEdit_DirectionDD", cf, "UIDropDownMenuTemplate")
     cf.beDirectionDD:SetPoint("TOPLEFT", cf, "TOPLEFT", 105, -91)
@@ -890,7 +892,7 @@ local function BE_PopulateContent(content, key)
     local refs  = {}
 
     BE_MakeHeader(content, y, "VISIBILITY")
-    y = y - 28
+    y = y - 23
 
     refs.cbInCombat = CreateFrame("CheckButton", nil, content, "UICheckButtonTemplate")
     refs.cbInCombat:SetWidth(20); refs.cbInCombat:SetHeight(20)
@@ -1088,7 +1090,7 @@ local function BE_PopulateContent(content, key)
         local d = DoiteAurasDB.spells[_beKey]
         if d then d.offsetY = v; DoiteBars.CreateOrUpdateBar(_beKey, d) end
     end
-    y = y - 75
+    y = y - 70
 
     local sW, _ = BE_MakeSlider(content, "DoiteBarsEdit_SliderW", "Width",  baseX,                 y, sliderW, 20, 800, 1)
     local sH, _ = BE_MakeSlider(content, "DoiteBarsEdit_SliderH", "Height", baseX + sliderW + gap + col2Offset, y, sliderW, 4,  200, 1)
@@ -1117,7 +1119,7 @@ local function BE_PopulateContent(content, key)
     refs.barUseDefault:SetChecked((data.barR or -1) < 0 and 1 or 0)
     refs.barUseDefault.text = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     refs.barUseDefault.text:SetPoint("LEFT", refs.barUseDefault, "RIGHT", 2, 0)
-    refs.barUseDefault.text:SetText("Use default color")
+    refs.barUseDefault.text:SetText("Use default bar color")
     refs.barUseDefault:SetScript("OnClick", function()
         if not _beKey then return end
         local d = DoiteAurasDB.spells[_beKey]
@@ -1196,7 +1198,7 @@ local function BE_PopulateContent(content, key)
             BE_RefreshEditedBar()
         end)
     end)
-    y = y - 40
+    y = y - 35
 
     BE_MakeHeader(content, y, "TEXT")
     y = y - 28
@@ -1246,7 +1248,7 @@ local function BE_PopulateContent(content, key)
         "DoiteBarsEdit_TextPosDD",
         baseX + 90,
         y + 6,
-        130,
+        110,
         { "Center", "TopLeft", "TopRight", "BottomLeft", "BottomRight" },
         data.textPosition or "Center",
         function(picked)
@@ -1258,6 +1260,10 @@ local function BE_PopulateContent(content, key)
         end
     )
     y = y - 30
+
+    local wantedH = math.abs(y) + 10
+    if wantedH < 420 then wantedH = 420 end
+    content:SetHeight(wantedH)
 
     return refs
 end
