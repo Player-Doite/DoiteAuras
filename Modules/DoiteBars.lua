@@ -170,8 +170,14 @@ local function DA_BarApplyFill(frame, data, cur, max)
     if c > m then c = m end
     local pct = c / m
 
-    local innerW = (frame.bar.GetWidth and frame.bar:GetWidth() or 0)
-    local innerH = (frame.bar.GetHeight and frame.bar:GetHeight() or 0)
+    local innerW, innerH
+    if data and data.orientation == "Vertical" then
+        innerW = (tonumber(data.barHeight) or 0) - (BAR_BORDER * 2)
+        innerH = (tonumber(data.barWidth) or 0) - (BAR_BORDER * 2)
+    else
+        innerW = (tonumber(data and data.barWidth) or 0) - (BAR_BORDER * 2)
+        innerH = (tonumber(data and data.barHeight) or 0) - (BAR_BORDER * 2)
+    end
     if innerW < 0 then innerW = 0 end
     if innerH < 0 then innerH = 0 end
 
