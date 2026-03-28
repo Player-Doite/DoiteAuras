@@ -73,7 +73,6 @@ end
 local barFrames = {}
 local BAR_BORDER = 0
 local BE_IsOutsideTextPosition
-local BE_ToVerticalText
 
 ---------------------------------------------------------------
 -- Shared defaults
@@ -417,26 +416,65 @@ function DoiteBars.CreateOrUpdateBar(key, data)
         f.label:SetPoint("LEFT", f.bar, "RIGHT", 2, 0)
         f.label:SetJustifyH("LEFT")
         f.label:SetJustifyV("MIDDLE")
+    elseif tp == "OutsideTop" then
+        f.label:SetPoint("BOTTOM", f.bar, "TOP", 0, 2)
+        f.label:SetJustifyH("CENTER")
+        f.label:SetJustifyV("BOTTOM")
+    elseif tp == "OutsideBottom" then
+        f.label:SetPoint("TOP", f.bar, "BOTTOM", 0, -2)
+        f.label:SetJustifyH("CENTER")
+        f.label:SetJustifyV("TOP")
     elseif tp == "OutsideTopLeft" then
-        f.label:SetPoint("BOTTOMLEFT", f.bar, "TOPLEFT", 0, 2)
-        f.label:SetJustifyH("LEFT")
-        f.label:SetJustifyV("BOTTOM")
+        if data.orientation == "Vertical" then
+            f.label:SetPoint("TOPRIGHT", f.bar, "TOPLEFT", -2, 0)
+            f.label:SetJustifyH("RIGHT")
+            f.label:SetJustifyV("TOP")
+        else
+            f.label:SetPoint("BOTTOMLEFT", f.bar, "TOPLEFT", 0, 2)
+            f.label:SetJustifyH("LEFT")
+            f.label:SetJustifyV("BOTTOM")
+        end
     elseif tp == "OutsideTopRight" then
-        f.label:SetPoint("BOTTOMRIGHT", f.bar, "TOPRIGHT", 0, 2)
-        f.label:SetJustifyH("RIGHT")
-        f.label:SetJustifyV("BOTTOM")
+        if data.orientation == "Vertical" then
+            f.label:SetPoint("TOPLEFT", f.bar, "TOPRIGHT", 2, 0)
+            f.label:SetJustifyH("LEFT")
+            f.label:SetJustifyV("TOP")
+        else
+            f.label:SetPoint("BOTTOMRIGHT", f.bar, "TOPRIGHT", 0, 2)
+            f.label:SetJustifyH("RIGHT")
+            f.label:SetJustifyV("BOTTOM")
+        end
     elseif tp == "OutsideBottomLeft" then
-        f.label:SetPoint("TOPLEFT", f.bar, "BOTTOMLEFT", 0, -2)
-        f.label:SetJustifyH("LEFT")
-        f.label:SetJustifyV("TOP")
+        if data.orientation == "Vertical" then
+            f.label:SetPoint("BOTTOMRIGHT", f.bar, "BOTTOMLEFT", -2, 0)
+            f.label:SetJustifyH("RIGHT")
+            f.label:SetJustifyV("BOTTOM")
+        else
+            f.label:SetPoint("TOPLEFT", f.bar, "BOTTOMLEFT", 0, -2)
+            f.label:SetJustifyH("LEFT")
+            f.label:SetJustifyV("TOP")
+        end
     elseif tp == "OutsideBottomRight" or tp == "OutsideBottom Right" then
-        f.label:SetPoint("TOPRIGHT", f.bar, "BOTTOMRIGHT", 0, -2)
-        f.label:SetJustifyH("RIGHT")
-        f.label:SetJustifyV("TOP")
+        if data.orientation == "Vertical" then
+            f.label:SetPoint("BOTTOMLEFT", f.bar, "BOTTOMRIGHT", 2, 0)
+            f.label:SetJustifyH("LEFT")
+            f.label:SetJustifyV("BOTTOM")
+        else
+            f.label:SetPoint("TOPRIGHT", f.bar, "BOTTOMRIGHT", 0, -2)
+            f.label:SetJustifyH("RIGHT")
+            f.label:SetJustifyV("TOP")
+        end
     else
         f.label:SetAllPoints(f.bar)
         f.label:SetJustifyH("CENTER")
         f.label:SetJustifyV("MIDDLE")
+    end
+    if f.label and f.label.SetRotation then
+        if data.orientation == "Vertical" and not BE_IsOutsideTextPosition(tp) then
+            f.label:SetRotation(1.57079632679)
+        else
+            f.label:SetRotation(0)
+        end
     end
 
     -- Edit mode mouse
@@ -509,10 +547,6 @@ function DoiteBars.RefreshBar(key, data)
             txt = shorten(cur) .. " / " .. shorten(max)
         else
             txt = tostring(cur) .. " / " .. tostring(max)
-        end
-        local tp = data.textPosition or "Center"
-        if data.orientation == "Vertical" and not BE_IsOutsideTextPosition(tp) then
-            txt = BE_ToVerticalText(txt)
         end
         f.label:SetText(txt)
     end
@@ -641,22 +675,11 @@ BE_IsOutsideTextPosition = function(tp)
         or tp == "OutsideRight"
         or tp == "OutsideTopLeft"
         or tp == "OutsideTopRight"
+        or tp == "OutsideTop"
+        or tp == "OutsideBottom"
         or tp == "OutsideBottomLeft"
         or tp == "OutsideBottomRight"
         or tp == "OutsideBottom Right"
-end
-
-BE_ToVerticalText = function(text)
-    if not text or text == "" then return text end
-    local out = ""
-    local i
-    local len = string.len(text)
-    for i = 1, len do
-        local ch = string.sub(text, i, i)
-        if ch == " " then ch = "  " end
-        if i == 1 then out = ch else out = out .. "\n" .. ch end
-    end
-    return out
 end
 
 local function BE_SetDropdownTextColor(dd, r, g, b)
@@ -708,6 +731,18 @@ local function BE_InitDirectionDropdown(dd, data)
     UIDropDownMenu_SetSelectedValue(dd, cur)
     UIDropDownMenu_SetText(cur, dd)
     BE_SetDropdownTextColor(dd, 1, 1, 1)
+end
+
+local function BE_UpdateSizeSliderLabels(data)
+    local wTxt = _G["DoiteBarsEdit_SliderWText"]
+    local hTxt = _G["DoiteBarsEdit_SliderHText"]
+    if data and data.orientation == "Vertical" then
+        if wTxt and wTxt.SetText then wTxt:SetText("Height") end
+        if hTxt and hTxt.SetText then hTxt:SetText("Width") end
+    else
+        if wTxt and wTxt.SetText then wTxt:SetText("Width") end
+        if hTxt and hTxt.SetText then hTxt:SetText("Height") end
+    end
 end
 
 local function BE_EnsureTopDropdowns(cf)
@@ -1431,6 +1466,7 @@ local function BE_PopulateContent(content, key)
         {
             "Center", "Left", "Right",
             "TopLeft", "TopRight", "BottomLeft", "BottomRight",
+            "OutsideTop", "OutsideBottom",
             "OutsideLeft", "OutsideRight",
             "OutsideTopLeft", "OutsideTopRight",
             "OutsideBottomLeft", "OutsideBottom Right"
@@ -1494,6 +1530,7 @@ local function BE_UpdateSliderValues(refs, data)
     if refs.sliderY then refs.sliderY:SetValue(data.offsetY or 0) end
     if refs.sliderW then refs.sliderW:SetValue(data.barWidth or 200) end
     if refs.sliderH then refs.sliderH:SetValue(data.barHeight or 24) end
+    BE_UpdateSizeSliderLabels(data)
     if refs.barUseDefault then refs.barUseDefault:SetChecked((data.barR or -1) < 0 and 1 or 0) end
     if refs.bgUseDefault then refs.bgUseDefault:SetChecked(data.bgUseDefault and 1 or 0) end
     if refs.barColorSwatch then
@@ -1574,6 +1611,7 @@ function DoiteBars.InjectEditControls(cf, key)
                     UIDropDownMenu_SetSelectedValue(cf.beOrientationDD, picked)
                     UIDropDownMenu_SetText(picked, cf.beOrientationDD)
                     BE_InitDirectionDropdown(cf.beDirectionDD, d)
+                    BE_UpdateSizeSliderLabels(d)
                     BE_RefreshEditedBar()
                 end
                 UIDropDownMenu_AddButton(info)
