@@ -71,7 +71,7 @@ end
 -- Internal frame pool
 ---------------------------------------------------------------
 local barFrames = {}
-local BAR_BORDER = 1
+local BAR_BORDER = 0
 local BE_IsOutsideTextPosition
 local BE_ToVerticalText
 
@@ -169,6 +169,16 @@ local function DA_BarApplyFill(frame, data, cur, max)
 
     frame.fill:ClearAllPoints()
     if data.orientation == "Vertical" then
+        if frame.fill.SetTexCoord then
+            -- rotate texture so vertical bars use vertical texture flow
+            if data.direction == "From down to up" then
+                -- 90° CCW
+                frame.fill:SetTexCoord(1, 0, 0, 0, 1, 1, 0, 1)
+            else
+                -- 90° CW
+                frame.fill:SetTexCoord(0, 1, 1, 1, 0, 0, 1, 0)
+            end
+        end
         local fh = math.floor(innerH * pct + 0.5)
         if fh < 1 and pct > 0 then fh = 1 end
         if fh <= 0 then
@@ -186,6 +196,13 @@ local function DA_BarApplyFill(frame, data, cur, max)
             frame.fill:SetHeight(fh)
         end
     else
+        if frame.fill.SetTexCoord then
+            if data.direction == "Left to right" then
+                frame.fill:SetTexCoord(1, 0, 0, 1)
+            else
+                frame.fill:SetTexCoord(0, 1, 0, 1)
+            end
+        end
         local fw = math.floor(innerW * pct + 0.5)
         if fw < 1 and pct > 0 then fw = 1 end
         if fw <= 0 then
