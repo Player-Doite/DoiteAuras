@@ -29,7 +29,7 @@ DoiteBars.Kinds = {
             if max <= 0 then max = 1 end
             return cur, max
         end,
-        r = 0.0, g = 0.44, b = 0.87,
+        r = 0.0, g = 0.0, b = 1.0,
     },
 
     Healthbar = {
@@ -40,7 +40,7 @@ DoiteBars.Kinds = {
             if max <= 0 then max = 1 end
             return cur, max
         end,
-        r = 0.0, g = 0.9, b = 0.0,
+        r = 0.0, g = 1.0, b = 0.0,
     },
 }
 
@@ -54,17 +54,17 @@ DoiteBars.KindOrder = {
 -- 0=Mana  1=Rage  2=Focus  3=Energy
 ---------------------------------------------------------------
 local DA_PowerColors = {
-    [0] = { r = 0.00, g = 0.44, b = 0.87 },
+    [0] = { r = 0.00, g = 0.00, b = 1.00 },
     [1] = { r = 1.00, g = 0.00, b = 0.00 },
     [2] = { r = 0.90, g = 0.61, b = 0.23 },
-    [3] = { r = 1.00, g = 0.90, b = 0.00 },
+    [3] = { r = 1.00, g = 1.00, b = 0.00 },
 }
 
 local function DA_BarColorForPowerType()
     local pt = UnitPowerType and UnitPowerType("player") or 0
     local c  = DA_PowerColors[pt]
     if c then return c.r, c.g, c.b end
-    return 0.0, 0.44, 0.87
+    return 0.0, 0.0, 1.0
 end
 
 ---------------------------------------------------------------
@@ -492,6 +492,16 @@ local function BE_GetDirectionOptions(orientation)
     return { "Left to right", "Right to left" }
 end
 
+local function BE_SetDropdownTextColor(dd, r, g, b)
+    if not dd then return end
+    local name = dd.GetName and dd:GetName()
+    if not name then return end
+    local t = _G[name .. "Text"]
+    if t and t.SetTextColor then
+        t:SetTextColor(r or 1, g or 1, b or 1)
+    end
+end
+
 local function BE_InitDirectionDropdown(dd, data)
     if not dd then return end
     local opts = BE_GetDirectionOptions(data and data.orientation)
@@ -529,7 +539,7 @@ local function BE_InitDirectionDropdown(dd, data)
     end
     UIDropDownMenu_SetSelectedValue(dd, cur)
     UIDropDownMenu_SetText(cur, dd)
-    if _GoldifyDD then _GoldifyDD(dd) end
+    BE_SetDropdownTextColor(dd, 1, 1, 1)
 end
 
 local function BE_EnsureTopDropdowns(cf)
@@ -539,7 +549,7 @@ local function BE_EnsureTopDropdowns(cf)
     cf.beOrientationLabel = cf:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     cf.beOrientationLabel:SetPoint("TOPLEFT", cf, "TOPLEFT", 20, -68)
     cf.beOrientationLabel:SetText("Orientation")
-    if cf.beOrientationLabel.SetTextColor then cf.beOrientationLabel:SetTextColor(1, 1, 1) end
+    if cf.beOrientationLabel.SetTextColor then cf.beOrientationLabel:SetTextColor(1, 0.82, 0) end
 
     cf.beOrientationDD = CreateFrame("Frame", "DoiteBarsEdit_OrientationDD", cf, "UIDropDownMenuTemplate")
     cf.beOrientationDD:SetPoint("TOPLEFT", cf, "TOPLEFT", 105, -63)
@@ -548,7 +558,7 @@ local function BE_EnsureTopDropdowns(cf)
     cf.beDirectionLabel = cf:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     cf.beDirectionLabel:SetPoint("TOPLEFT", cf, "TOPLEFT", 20, -96)
     cf.beDirectionLabel:SetText("Direction")
-    if cf.beDirectionLabel.SetTextColor then cf.beDirectionLabel:SetTextColor(1, 1, 1) end
+    if cf.beDirectionLabel.SetTextColor then cf.beDirectionLabel:SetTextColor(1, 0.82, 0) end
 
     cf.beDirectionDD = CreateFrame("Frame", "DoiteBarsEdit_DirectionDD", cf, "UIDropDownMenuTemplate")
     cf.beDirectionDD:SetPoint("TOPLEFT", cf, "TOPLEFT", 105, -91)
@@ -1399,7 +1409,7 @@ function DoiteBars.InjectEditControls(cf, key)
         end)
         UIDropDownMenu_SetSelectedValue(cf.beOrientationDD, cur)
         UIDropDownMenu_SetText(cur, cf.beOrientationDD)
-        if _GoldifyDD then _GoldifyDD(cf.beOrientationDD) end
+        BE_SetDropdownTextColor(cf.beOrientationDD, 1, 1, 1)
         cf.beOrientationDD:Show()
     end
     if cf.beDirectionLabel then cf.beDirectionLabel:Show() end
