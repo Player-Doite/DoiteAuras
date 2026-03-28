@@ -284,8 +284,7 @@ function DoiteBars.CreateOrUpdateBar(key, data)
         f.bar:SetPoint("TOPLEFT",     f, "TOPLEFT",     BAR_BORDER, -BAR_BORDER)
         f.bar:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -BAR_BORDER, BAR_BORDER)
         f.fill = f.bar:CreateTexture(nil, "ARTWORK")
-        -- Use a solid texture so 100% fill always reaches the full bar bounds.
-        f.fill:SetTexture("Interface\\Buttons\\WHITE8X8")
+        f.fill:SetTexture("Interface\\TargetingFrame\\UI-StatusBar")
         f.fill:SetAllPoints(f.bar)
 
         -- Label
