@@ -72,6 +72,8 @@ end
 ---------------------------------------------------------------
 local barFrames = {}
 local BAR_BORDER = 1
+local BE_IsOutsideTextPosition
+local BE_ToVerticalText
 
 ---------------------------------------------------------------
 -- Shared defaults
@@ -102,7 +104,7 @@ local BAR_DEFAULTS = {
     textFormat    = "Actual",
     textPosition  = "Center",
     orientation   = "Horizontal",
-    direction     = "Left to right",
+    direction     = "Right to left",
     fontSize      = 10,
 }
 
@@ -111,6 +113,20 @@ local function DA_BarForceCategory(data)
     data.category = "BARS"
     data.group = nil
     data.isLeader = nil
+end
+
+local function DA_DefaultDirectionForOrientation(orientation)
+    if orientation == "Vertical" then
+        return "From up to down"
+    end
+    return "Right to left"
+end
+
+local function DA_IsDirectionValid(orientation, direction)
+    if orientation == "Vertical" then
+        return direction == "From up to down" or direction == "From down to up"
+    end
+    return direction == "Left to right" or direction == "Right to left"
 end
 
 local function DA_BarApplyDefaults(data)
@@ -125,12 +141,8 @@ local function DA_BarApplyDefaults(data)
     if data.orientation ~= "Vertical" then
         data.orientation = "Horizontal"
     end
-    if not data.direction or data.direction == "" then
-        if data.orientation == "Vertical" then
-            data.direction = "From up to down"
-        else
-            data.direction = "Left to right"
-        end
+    if not data.direction or data.direction == "" or not DA_IsDirectionValid(data.orientation, data.direction) then
+        data.direction = DA_DefaultDirectionForOrientation(data.orientation)
     end
     DA_BarForceCategory(data)
 end
@@ -270,6 +282,24 @@ function DoiteBars.CreateOrUpdateBar(key, data)
     -- Background colour
     f.bg:SetTexture(data.bgR, data.bgG, data.bgB, data.bgAlpha)
 
+    -- Orientation / direction
+    if f.bar and f.bar.SetOrientation then
+        if data.orientation == "Vertical" then
+            f.bar:SetOrientation("VERTICAL")
+        else
+            f.bar:SetOrientation("HORIZONTAL")
+        end
+    end
+    if f.bar and f.bar.SetReverseFill then
+        local reverse = false
+        if data.orientation == "Vertical" then
+            reverse = (data.direction == "From down to up")
+        else
+            reverse = (data.direction == "Left to right")
+        end
+        f.bar:SetReverseFill(reverse and true or false)
+    end
+
     -- Label font
     if f.label and f.label.SetFont then
         f.label:SetFont("Fonts\\FRIZQT__.TTF", data.fontSize, "OUTLINE")
@@ -406,6 +436,10 @@ function DoiteBars.RefreshBar(key, data)
         else
             txt = tostring(cur) .. " / " .. tostring(max)
         end
+        local tp = data.textPosition or "Center"
+        if data.orientation == "Vertical" and not BE_IsOutsideTextPosition(tp) then
+            txt = BE_ToVerticalText(txt)
+        end
         f.label:SetText(txt)
     end
 end
@@ -528,6 +562,29 @@ local function BE_GetDirectionOptions(orientation)
     return { "Left to right", "Right to left" }
 end
 
+BE_IsOutsideTextPosition = function(tp)
+    return tp == "OutsideLeft"
+        or tp == "OutsideRight"
+        or tp == "OutsideTopLeft"
+        or tp == "OutsideTopRight"
+        or tp == "OutsideBottomLeft"
+        or tp == "OutsideBottomRight"
+        or tp == "OutsideBottom Right"
+end
+
+BE_ToVerticalText = function(text)
+    if not text or text == "" then return text end
+    local out = ""
+    local i
+    local len = string.len(text)
+    for i = 1, len do
+        local ch = string.sub(text, i, i)
+        if ch == " " then ch = "  " end
+        if i == 1 then out = ch else out = out .. "\n" .. ch end
+    end
+    return out
+end
+
 local function BE_SetDropdownTextColor(dd, r, g, b)
     if not dd then return end
     local name = dd.GetName and dd:GetName()
@@ -548,7 +605,7 @@ local function BE_InitDirectionDropdown(dd, data)
         if opts[i] == cur then valid = true break end
     end
     if not valid then
-        cur = opts[1]
+        cur = DA_DefaultDirectionForOrientation(data and data.orientation)
         if data then data.direction = cur end
     end
 
@@ -568,6 +625,7 @@ local function BE_InitDirectionDropdown(dd, data)
                     end
                     UIDropDownMenu_SetSelectedValue(dd, picked)
                     UIDropDownMenu_SetText(picked, dd)
+                    BE_RefreshEditedBar()
                 end
                 UIDropDownMenu_AddButton(info)
             end
@@ -1437,14 +1495,11 @@ function DoiteBars.InjectEditControls(cf, key)
                     local d = DoiteAurasDB.spells[_beKey]
                     if not d then return end
                     d.orientation = picked
-                    if picked == "Vertical" then
-                        d.direction = "From up to down"
-                    else
-                        d.direction = "Left to right"
-                    end
+                    d.direction = DA_DefaultDirectionForOrientation(picked)
                     UIDropDownMenu_SetSelectedValue(cf.beOrientationDD, picked)
                     UIDropDownMenu_SetText(picked, cf.beOrientationDD)
                     BE_InitDirectionDropdown(cf.beDirectionDD, d)
+                    BE_RefreshEditedBar()
                 end
                 UIDropDownMenu_AddButton(info)
             end
