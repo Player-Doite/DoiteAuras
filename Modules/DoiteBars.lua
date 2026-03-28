@@ -1344,6 +1344,9 @@ function DoiteBars.InjectEditControls(cf, key)
         cf.header:SetText("Edit: " .. (data.displayName or key) .. " |cffd27dff(Bar)|r")
         cf.header:Show()
     end
+    if cf.groupTitle then
+        cf.groupTitle:SetText("|cff6FA8DCLAYOUT SETTINGS|r")
+    end
 
     if cf.condListContainer then cf.condListContainer:Hide() end
     BE_EnsureTopDropdowns(cf)
@@ -1424,6 +1427,9 @@ function DoiteBars.CleanupCondFrame(cf)
     if cf.BarEditContainer then
         cf.BarEditContainer:Hide()
     end
+    if cf.groupTitle then
+        cf.groupTitle:SetText("|cff6FA8DCGROUP & LEADER|r")
+    end
     if cf.beOrientationLabel then cf.beOrientationLabel:Hide() end
     if cf.beOrientationDD then cf.beOrientationDD:Hide() end
     if cf.beDirectionLabel then cf.beDirectionLabel:Hide() end
@@ -1433,6 +1439,9 @@ function DoiteBars.CleanupCondFrame(cf)
 
     if cf.condListContainer then
         cf.condListContainer:Show()
+    end
+    if cf.dgLine then
+        cf.dgLine:Show()
     end
 
     if _beKey then
