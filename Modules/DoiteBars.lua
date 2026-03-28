@@ -298,6 +298,42 @@ function DoiteBars.CreateOrUpdateBar(key, data)
         f.label:SetPoint("BOTTOMRIGHT", f.bar, "BOTTOMRIGHT", -2, 2)
         f.label:SetJustifyH("RIGHT")
         f.label:SetJustifyV("BOTTOM")
+    elseif tp == "Left" then
+        f.label:SetPoint("LEFT", f.bar, "LEFT", 2, 0)
+        f.label:SetJustifyH("LEFT")
+        f.label:SetJustifyV("MIDDLE")
+    elseif tp == "Right" then
+        f.label:SetPoint("RIGHT", f.bar, "RIGHT", -2, 0)
+        f.label:SetJustifyH("RIGHT")
+        f.label:SetJustifyV("MIDDLE")
+    elseif tp == "OutsideLeft" then
+        f.label:SetPoint("RIGHT", f.bar, "LEFT", -2, 0)
+        f.label:SetJustifyH("RIGHT")
+        f.label:SetJustifyV("MIDDLE")
+    elseif tp == "OutsideRight" then
+        f.label:SetPoint("LEFT", f.bar, "RIGHT", 2, 0)
+        f.label:SetJustifyH("LEFT")
+        f.label:SetJustifyV("MIDDLE")
+    elseif tp == "OutsideTopLeft" then
+        f.label:SetPoint("BOTTOMLEFT", f.bar, "TOPLEFT", 0, 2)
+        f.label:SetJustifyH("LEFT")
+        f.label:SetJustifyV("BOTTOM")
+    elseif tp == "OutsideTopRight" then
+        f.label:SetPoint("BOTTOMRIGHT", f.bar, "TOPRIGHT", 0, 2)
+        f.label:SetJustifyH("RIGHT")
+        f.label:SetJustifyV("BOTTOM")
+    elseif tp == "OutsideBottomLeft" then
+        f.label:SetPoint("TOPLEFT", f.bar, "BOTTOMLEFT", 0, -2)
+        f.label:SetJustifyH("LEFT")
+        f.label:SetJustifyV("TOP")
+    elseif tp == "OutsideBottomRight" or tp == "OutsideBottom Right" then
+        f.label:SetPoint("TOPRIGHT", f.bar, "BOTTOMRIGHT", 0, -2)
+        f.label:SetJustifyH("RIGHT")
+        f.label:SetJustifyV("TOP")
+    else
+        f.label:SetAllPoints(f.bar)
+        f.label:SetJustifyH("CENTER")
+        f.label:SetJustifyV("MIDDLE")
     end
 
     -- Edit mode mouse
@@ -1259,7 +1295,13 @@ local function BE_PopulateContent(content, key)
         baseX + 90,
         y + 6,
         110,
-        { "Center", "TopLeft", "TopRight", "BottomLeft", "BottomRight" },
+        {
+            "Center", "Left", "Right",
+            "TopLeft", "TopRight", "BottomLeft", "BottomRight",
+            "OutsideLeft", "OutsideRight",
+            "OutsideTopLeft", "OutsideTopRight",
+            "OutsideBottomLeft", "OutsideBottom Right"
+        },
         data.textPosition or "Center",
         function(picked)
             if not _beKey then return end
