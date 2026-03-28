@@ -104,6 +104,7 @@ local BAR_DEFAULTS = {
     textPosition  = "Center",
     orientation   = "Horizontal",
     direction     = "Right to left",
+    fillTexture   = "Interface\\TargetingFrame\\UI-StatusBar",
     fontSize      = 10,
 }
 
@@ -128,6 +129,11 @@ local function DA_IsDirectionValid(orientation, direction)
     return direction == "Left to right" or direction == "Right to left"
 end
 
+local function DA_IsTextureValid(path)
+    return path == "Interface\\TargetingFrame\\UI-StatusBar"
+        or path == "Interface\\Buttons\\WHITE8X8"
+end
+
 local function DA_BarApplyDefaults(data)
     for k, v in pairs(BAR_DEFAULTS) do
         if data[k] == nil then
@@ -142,6 +148,9 @@ local function DA_BarApplyDefaults(data)
     end
     if not data.direction or data.direction == "" or not DA_IsDirectionValid(data.orientation, data.direction) then
         data.direction = DA_DefaultDirectionForOrientation(data.orientation)
+    end
+    if not data.fillTexture or not DA_IsTextureValid(data.fillTexture) then
+        data.fillTexture = "Interface\\TargetingFrame\\UI-StatusBar"
     end
     DA_BarForceCategory(data)
 end
@@ -284,7 +293,7 @@ function DoiteBars.CreateOrUpdateBar(key, data)
         f.bar:SetPoint("TOPLEFT",     f, "TOPLEFT",     BAR_BORDER, -BAR_BORDER)
         f.bar:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -BAR_BORDER, BAR_BORDER)
         f.fill = f.bar:CreateTexture(nil, "ARTWORK")
-        f.fill:SetTexture("Interface\\TargetingFrame\\UI-StatusBar")
+        f.fill:SetTexture(data.fillTexture)
         f.fill:SetAllPoints(f.bar)
 
         -- Label
@@ -339,7 +348,7 @@ function DoiteBars.CreateOrUpdateBar(key, data)
 
     -- Always enforce current fill texture, even for already-created bars.
     if f.fill and f.fill.SetTexture then
-        f.fill:SetTexture("Interface\\TargetingFrame\\UI-StatusBar")
+        f.fill:SetTexture(data.fillTexture)
     end
 
     -- Apply size
@@ -675,6 +684,11 @@ local function BE_GetDirectionOptions(orientation)
     return { "Left to right", "Right to left" }
 end
 
+local BE_TextureChoices = {
+    { text = "UI-StatusBar (Default)", value = "Interface\\TargetingFrame\\UI-StatusBar" },
+    { text = "WHITE8X8",               value = "Interface\\Buttons\\WHITE8X8" },
+}
+
 BE_IsOutsideTextPosition = function(tp)
     return tp == "OutsideLeft"
         or tp == "OutsideRight"
@@ -738,6 +752,56 @@ local function BE_InitDirectionDropdown(dd, data)
     BE_SetDropdownTextColor(dd, 1, 1, 1)
 end
 
+local function BE_InitTextureDropdown(dd, data)
+    if not dd then return end
+    local cur = (data and data.fillTexture) or "Interface\\TargetingFrame\\UI-StatusBar"
+    if not DA_IsTextureValid(cur) then
+        cur = "Interface\\TargetingFrame\\UI-StatusBar"
+        if data then data.fillTexture = cur end
+    end
+    if UIDropDownMenu_Initialize then
+        UIDropDownMenu_Initialize(dd, function()
+            local j
+            for j = 1, table.getn(BE_TextureChoices) do
+                local opt = BE_TextureChoices[j]
+                local info = UIDropDownMenu_CreateInfo()
+                info.text = opt.text
+                info.value = opt.value
+                info.checked = (opt.value == cur)
+                info.func = function(button)
+                    local picked = (button and button.value) or opt.value
+                    if _beKey and DoiteAurasDB and DoiteAurasDB.spells and DoiteAurasDB.spells[_beKey] then
+                        DoiteAurasDB.spells[_beKey].fillTexture = picked
+                    end
+                    UIDropDownMenu_SetSelectedValue(dd, picked)
+                    local name = opt.text
+                    local k
+                    for k = 1, table.getn(BE_TextureChoices) do
+                        if BE_TextureChoices[k].value == picked then
+                            name = BE_TextureChoices[k].text
+                            break
+                        end
+                    end
+                    UIDropDownMenu_SetText(name, dd)
+                    BE_RefreshEditedBar()
+                end
+                UIDropDownMenu_AddButton(info)
+            end
+        end)
+    end
+    UIDropDownMenu_SetSelectedValue(dd, cur)
+    local shown = "UI-StatusBar (Default)"
+    local i
+    for i = 1, table.getn(BE_TextureChoices) do
+        if BE_TextureChoices[i].value == cur then
+            shown = BE_TextureChoices[i].text
+            break
+        end
+    end
+    UIDropDownMenu_SetText(shown, dd)
+    BE_SetDropdownTextColor(dd, 1, 1, 1)
+end
+
 local function BE_UpdateSizeSliderLabels(data)
     local wTxt = _G["DoiteBarsEdit_SliderWText"]
     local hTxt = _G["DoiteBarsEdit_SliderHText"]
@@ -770,7 +834,16 @@ local function BE_EnsureTopDropdowns(cf)
 
     cf.beDirectionDD = CreateFrame("Frame", "DoiteBarsEdit_DirectionDD", cf, "UIDropDownMenuTemplate")
     cf.beDirectionDD:SetPoint("TOPLEFT", cf, "TOPLEFT", 105, -91)
-    if UIDropDownMenu_SetWidth then UIDropDownMenu_SetWidth(150, cf.beDirectionDD) end
+    if UIDropDownMenu_SetWidth then UIDropDownMenu_SetWidth(130, cf.beDirectionDD) end
+
+    cf.beTextureLabel = cf:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    cf.beTextureLabel:SetPoint("TOPLEFT", cf, "TOPLEFT", 20, -124)
+    cf.beTextureLabel:SetText("Texture")
+    if cf.beTextureLabel.SetTextColor then cf.beTextureLabel:SetTextColor(1, 0.82, 0) end
+
+    cf.beTextureDD = CreateFrame("Frame", "DoiteBarsEdit_TextureDD", cf, "UIDropDownMenuTemplate")
+    cf.beTextureDD:SetPoint("TOPLEFT", cf, "TOPLEFT", 105, -119)
+    if UIDropDownMenu_SetWidth then UIDropDownMenu_SetWidth(130, cf.beTextureDD) end
 end
 
 ---------------------------------------------------------------
@@ -1632,6 +1705,11 @@ function DoiteBars.InjectEditControls(cf, key)
         BE_InitDirectionDropdown(cf.beDirectionDD, data)
         cf.beDirectionDD:Show()
     end
+    if cf.beTextureLabel then cf.beTextureLabel:Show() end
+    if cf.beTextureDD then
+        BE_InitTextureDropdown(cf.beTextureDD, data)
+        cf.beTextureDD:Show()
+    end
 
     if cf.groupTitle3 then cf.groupTitle3:Hide() end
     if cf.sep3 then cf.sep3:Hide() end
@@ -1665,6 +1743,8 @@ function DoiteBars.CleanupCondFrame(cf)
     if cf.beOrientationDD then cf.beOrientationDD:Hide() end
     if cf.beDirectionLabel then cf.beDirectionLabel:Hide() end
     if cf.beDirectionDD then cf.beDirectionDD:Hide() end
+    if cf.beTextureLabel then cf.beTextureLabel:Hide() end
+    if cf.beTextureDD then cf.beTextureDD:Hide() end
     if cf.beNameLbl then cf.beNameLbl:Hide() end
     if cf.beKindLbl then cf.beKindLbl:Hide() end
 
