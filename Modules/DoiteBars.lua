@@ -337,6 +337,11 @@ function DoiteBars.CreateOrUpdateBar(key, data)
         _G[globalName] = f
     end
 
+    -- Always enforce current fill texture, even for already-created bars.
+    if f.fill and f.fill.SetTexture then
+        f.fill:SetTexture("Interface\\TargetingFrame\\UI-StatusBar")
+    end
+
     -- Apply size
     f:SetWidth(drawW)
     f:SetHeight(drawH)
