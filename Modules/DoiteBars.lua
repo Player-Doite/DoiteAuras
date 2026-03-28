@@ -193,7 +193,7 @@ local function DA_BarApplyFill(frame, data, cur, max)
             return
         end
         frame.fill:Show()
-        if data.direction == "Left to right" then
+        if data.direction == "Right to left" then
             frame.fill:SetPoint("TOPLEFT", frame.bar, "TOPLEFT", 0, 0)
             frame.fill:SetPoint("BOTTOMLEFT", frame.bar, "BOTTOMLEFT", 0, 0)
             frame.fill:SetWidth(fw)
@@ -245,14 +245,18 @@ function DoiteBars.CreateOrUpdateBar(key, data)
 
     local w = data.barWidth
     local h = data.barHeight
+    local drawW, drawH = w, h
+    if data.orientation == "Vertical" then
+        drawW, drawH = h, w
+    end
 
     if not f then
         f = CreateFrame("Frame", globalName, UIParent)
         f:SetFrameStrata("MEDIUM")
         f:SetMovable(true)
         f:RegisterForDrag("LeftButton")
-        f:SetWidth(w)
-        f:SetHeight(h)
+        f:SetWidth(drawW)
+        f:SetHeight(drawH)
 
         -- Background
         f.bg = f:CreateTexture(nil, "BACKGROUND")
@@ -260,12 +264,9 @@ function DoiteBars.CreateOrUpdateBar(key, data)
         f.bg:SetTexture(0, 0, 0, 1)
 
         -- Fill bar
-        f.bar = CreateFrame("StatusBar", nil, f)
+        f.bar = CreateFrame("Frame", nil, f)
         f.bar:SetPoint("TOPLEFT",     f, "TOPLEFT",     BAR_BORDER, -BAR_BORDER)
         f.bar:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -BAR_BORDER, BAR_BORDER)
-        f.bar:SetMinMaxValues(0, 1)
-        f.bar:SetValue(1)
-        f.bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
         f.fill = f.bar:CreateTexture(nil, "ARTWORK")
         f.fill:SetTexture("Interface\\TargetingFrame\\UI-StatusBar")
         f.fill:SetAllPoints(f.bar)
@@ -321,8 +322,8 @@ function DoiteBars.CreateOrUpdateBar(key, data)
     end
 
     -- Apply size
-    f:SetWidth(w)
-    f:SetHeight(h)
+    f:SetWidth(drawW)
+    f:SetHeight(drawH)
 
     -- Apply position
     if not f._daDragging then
@@ -877,6 +878,7 @@ local function BE_ShowColorPicker(r, g, b, a, changedCallback)
     if not ColorPickerFrame._daMovable then
         ColorPickerFrame._daMovable = true
         if ColorPickerFrame.SetMovable then ColorPickerFrame:SetMovable(true) end
+        if ColorPickerFrame.EnableMouse then ColorPickerFrame:EnableMouse(true) end
         if ColorPickerFrame.SetClampedToScreen then ColorPickerFrame:SetClampedToScreen(true) end
 
         if not ColorPickerFrame._daDragHandle then
