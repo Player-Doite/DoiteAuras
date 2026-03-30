@@ -1025,11 +1025,15 @@ local function BE_ShowColorPicker(r, g, b, a, changedCallback)
 
         if not ColorPickerFrame._daDragHandle then
             local h = CreateFrame("Frame", nil, ColorPickerFrame)
-            h:SetPoint("TOPLEFT", ColorPickerFrame, "TOPLEFT", 8, -6)
-            h:SetPoint("TOPRIGHT", ColorPickerFrame, "TOPRIGHT", -28, -6)
-            h:SetHeight(18)
+            h:SetPoint("TOPLEFT", ColorPickerFrame, "TOPLEFT", 0, 0)
+            h:SetPoint("TOPRIGHT", ColorPickerFrame, "TOPRIGHT", 0, 0)
+            h:SetHeight(20)
             h:EnableMouse(true)
             h:RegisterForDrag("LeftButton")
+            if h.SetFrameStrata then h:SetFrameStrata("TOOLTIP") end
+            if h.SetFrameLevel and ColorPickerFrame.GetFrameLevel then
+                h:SetFrameLevel((ColorPickerFrame:GetFrameLevel() or 10000) + 20)
+            end
             h:SetScript("OnMouseDown", function()
                 if ColorPickerFrame and ColorPickerFrame.StartMoving then
                     ColorPickerFrame:StartMoving()
@@ -1052,6 +1056,12 @@ local function BE_ShowColorPicker(r, g, b, a, changedCallback)
             end)
             ColorPickerFrame._daDragHandle = h
         end
+    end
+    local h = ColorPickerFrame._daDragHandle
+    if h and h.SetHeight and ColorPickerFrame.GetHeight then
+        local hh = math.floor((ColorPickerFrame:GetHeight() or 180) * 0.10 + 0.5)
+        if hh < 16 then hh = 16 end
+        h:SetHeight(hh)
     end
     _G["DoiteBars_ColorPickerNonce"] = (_G["DoiteBars_ColorPickerNonce"] or 0) + 1
     local myNonce = _G["DoiteBars_ColorPickerNonce"]
