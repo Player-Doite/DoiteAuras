@@ -5844,16 +5844,6 @@ do
         end
       end
     end
-    local manualAllow = _G["DA_ItemDropdownAllow"]
-    if manualAllow then
-      local itemName, enabled
-      for itemName, enabled in pairs(manualAllow) do
-        local count = GetItemCount and GetItemCount(itemName)
-        if enabled == true and count and count > 0 then
-          _Add(itemName)
-        end
-      end
-    end
     table.sort(items, function(a, b)
       return string.lower(a or "") < string.lower(b or "")
     end)
@@ -7257,16 +7247,6 @@ do
       if n and n > 0 then
         for slot = 1, n do
           _Add(_NameFromLink(GetContainerItemLink and GetContainerItemLink(bag, slot)))
-        end
-      end
-    end
-    local manualAllow = _G["DA_ItemDropdownAllow"]
-    if manualAllow then
-      local itemName, enabled
-      for itemName, enabled in pairs(manualAllow) do
-        local count = GetItemCount and GetItemCount(itemName)
-        if enabled == true and count and count > 0 then
-          _Add(itemName)
         end
       end
     end

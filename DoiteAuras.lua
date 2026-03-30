@@ -900,6 +900,11 @@ local function DA_AddItemOption(name)
     DA_ItemOptions[n + 1] = name
 end
 
+local function DA_IsAllowlistedItemName(itemName)
+    local allow = _G["DA_ItemDropdownAllow"]
+    return (allow and itemName and allow[itemName] == true) and true or false
+end
+
 -- Check current DoiteAurasTooltip for a line that looks like "Use..." or "consume..."
 local function DA_TooltipHasUseOrConsume()
     local i
@@ -931,7 +936,7 @@ local function DA_ScanEquippedUsable()
 
             local nameFS = DoiteAurasTooltipTextLeft1
             local itemName = nameFS and nameFS:GetText()
-            if itemName and DA_TooltipHasUseOrConsume() then
+            if itemName and (DA_TooltipHasUseOrConsume() or DA_IsAllowlistedItemName(itemName)) then
                 DA_AddItemOption(itemName)
             end
         end
@@ -954,28 +959,11 @@ local function DA_ScanBagUsable()
 
                     local nameFS = DoiteAurasTooltipTextLeft1
                     local itemName = nameFS and nameFS:GetText()
-                    if itemName and DA_TooltipHasUseOrConsume() then
+                    if itemName and (DA_TooltipHasUseOrConsume() or DA_IsAllowlistedItemName(itemName)) then
                         DA_AddItemOption(itemName)
                     end
                 end
             end
-        end
-    end
-end
-
-local function DA_AddAllowedItemOptions()
-    local allow = _G["DA_ItemDropdownAllow"]
-    if not allow then return end
-
-    local function _PlayerHasItemByName(name)
-        if not name or name == "" then return false end
-        local count = GetItemCount and GetItemCount(name)
-        return (count and count > 0) and true or false
-    end
-
-    for itemName, enabled in pairs(allow) do
-        if enabled == true and itemName and itemName ~= "" and _PlayerHasItemByName(itemName) then
-            DA_AddItemOption(itemName)
         end
     end
 end
@@ -1131,7 +1119,6 @@ local function DA_RebuildItemDropDown()
     DA_ClearItemOptions()
     DA_ScanEquippedUsable()
     DA_ScanBagUsable()
-    DA_AddAllowedItemOptions()
 
     -- 2) Split out and dedupe, then sort the real items
     local seen  = {}
