@@ -778,6 +778,11 @@ local DA_AbilityDropdownPassiveAllow = {
 }
 _G["DA_AbilityDropdownPassiveAllow"] = DA_AbilityDropdownPassiveAllow
 
+-- Add non-"on use" items that should still show in item dropdowns
+local DA_ItemDropdownAllow = {
+}
+_G["DA_ItemDropdownAllow"] = DA_ItemDropdownAllow
+
 local function DA_RebuildAbilityDropDown()
     if not abilityDropDown then return end
 
@@ -938,6 +943,17 @@ local function DA_ScanBagUsable()
     end
 end
 
+local function DA_AddAllowedItemOptions()
+    local allow = _G["DA_ItemDropdownAllow"]
+    if not allow then return end
+
+    for itemName, enabled in pairs(allow) do
+        if enabled == true and itemName and itemName ~= "" then
+            DA_AddItemOption(itemName)
+        end
+    end
+end
+
 -- Find the icon texture for a specific item name (case-insensitive)
 local function DA_FindItemTextureByName(itemName)
     if not itemName or itemName == "" then return nil end
@@ -1089,6 +1105,7 @@ local function DA_RebuildItemDropDown()
     DA_ClearItemOptions()
     DA_ScanEquippedUsable()
     DA_ScanBagUsable()
+    DA_AddAllowedItemOptions()
 
     -- 2) Split out and dedupe, then sort the real items
     local seen  = {}
