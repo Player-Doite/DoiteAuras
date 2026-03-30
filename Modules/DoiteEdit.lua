@@ -5848,7 +5848,8 @@ do
     if manualAllow then
       local itemName, enabled
       for itemName, enabled in pairs(manualAllow) do
-        if enabled == true then
+        local count = GetItemCount and GetItemCount(itemName)
+        if enabled == true and count and count > 0 then
           _Add(itemName)
         end
       end
@@ -7263,7 +7264,8 @@ do
     if manualAllow then
       local itemName, enabled
       for itemName, enabled in pairs(manualAllow) do
-        if enabled == true then
+        local count = GetItemCount and GetItemCount(itemName)
+        if enabled == true and count and count > 0 then
           _Add(itemName)
         end
       end
