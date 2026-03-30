@@ -1015,6 +1015,21 @@ local function BE_HideColorPicker()
     if ColorPickerFrame.Hide then ColorPickerFrame:Hide() end
 end
 
+local function BE_HookScriptCompat(frame, scriptName, fn)
+    if not frame or not scriptName or not fn then return end
+    if frame.HookScript then
+        frame:HookScript(scriptName, fn)
+        return
+    end
+    local prev = frame.GetScript and frame:GetScript(scriptName) or nil
+    if frame.SetScript then
+        frame:SetScript(scriptName, function(...)
+            if prev then prev(...) end
+            fn(...)
+        end)
+    end
+end
+
 local function BE_ShowColorPicker(r, g, b, a, changedCallback)
     if not ColorPickerFrame then return end
     if ColorPickerFrame.SetMovable then ColorPickerFrame:SetMovable(true) end
@@ -1024,22 +1039,22 @@ local function BE_ShowColorPicker(r, g, b, a, changedCallback)
 
     if not ColorPickerFrame._daMoveHooks then
         ColorPickerFrame._daMoveHooks = true
-        ColorPickerFrame:HookScript("OnMouseDown", function(self, button)
+        BE_HookScriptCompat(ColorPickerFrame, "OnMouseDown", function(self, button)
             if button == "LeftButton" and self.StartMoving then
                 self:StartMoving()
             end
         end)
-        ColorPickerFrame:HookScript("OnMouseUp", function(self)
+        BE_HookScriptCompat(ColorPickerFrame, "OnMouseUp", function(self)
             if self.StopMovingOrSizing then
                 self:StopMovingOrSizing()
             end
         end)
-        ColorPickerFrame:HookScript("OnDragStart", function(self)
+        BE_HookScriptCompat(ColorPickerFrame, "OnDragStart", function(self)
             if self.StartMoving then
                 self:StartMoving()
             end
         end)
-        ColorPickerFrame:HookScript("OnDragStop", function(self)
+        BE_HookScriptCompat(ColorPickerFrame, "OnDragStop", function(self)
             if self.StopMovingOrSizing then
                 self:StopMovingOrSizing()
             end
