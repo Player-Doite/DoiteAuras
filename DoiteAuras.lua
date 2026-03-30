@@ -590,6 +590,21 @@ UIDropDownMenu_SetWidth(230, itemDropDown)
 UIDropDownMenu_SetText("Select from dropdown", itemDropDown)
 itemDropDown:Hide()
 
+local function DA_HookDropDownButtonOnClick(dd, fn)
+    if not dd or not fn or not dd.GetName then return end
+    local btn = getglobal(dd:GetName() .. "Button")
+    if not btn or btn._daRebuildHooked then return end
+    btn._daRebuildHooked = true
+
+    local prev = btn.GetScript and btn:GetScript("OnClick")
+    btn:SetScript("OnClick", function()
+        fn()
+        if prev then
+            prev()
+        end
+    end)
+end
+
 -- Force the item dropdown text to be left-aligned
 local itemText  = getglobal("DoiteAurasItemDropDownText")
 local itemMiddle = getglobal("DoiteAurasItemDropDownMiddle")
@@ -1162,6 +1177,8 @@ local function DA_RebuildItemDropDown()
     -- Reset shown text each time
     UIDropDownMenu_SetText("Select from dropdown", itemDropDown)
 end
+
+DA_HookDropDownButtonOnClick(itemDropDown, DA_RebuildItemDropDown)
 
 -- Helper to read current dropdown text
 local function DA_GetDropDownText(dd)

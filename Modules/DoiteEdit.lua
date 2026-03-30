@@ -95,6 +95,31 @@ local function DoiteEdit_SetDropdownInteractive(dd, enabled)
   end
 end
 
+local function DoiteEdit_HookDropDownButtonOnClick(dd, fn)
+  if not dd or not fn or not dd.GetName then
+    return
+  end
+
+  local name = dd:GetName()
+  if not name then
+    return
+  end
+
+  local btn = _G[name .. "Button"]
+  if not btn or btn._doiteRefreshHooked then
+    return
+  end
+  btn._doiteRefreshHooked = true
+
+  local prev = btn.GetScript and btn:GetScript("OnClick")
+  btn:SetScript("OnClick", function()
+    fn()
+    if prev then
+      prev()
+    end
+  end)
+end
+
 local function DoiteEdit_SetSoundFromDropdown(typeKey, eventKey, value)
   if not currentKey then
     return
@@ -6691,6 +6716,11 @@ do
     local ddName = "DoiteAuraCond_AbilityDD_" .. tostring(mgr.typeKey or "X") .. "_" .. tostring(AuraCond_RowCounter)
     row.abilityDD = CreateFrame("Frame", ddName, row, "UIDropDownMenuTemplate")
     row.itemDD = CreateFrame("Frame", "DoiteAuraCond_ItemDD_" .. tostring(mgr.typeKey or "X") .. "_" .. tostring(AuraCond_RowCounter), row, "UIDropDownMenuTemplate")
+    DoiteEdit_HookDropDownButtonOnClick(row.itemDD, function()
+      if row and row._branch == "ITEM" then
+        AuraCond_InitItemDropdown(row)
+      end
+    end)
 	
 	-- ✓ button (between content and X) used in STACKS stage
 	row.okBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
@@ -8292,6 +8322,11 @@ do
 	local ddName = "DoiteVfxCond_AbilityDD_" .. tostring(mgr.typeKey or "X") .. "_" .. tostring(VfxCond_RowCounter)
 	row.abilityDD = CreateFrame("Frame", ddName, row, "UIDropDownMenuTemplate")
 	row.itemDD = CreateFrame("Frame", "DoiteVfxCond_ItemDD_" .. tostring(mgr.typeKey or "X") .. "_" .. tostring(VfxCond_RowCounter), row, "UIDropDownMenuTemplate")
+	DoiteEdit_HookDropDownButtonOnClick(row.itemDD, function()
+	  if row and row._branch == "ITEM" then
+	    VfxCond_InitItemDropdown(row)
+	  end
+	end)
 	row._abilityPage = 1
 	
 	-- Continue button (between content and X) used in STACKS stage
