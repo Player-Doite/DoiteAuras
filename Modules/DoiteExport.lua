@@ -575,6 +575,49 @@ local function DE_ImportPackage(pkg)
   local groupSort = DoiteAurasDB.groupSort
   local bucketDisabled = DoiteAurasDB.bucketDisabled
 
+  local function DE_DeleteExistingBucket(kind, name)
+    if not kind or not name or name == "" then
+      return
+    end
+
+    local key, data
+    for key, data in pairs(spells) do
+      if type(data) == "table" then
+        if kind == "group" and data.group == name then
+          spells[key] = nil
+        elseif kind == "category" and data.category == name then
+          spells[key] = nil
+        end
+      end
+    end
+
+    if kind == "group" then
+      groupSort[name] = nil
+    elseif kind == "category" then
+      local i
+      for i = table.getn(categoriesList), 1, -1 do
+        if categoriesList[i] == name then
+          table.remove(categoriesList, i)
+        end
+      end
+    end
+
+    bucketDisabled[name] = nil
+  end
+
+  local replaceCfg = pkg.__daReplaceExisting
+  if type(replaceCfg) == "table" then
+    local kind
+    for kind, names in pairs(replaceCfg) do
+      if type(names) == "table" then
+        local oldName
+        for oldName in pairs(names) do
+          DE_DeleteExistingBucket(kind, oldName)
+        end
+      end
+    end
+  end
+
   -- existing category names
   local existingCats = {}
   local i
@@ -1741,24 +1784,38 @@ local function DE_CreateImportFrame()
     return duplicates, sets.db, nonDuplicates
   end
 
-  local function DE_ApplyDuplicateRenames(pkg, duplicates)
+local function DE_ApplyDuplicateRenames(pkg, duplicates)
     if not pkg or not duplicates then
       return pkg
     end
 
     local mapGroup = {}
     local mapCategory = {}
+    local replaceCfg = {
+      group = {},
+      category = {},
+    }
     local i
 
     for i = 1, table.getn(duplicates) do
       local entry = duplicates[i]
-      if entry and entry.savedName and entry.savedName ~= "" then
-        if entry.kind == "group" then
-          mapGroup[entry.oldName] = entry.savedName
-        elseif entry.kind == "category" then
-          mapCategory[entry.oldName] = entry.savedName
+      if entry then
+        if entry.replaceSelected then
+          replaceCfg[entry.kind][entry.oldName] = true
+        elseif entry.savedName and entry.savedName ~= "" then
+          if entry.kind == "group" then
+            mapGroup[entry.oldName] = entry.savedName
+          elseif entry.kind == "category" then
+            mapCategory[entry.oldName] = entry.savedName
+          end
         end
       end
+    end
+
+    if next(replaceCfg.group) or next(replaceCfg.category) then
+      pkg.__daReplaceExisting = replaceCfg
+    else
+      pkg.__daReplaceExisting = nil
     end
 
     if next(mapGroup) and pkg.groups then
@@ -1945,7 +2002,7 @@ local function DE_CreateImportFrame()
       end
       local i
       for i = 1, table.getn(duplicateState.duplicates) do
-        if not duplicateState.duplicates[i].savedName then
+        if not duplicateState.duplicates[i].savedName and not duplicateState.duplicates[i].replaceSelected then
           return false
         end
       end
@@ -2019,6 +2076,9 @@ local function DE_CreateImportFrame()
           if row.saveBtn then
             row.saveBtn:Hide()
           end
+          if row.replaceBtn then
+            row.replaceBtn:Hide()
+          end
           if row.savedText then
             row.savedText:Hide()
           end
@@ -2064,13 +2124,39 @@ local function DE_CreateImportFrame()
         saveBtn:Disable()
         row.saveBtn = saveBtn
 
+        local replaceBtn = CreateFrame("Button", nil, duplicateFrame.rowsContainer, "UIPanelButtonTemplate")
+        replaceBtn:SetWidth(52)
+        replaceBtn:SetHeight(20)
+        replaceBtn:SetPoint("LEFT", saveBtn, "RIGHT", 6, 0)
+        replaceBtn:SetText("Replace")
+        row.replaceBtn = replaceBtn
+
+        local function DE_ResetRowToEditable()
+          entry.savedName = nil
+          entry.replaceSelected = nil
+          savedText:Hide()
+          input:SetText(entry.oldName or "")
+          input:Show()
+          saveBtn:Show()
+          saveBtn:Disable()
+          replaceBtn:SetText("Replace")
+          DE_UpdateDuplicateImportButton()
+        end
+
         input:SetScript("OnTextChanged", function()
           local value = this:GetText() or ""
+          if entry.savedName or entry.replaceSelected then
+            entry.savedName = nil
+            entry.replaceSelected = nil
+            savedText:Hide()
+            replaceBtn:SetText("Replace")
+          end
           if DE_DuplicateNameIsUnique(entry, value) then
             saveBtn:Enable()
           else
             saveBtn:Disable()
           end
+          DE_UpdateDuplicateImportButton()
         end)
 
         saveBtn:SetScript("OnClick", function()
@@ -2079,10 +2165,28 @@ local function DE_CreateImportFrame()
             return
           end
           entry.savedName = value
+          entry.replaceSelected = nil
           input:Hide()
           saveBtn:Hide()
           savedText:SetText(value)
           savedText:Show()
+          replaceBtn:SetText("Regret")
+          DE_UpdateDuplicateImportButton()
+        end)
+
+        replaceBtn:SetScript("OnClick", function()
+          if entry.replaceSelected or entry.savedName then
+            DE_ResetRowToEditable()
+            return
+          end
+
+          entry.savedName = nil
+          entry.replaceSelected = true
+          input:Hide()
+          saveBtn:Hide()
+          savedText:SetText((entry.oldName or "") .. " [REPLACED]")
+          savedText:Show()
+          replaceBtn:SetText("Regret")
           DE_UpdateDuplicateImportButton()
         end)
 
