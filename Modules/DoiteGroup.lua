@@ -909,6 +909,10 @@ local function _TrimName(v)
   return (string.gsub(v, "^%s*(.-)%s*$", "%1"))
 end
 
+local function _IsReservedCategoryName(name)
+  return string.upper(tostring(name or "")) == "BARS"
+end
+
 local function _BuildNames(kind)
   local db = _DA_DB()
   local out = {}
@@ -918,7 +922,7 @@ local function _BuildNames(kind)
     local i = 1
     while i <= table.getn(db.categories) do
       local c = db.categories[i]
-      if c and c ~= "" and not seen[c] then
+      if c and c ~= "" and not seen[c] and not _IsReservedCategoryName(c) then
         seen[c] = true
         table.insert(out, c)
       end
@@ -933,7 +937,8 @@ local function _BuildNames(kind)
     else
       n = d.category
     end
-    if n and n ~= "" and not seen[n] then
+    if n and n ~= "" and not seen[n]
+      and not (kind == "category" and _IsReservedCategoryName(n)) then
       seen[n] = true
       table.insert(out, n)
     end
@@ -1123,6 +1128,7 @@ function DoiteGroup._DG_UI_SetAddState(ctx)
   local txt = _TrimName(w.nameIn:GetText() or "")
   local list = _BuildNames(state.mode)
   local dup = false
+  local reservedCategory = (state.mode == "category" and _IsReservedCategoryName(txt))
   local i = 1
   while i <= table.getn(list) do
     if string.upper(list[i]) == string.upper(txt) and list[i] ~= state.renameFrom then
@@ -1131,7 +1137,11 @@ function DoiteGroup._DG_UI_SetAddState(ctx)
     end
     i = i + 1
   end
-  if txt == "" or dup then w.bAdd:Disable() else w.bAdd:Enable() end
+  if txt == "" or dup or reservedCategory then
+    w.bAdd:Disable()
+  else
+    w.bAdd:Enable()
+  end
 end
 
 function DoiteGroup._DG_UI_Join(ctx, kind, name)
@@ -1149,6 +1159,7 @@ function DoiteGroup._DG_UI_Join(ctx, kind, name)
     if not hasLeader then d.isLeader = true end
     state.step = "ingroup"
   else
+    if _IsReservedCategoryName(name) then return end
     d.group = nil
     d.isLeader = false
     d.category = name
