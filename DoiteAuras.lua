@@ -548,12 +548,36 @@ settingsBtn:SetScript("OnClick", function()
     end
 end)
 
+local function DA_StyleRowEditBox(editBox, justify)
+    if not editBox then
+        return
+    end
+    editBox:SetAutoFocus(false)
+    editBox:SetFontObject("GameFontNormalSmall")
+    editBox:SetJustifyH(justify or "LEFT")
+    if editBox.SetTextInsets then
+        editBox:SetTextInsets(6, 6, 0, 0)
+    end
+    if editBox.SetBackdrop then
+        editBox:SetBackdrop({
+            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true,
+            tileSize = 16,
+            edgeSize = 12,
+            insets = { left = 3, right = 3, top = 3, bottom = 3 }
+        })
+        editBox:SetBackdropColor(0, 0, 0, 0.85)
+        editBox:SetBackdropBorderColor(0.6, 0.6, 0.6, 1)
+    end
+end
+
 -- Input box + Add
-local input = CreateFrame("EditBox", "DoiteAurasInput", frame, "InputBoxTemplate")
+local input = CreateFrame("EditBox", "DoiteAurasInput", frame)
 input:SetWidth(240)
 input:SetHeight(20)
 input:SetPoint("TOPLEFT", intro, "TOPLEFT", 5, -15)
-input:SetAutoFocus(false)
+DA_StyleRowEditBox(input, "LEFT")
 
 local addBtn = CreateFrame("Button", "DoiteAurasAddBtn", frame, "UIPanelButtonTemplate")
 addBtn:SetWidth(60)
@@ -589,21 +613,6 @@ UIDropDownMenu_Initialize(itemDropDown, function() end)
 UIDropDownMenu_SetWidth(230, itemDropDown)
 UIDropDownMenu_SetText("Select from dropdown", itemDropDown)
 itemDropDown:Hide()
-
-local function DA_HookDropDownButtonOnClick(dd, fn)
-    if not dd or not fn or not dd.GetName then return end
-    local btn = getglobal(dd:GetName() .. "Button")
-    if not btn or btn._daRebuildHooked then return end
-    btn._daRebuildHooked = true
-
-    local prev = btn.GetScript and btn:GetScript("OnClick")
-    btn:SetScript("OnClick", function()
-        fn()
-        if prev then
-            prev()
-        end
-    end)
-end
 
 -- Force the item dropdown text to be left-aligned
 local itemText  = getglobal("DoiteAurasItemDropDownText")
@@ -793,31 +802,6 @@ local DA_AbilityDropdownPassiveAllow = {
 }
 _G["DA_AbilityDropdownPassiveAllow"] = DA_AbilityDropdownPassiveAllow
 
--- Add non-"on use" items that should still show in item dropdowns
-local DA_ItemDropdownAllow = {
-    ["Infernal Stone"] = true,
-    ["Demonic Figurine"] = true,
-    ["Arcane Powder"] = true,
-    ["Wild Berries"] = true,
-    ["Holy Candle"] = true,
-    ["Sacred Candle"] = true,
-    ["Ankh"] = true,
-    ["Rune of Teleportation"] = true,
-    ["Rune of Portals"] = true,
-    ["Symbol of Divinity"] = true,
-    ["Maple Seed"] = true,
-    ["Stranglethorn Seed"] = true,
-    ["Ashwood Seed"] = true,
-    ["Hornbeam Seed"] = true,
-    ["Symbol of Kings"] = true,
-    ["Bright Dream Shard"] = true,
-    ["Flash Powder"] = true,
-    ["Blinding Powder"] = true,
-    ["Ironwood Seed"] = true,
-    ["Wild Thornroot"] = true,
-}
-_G["DA_ItemDropdownAllow"] = DA_ItemDropdownAllow
-
 local function DA_RebuildAbilityDropDown()
     if not abilityDropDown then return end
 
@@ -915,11 +899,6 @@ local function DA_AddItemOption(name)
     DA_ItemOptions[n + 1] = name
 end
 
-local function DA_IsAllowlistedItemName(itemName)
-    local allow = _G["DA_ItemDropdownAllow"]
-    return (allow and itemName and allow[itemName] == true) and true or false
-end
-
 -- Check current DoiteAurasTooltip for a line that looks like "Use..." or "consume..."
 local function DA_TooltipHasUseOrConsume()
     local i
@@ -951,7 +930,7 @@ local function DA_ScanEquippedUsable()
 
             local nameFS = DoiteAurasTooltipTextLeft1
             local itemName = nameFS and nameFS:GetText()
-            if itemName and (DA_TooltipHasUseOrConsume() or DA_IsAllowlistedItemName(itemName)) then
+            if itemName and DA_TooltipHasUseOrConsume() then
                 DA_AddItemOption(itemName)
             end
         end
@@ -974,7 +953,7 @@ local function DA_ScanBagUsable()
 
                     local nameFS = DoiteAurasTooltipTextLeft1
                     local itemName = nameFS and nameFS:GetText()
-                    if itemName and (DA_TooltipHasUseOrConsume() or DA_IsAllowlistedItemName(itemName)) then
+                    if itemName and DA_TooltipHasUseOrConsume() then
                         DA_AddItemOption(itemName)
                     end
                 end
@@ -1177,8 +1156,6 @@ local function DA_RebuildItemDropDown()
     -- Reset shown text each time
     UIDropDownMenu_SetText("Select from dropdown", itemDropDown)
 end
-
-DA_HookDropDownButtonOnClick(itemDropDown, DA_RebuildItemDropDown)
 
 -- Helper to read current dropdown text
 local function DA_GetDropDownText(dd)
@@ -3280,9 +3257,9 @@ local function RefreshList()
                     btn.downBtn:ClearAllPoints()
                     btn.downBtn:SetPoint("RIGHT", btn.renameBtn, "LEFT", -5, 0)
 
-                    btn.renameInput = CreateFrame("EditBox", nil, btn, "InputBoxTemplate")
+                    btn.renameInput = CreateFrame("EditBox", nil, btn)
                     btn.renameInput:SetWidth(120); btn.renameInput:SetHeight(18)
-                    btn.renameInput:SetAutoFocus(false)
+                    DA_StyleRowEditBox(btn.renameInput, "LEFT")
                     -- Rename-controls row anchor
                     btn.renameInput:SetPoint("TOPLEFT", btn, "TOPLEFT", 15, -49)
 
