@@ -1833,7 +1833,7 @@ local function DE_CreateImportFrame()
     return duplicates, sets.db, nonDuplicates
   end
 
-local function DE_ApplyDuplicateRenames(pkg, duplicates)
+  local function DE_ApplyDuplicateRenames(pkg, duplicates)
     if not pkg or not duplicates then
       return pkg
     end
@@ -1844,6 +1844,10 @@ local function DE_ApplyDuplicateRenames(pkg, duplicates)
       group = {},
       category = {},
     }
+    local dismissCfg = {
+      group = {},
+      category = {},
+    }
     local i
 
     for i = 1, table.getn(duplicates) do
@@ -1851,6 +1855,8 @@ local function DE_ApplyDuplicateRenames(pkg, duplicates)
       if entry then
         if entry.replaceSelected then
           replaceCfg[entry.kind][entry.oldName] = true
+        elseif entry.dismissed then
+          dismissCfg[entry.kind][entry.oldName] = true
         elseif entry.savedName and entry.savedName ~= "" then
           if entry.kind == "group" then
             mapGroup[entry.oldName] = entry.savedName
@@ -1861,10 +1867,33 @@ local function DE_ApplyDuplicateRenames(pkg, duplicates)
       end
     end
 
+    -- Safety: if stale state ever marks both dismissed and replaced,
+    -- dismissal should win and the bucket should be excluded from import.
+    local kind, bucketName
+    for kind in pairs(dismissCfg) do
+      for bucketName in pairs(dismissCfg[kind]) do
+        replaceCfg[kind][bucketName] = nil
+      end
+    end
+
     if next(replaceCfg.group) or next(replaceCfg.category) then
       pkg.__daReplaceExisting = replaceCfg
     else
       pkg.__daReplaceExisting = nil
+    end
+
+    if next(dismissCfg.group) and pkg.groups then
+      local gName
+      for gName in pairs(dismissCfg.group) do
+        pkg.groups[gName] = nil
+      end
+    end
+
+    if next(dismissCfg.category) and pkg.categories then
+      local cName
+      for cName in pairs(dismissCfg.category) do
+        pkg.categories[cName] = nil
+      end
     end
 
     if next(mapGroup) and pkg.groups then
@@ -1886,17 +1915,32 @@ local function DE_ApplyDuplicateRenames(pkg, duplicates)
     end
 
     local icons = pkg.icons or {}
+    local keptIcons = {}
     for i = 1, table.getn(icons) do
       local rec = icons[i]
-      if rec and rec.data then
-        if rec.data.group and mapGroup[rec.data.group] then
-          rec.data.group = mapGroup[rec.data.group]
+      if rec then
+        local skip = false
+        if rec.data then
+          if rec.data.group and dismissCfg.group[rec.data.group] then
+            skip = true
+          end
+          if rec.data.category and dismissCfg.category[rec.data.category] then
+            skip = true
+          end
         end
-        if rec.data.category and mapCategory[rec.data.category] then
-          rec.data.category = mapCategory[rec.data.category]
+
+        if not skip then
+          if rec.data and rec.data.group and mapGroup[rec.data.group] then
+            rec.data.group = mapGroup[rec.data.group]
+          end
+          if rec.data and rec.data.category and mapCategory[rec.data.category] then
+            rec.data.category = mapCategory[rec.data.category]
+          end
+          table.insert(keptIcons, rec)
         end
       end
     end
+    pkg.icons = keptIcons
 
     return pkg
   end
