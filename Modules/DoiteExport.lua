@@ -1760,14 +1760,63 @@ local function DE_CreateImportFrame()
       category = {},
     }
 
+    local function DE_BarsCategoryHasBarTypeOverlap(catName)
+      if tostring(catName) ~= "BARS" then
+        return true
+      end
+
+      local dbBarTypes = {}
+      local hasDbBars = false
+      local key, data
+      for key, data in pairs((DoiteAurasDB and DoiteAurasDB.spells) or {}) do
+        if type(data) == "table"
+          and data.category == catName
+          and data.type == "Bar"
+          and data.barType
+          and data.barType ~= "" then
+          dbBarTypes[data.barType] = true
+          hasDbBars = true
+        end
+      end
+      if not hasDbBars then
+        return false
+      end
+
+      local icons = (pkg and pkg.icons) or {}
+      local i
+      for i = 1, table.getn(icons) do
+        local rec = icons[i]
+        local d = rec and rec.data
+        if d
+          and d.category == catName
+          and d.type == "Bar"
+          and d.barType
+          and d.barType ~= ""
+          and dbBarTypes[d.barType] then
+          return true
+        end
+      end
+      return false
+    end
+
     local kind, name
     for kind in pairs(sets.importAll) do
       for name in pairs(sets.importAll[kind]) do
         if sets.db[kind][name] then
-          table.insert(duplicates, {
-            kind = kind,
-            oldName = name,
-          })
+          local shouldInclude = true
+          local allowRename = true
+          if kind == "category" and tostring(name) == "BARS" then
+            shouldInclude = DE_BarsCategoryHasBarTypeOverlap(name)
+            allowRename = false
+          end
+
+          if shouldInclude then
+            table.insert(duplicates, {
+              kind = kind,
+              oldName = name,
+              allowRename = allowRename,
+            })
+          end
         else
           nonDuplicates[kind][name] = true
         end
@@ -2002,7 +2051,9 @@ local function DE_ApplyDuplicateRenames(pkg, duplicates)
       end
       local i
       for i = 1, table.getn(duplicateState.duplicates) do
-        if not duplicateState.duplicates[i].savedName and not duplicateState.duplicates[i].replaceSelected then
+        if not duplicateState.duplicates[i].savedName
+          and not duplicateState.duplicates[i].replaceSelected
+          and not duplicateState.duplicates[i].dismissed then
           return false
         end
       end
@@ -2076,8 +2127,14 @@ local function DE_ApplyDuplicateRenames(pkg, duplicates)
           if row.saveBtn then
             row.saveBtn:Hide()
           end
+          if row.dismissBtn then
+            row.dismissBtn:Hide()
+          end
           if row.replaceBtn then
             row.replaceBtn:Hide()
+          end
+          if row.lockedText then
+            row.lockedText:Hide()
           end
           if row.savedText then
             row.savedText:Hide()
@@ -2092,6 +2149,7 @@ local function DE_ApplyDuplicateRenames(pkg, duplicates)
         local entry = state.duplicates[i]
         local row = {}
         local kindLabel = (entry.kind == "group") and "Group" or "Category"
+        local canRename = entry.allowRename ~= false
         local prefix = ""
         if total > 1 then
           prefix = "Match #" .. i .. " - "
@@ -2110,6 +2168,14 @@ local function DE_ApplyDuplicateRenames(pkg, duplicates)
         input:SetText(entry.oldName or "")
         row.input = input
 
+        local lockedText = duplicateFrame.rowsContainer:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        lockedText:SetPoint("LEFT", label, "RIGHT", 8, 0)
+        lockedText:SetText(entry.oldName or "")
+        if canRename then
+          lockedText:Hide()
+        end
+        row.lockedText = lockedText
+
         local savedText = duplicateFrame.rowsContainer:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         savedText:SetPoint("LEFT", label, "RIGHT", 8, 0)
         savedText:SetText("")
@@ -2124,21 +2190,39 @@ local function DE_ApplyDuplicateRenames(pkg, duplicates)
         saveBtn:Disable()
         row.saveBtn = saveBtn
 
+        local dismissBtn = CreateFrame("Button", nil, duplicateFrame.rowsContainer, "UIPanelButtonTemplate")
+        dismissBtn:SetWidth(52)
+        dismissBtn:SetHeight(20)
+        dismissBtn:SetPoint("LEFT", saveBtn, "RIGHT", 6, 0)
+        dismissBtn:SetText("Dismiss")
+        row.dismissBtn = dismissBtn
+
         local replaceBtn = CreateFrame("Button", nil, duplicateFrame.rowsContainer, "UIPanelButtonTemplate")
         replaceBtn:SetWidth(52)
         replaceBtn:SetHeight(20)
-        replaceBtn:SetPoint("LEFT", saveBtn, "RIGHT", 6, 0)
+        replaceBtn:SetPoint("LEFT", dismissBtn, "RIGHT", 6, 0)
         replaceBtn:SetText("Replace")
         row.replaceBtn = replaceBtn
 
         local function DE_ResetRowToEditable()
           entry.savedName = nil
           entry.replaceSelected = nil
+          entry.dismissed = nil
           savedText:Hide()
-          input:SetText(entry.oldName or "")
-          input:Show()
-          saveBtn:Show()
-          saveBtn:Disable()
+          if canRename then
+            input:SetText(entry.oldName or "")
+            input:Show()
+            saveBtn:Show()
+            saveBtn:Disable()
+            dismissBtn:Show()
+            lockedText:Hide()
+          else
+            lockedText:SetText(entry.oldName or "")
+            lockedText:Show()
+            input:Hide()
+            saveBtn:Hide()
+            dismissBtn:Show()
+          end
           replaceBtn:SetText("Replace")
           DE_UpdateDuplicateImportButton()
         end
@@ -2148,7 +2232,9 @@ local function DE_ApplyDuplicateRenames(pkg, duplicates)
           if entry.savedName or entry.replaceSelected then
             entry.savedName = nil
             entry.replaceSelected = nil
+            entry.dismissed = nil
             savedText:Hide()
+            dismissBtn:Show()
             replaceBtn:SetText("Replace")
           end
           if DE_DuplicateNameIsUnique(entry, value) then
@@ -2166,29 +2252,54 @@ local function DE_ApplyDuplicateRenames(pkg, duplicates)
           end
           entry.savedName = value
           entry.replaceSelected = nil
+          entry.dismissed = nil
           input:Hide()
           saveBtn:Hide()
+          dismissBtn:Hide()
+          lockedText:Hide()
           savedText:SetText(value)
           savedText:Show()
           replaceBtn:SetText("Regret")
           DE_UpdateDuplicateImportButton()
         end)
 
+        dismissBtn:SetScript("OnClick", function()
+          entry.savedName = nil
+          entry.replaceSelected = nil
+          entry.dismissed = true
+          input:Hide()
+          saveBtn:Hide()
+          dismissBtn:Hide()
+          lockedText:Hide()
+          savedText:SetText((entry.oldName or "") .. " [DISMISSED]")
+          savedText:Show()
+          replaceBtn:SetText("Regret")
+          DE_UpdateDuplicateImportButton()
+        end)
+
         replaceBtn:SetScript("OnClick", function()
-          if entry.replaceSelected or entry.savedName then
+          if entry.replaceSelected or entry.savedName or entry.dismissed then
             DE_ResetRowToEditable()
             return
           end
 
           entry.savedName = nil
           entry.replaceSelected = true
+          entry.dismissed = nil
           input:Hide()
           saveBtn:Hide()
+          dismissBtn:Hide()
+          lockedText:Hide()
           savedText:SetText((entry.oldName or "") .. " [REPLACED]")
           savedText:Show()
           replaceBtn:SetText("Regret")
           DE_UpdateDuplicateImportButton()
         end)
+
+        if not canRename then
+          input:Hide()
+          saveBtn:Hide()
+        end
 
         table.insert(duplicateFrame.rowWidgets, row)
         y = y - 24
