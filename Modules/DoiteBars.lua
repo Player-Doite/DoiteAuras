@@ -1095,14 +1095,21 @@ local function BE_ShowColorPicker(r, g, b, a, changedCallback)
         if ColorPickerFrame.SetFrameStrata then ColorPickerFrame:SetFrameStrata("TOOLTIP") end
         if ColorPickerFrame.SetFrameLevel then ColorPickerFrame:SetFrameLevel(10000) end
         if ColorPickerFrame.Raise then ColorPickerFrame:Raise() end
-        if ColorPickerFrame._daDragHandle then
-            local h = ColorPickerFrame._daDragHandle
-            h:SetFrameStrata("TOOLTIP")
-            h:SetFrameLevel((ColorPickerFrame.GetFrameLevel and ColorPickerFrame:GetFrameLevel() or 10000) + 20)
-            h:Show()
-        end
 
         local base = ColorPickerFrame.GetFrameLevel and ColorPickerFrame:GetFrameLevel() or 10000
+
+        if ColorPickerFrame._daDragHandle then
+            if ColorPickerFrame._daDragHandle.SetFrameStrata then
+                ColorPickerFrame._daDragHandle:SetFrameStrata("TOOLTIP")
+            end
+            if ColorPickerFrame._daDragHandle.SetFrameLevel then
+                ColorPickerFrame._daDragHandle:SetFrameLevel(base + 50)
+            end
+            if ColorPickerFrame._daDragHandle.Raise then
+                ColorPickerFrame._daDragHandle:Raise()
+            end
+        end
+
         local children = {
             _G["OpacitySliderFrame"],
             _G["ColorPickerOkayButton"],
