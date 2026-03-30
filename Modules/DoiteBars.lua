@@ -343,9 +343,6 @@ function DoiteBars.CreateOrUpdateBar(key, data)
                 d.offsetX = x
                 d.offsetY = y
             end
-
-            -- Sync position sliders in injected edit panel if open
-            DoiteBars._SyncPositionSliders(fk, x, y)
         end)
 
         barFrames[key] = f
@@ -373,24 +370,6 @@ function DoiteBars.CreateOrUpdateBar(key, data)
 
     -- Background colour
     f.bg:SetTexture(data.bgR, data.bgG, data.bgB, data.bgAlpha)
-
-    -- Orientation / direction
-    if f.bar and f.bar.SetOrientation then
-        if data.orientation == "Vertical" then
-            f.bar:SetOrientation("VERTICAL")
-        else
-            f.bar:SetOrientation("HORIZONTAL")
-        end
-    end
-    if f.bar and f.bar.SetReverseFill then
-        local reverse = false
-        if data.orientation == "Vertical" then
-            reverse = (data.direction == "From down to up")
-        else
-            reverse = (data.direction == "Left to right")
-        end
-        f.bar:SetReverseFill(reverse and true or false)
-    end
 
     -- Label font
     if f.label and f.label.SetFont then
@@ -667,13 +646,6 @@ end)
 
 -- Key currently being edited via injected panel
 local _beKey = nil
-
--- Reference to the injected scrollable container
--- destroyed and recreated each time a Bar is opened
-local _beContainer = nil
-
-local _beSliderX = nil
-local _beSliderY = nil
 
 local function BE_RefreshEditedBar()
     if not _beKey then return end
@@ -1009,9 +981,11 @@ end
 ---------------------------------------------------------------
 -- Color picker helpers
 ---------------------------------------------------------------
-local function BE_HideColorPicker()
+local function BE_HideColorPicker(cancelCallback)
     if not ColorPickerFrame then return end
-    _G["DoiteBars_ColorPickerNonce"] = (_G["DoiteBars_ColorPickerNonce"] or 0) + 1
+    if cancelCallback then
+        _G["DoiteBars_ColorPickerNonce"] = (_G["DoiteBars_ColorPickerNonce"] or 0) + 1
+    end
     if ColorPickerFrame.Hide then ColorPickerFrame:Hide() end
 end
 
@@ -1022,27 +996,46 @@ local function BE_ShowColorPicker(r, g, b, a, changedCallback)
         if ColorPickerFrame.SetMovable then ColorPickerFrame:SetMovable(true) end
         if ColorPickerFrame.EnableMouse then ColorPickerFrame:EnableMouse(true) end
         if ColorPickerFrame.SetClampedToScreen then ColorPickerFrame:SetClampedToScreen(true) end
-        ColorPickerFrame:RegisterForDrag("LeftButton")
-        ColorPickerFrame:SetScript("OnMouseDown", function(self, button)
-            if button == "LeftButton" and self.StartMoving then
-                self:StartMoving()
+
+        if not ColorPickerFrame._daDragHandle then
+            local h = CreateFrame("Frame", nil, ColorPickerFrame)
+            h:SetPoint("TOPLEFT", ColorPickerFrame, "TOPLEFT", 0, 0)
+            h:SetPoint("TOPRIGHT", ColorPickerFrame, "TOPRIGHT", 0, 0)
+            h:SetHeight(20)
+            h:EnableMouse(true)
+            h:RegisterForDrag("LeftButton")
+            if h.SetFrameStrata then h:SetFrameStrata("TOOLTIP") end
+            if h.SetFrameLevel and ColorPickerFrame.GetFrameLevel then
+                h:SetFrameLevel((ColorPickerFrame:GetFrameLevel() or 10000) + 20)
             end
-        end)
-        ColorPickerFrame:SetScript("OnMouseUp", function(self)
-            if self.StopMovingOrSizing then
-                self:StopMovingOrSizing()
-            end
-        end)
-        ColorPickerFrame:SetScript("OnDragStart", function(self)
-            if self.StartMoving then
-                self:StartMoving()
-            end
-        end)
-        ColorPickerFrame:SetScript("OnDragStop", function(self)
-            if self.StopMovingOrSizing then
-                self:StopMovingOrSizing()
-            end
-        end)
+            h:SetScript("OnMouseDown", function()
+                if ColorPickerFrame and ColorPickerFrame.StartMoving then
+                    ColorPickerFrame:StartMoving()
+                end
+            end)
+            h:SetScript("OnMouseUp", function()
+                if ColorPickerFrame and ColorPickerFrame.StopMovingOrSizing then
+                    ColorPickerFrame:StopMovingOrSizing()
+                end
+            end)
+            h:SetScript("OnDragStart", function()
+                if ColorPickerFrame and ColorPickerFrame.StartMoving then
+                    ColorPickerFrame:StartMoving()
+                end
+            end)
+            h:SetScript("OnDragStop", function()
+                if ColorPickerFrame and ColorPickerFrame.StopMovingOrSizing then
+                    ColorPickerFrame:StopMovingOrSizing()
+                end
+            end)
+            ColorPickerFrame._daDragHandle = h
+        end
+    end
+    local h = ColorPickerFrame._daDragHandle
+    if h and h.SetHeight and ColorPickerFrame.GetHeight then
+        local hh = math.floor((ColorPickerFrame:GetHeight() or 180) * 0.10 + 0.5)
+        if hh < 16 then hh = 16 end
+        h:SetHeight(hh)
     end
     _G["DoiteBars_ColorPickerNonce"] = (_G["DoiteBars_ColorPickerNonce"] or 0) + 1
     local myNonce = _G["DoiteBars_ColorPickerNonce"]
@@ -1064,6 +1057,19 @@ local function BE_ShowColorPicker(r, g, b, a, changedCallback)
         if ColorPickerFrame.Raise then ColorPickerFrame:Raise() end
 
         local base = ColorPickerFrame.GetFrameLevel and ColorPickerFrame:GetFrameLevel() or 10000
+
+        if ColorPickerFrame._daDragHandle then
+            if ColorPickerFrame._daDragHandle.SetFrameStrata then
+                ColorPickerFrame._daDragHandle:SetFrameStrata("TOOLTIP")
+            end
+            if ColorPickerFrame._daDragHandle.SetFrameLevel then
+                ColorPickerFrame._daDragHandle:SetFrameLevel(base + 50)
+            end
+            if ColorPickerFrame._daDragHandle.Raise then
+                ColorPickerFrame._daDragHandle:Raise()
+            end
+        end
+
         local children = {
             _G["OpacitySliderFrame"],
             _G["ColorPickerOkayButton"],
@@ -1082,7 +1088,7 @@ local function BE_ShowColorPicker(r, g, b, a, changedCallback)
     end
 
     BE_BringColorPickerToFront()
-    BE_HideColorPicker()
+    BE_HideColorPicker(false)
     ColorPickerFrame:Show()
     BE_BringColorPickerToFront()
 end
@@ -1119,23 +1125,6 @@ local function BE_MakeColorSwatch(parent, x, y, labelText, onClick)
         if onClick then onClick() end
     end)
     return btn, lbl
-end
-
----------------------------------------------------------------
--- Sync position sliders when bar is dragged on screen
----------------------------------------------------------------
-function DoiteBars._SyncPositionSliders(key, x, y)
-    if _beKey ~= key then return end
-    if _beSliderX then
-        _beSliderX._isSyncing = true
-        _beSliderX:SetValue(x)
-        _beSliderX._isSyncing = false
-    end
-    if _beSliderY then
-        _beSliderY._isSyncing = true
-        _beSliderY:SetValue(y)
-        _beSliderY._isSyncing = false
-    end
 end
 
 ---------------------------------------------------------------
@@ -1656,11 +1645,11 @@ function DoiteBars.InjectEditControls(cf, key)
     if not cf or not key then return end
 
     if cf.HookScript and not cf._daBarsHideHooked then
-        cf:HookScript("OnHide", function() BE_HideColorPicker() end)
+        cf:HookScript("OnHide", function() BE_HideColorPicker(true) end)
         cf._daBarsHideHooked = true
     end
     if DoiteAurasFrame and DoiteAurasFrame.HookScript and not DoiteAurasFrame._daBarsHideHooked then
-        DoiteAurasFrame:HookScript("OnHide", function() BE_HideColorPicker() end)
+        DoiteAurasFrame:HookScript("OnHide", function() BE_HideColorPicker(true) end)
         DoiteAurasFrame._daBarsHideHooked = true
     end
 
@@ -1754,7 +1743,7 @@ end
 ---------------------------------------------------------------
 function DoiteBars.CleanupCondFrame(cf)
     if not cf then return end
-    BE_HideColorPicker()
+    BE_HideColorPicker(true)
     
     if cf.BarEditContainer then
         cf.BarEditContainer:Hide()
