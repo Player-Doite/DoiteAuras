@@ -780,6 +780,8 @@ _G["DA_AbilityDropdownPassiveAllow"] = DA_AbilityDropdownPassiveAllow
 
 -- Add non-"on use" items that should still show in item dropdowns
 local DA_ItemDropdownAllow = {
+    ["Ironwood Seed"] = true,
+    ["Wild Thornroot"] = true,
 }
 _G["DA_ItemDropdownAllow"] = DA_ItemDropdownAllow
 
