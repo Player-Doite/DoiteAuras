@@ -1017,32 +1017,65 @@ end
 
 local function BE_ShowColorPicker(r, g, b, a, changedCallback)
     if not ColorPickerFrame then return end
-    if not ColorPickerFrame._daMovable then
-        ColorPickerFrame._daMovable = true
-        if ColorPickerFrame.SetMovable then ColorPickerFrame:SetMovable(true) end
-        if ColorPickerFrame.EnableMouse then ColorPickerFrame:EnableMouse(true) end
-        if ColorPickerFrame.SetClampedToScreen then ColorPickerFrame:SetClampedToScreen(true) end
-        ColorPickerFrame:RegisterForDrag("LeftButton")
-        ColorPickerFrame:SetScript("OnMouseDown", function(self, button)
+    if ColorPickerFrame.SetMovable then ColorPickerFrame:SetMovable(true) end
+    if ColorPickerFrame.EnableMouse then ColorPickerFrame:EnableMouse(true) end
+    if ColorPickerFrame.SetClampedToScreen then ColorPickerFrame:SetClampedToScreen(true) end
+    if ColorPickerFrame.RegisterForDrag then ColorPickerFrame:RegisterForDrag("LeftButton") end
+
+    if not ColorPickerFrame._daMoveHooks then
+        ColorPickerFrame._daMoveHooks = true
+        ColorPickerFrame:HookScript("OnMouseDown", function(self, button)
             if button == "LeftButton" and self.StartMoving then
                 self:StartMoving()
             end
         end)
-        ColorPickerFrame:SetScript("OnMouseUp", function(self)
+        ColorPickerFrame:HookScript("OnMouseUp", function(self)
             if self.StopMovingOrSizing then
                 self:StopMovingOrSizing()
             end
         end)
-        ColorPickerFrame:SetScript("OnDragStart", function(self)
+        ColorPickerFrame:HookScript("OnDragStart", function(self)
             if self.StartMoving then
                 self:StartMoving()
             end
         end)
-        ColorPickerFrame:SetScript("OnDragStop", function(self)
+        ColorPickerFrame:HookScript("OnDragStop", function(self)
             if self.StopMovingOrSizing then
                 self:StopMovingOrSizing()
             end
         end)
+    end
+
+    if not ColorPickerFrame._daDragHandle then
+        local h = CreateFrame("Frame", nil, ColorPickerFrame)
+        h:SetPoint("TOPLEFT", ColorPickerFrame, "TOPLEFT", 0, 0)
+        h:SetPoint("TOPRIGHT", ColorPickerFrame, "TOPRIGHT", 0, 0)
+        h:SetHeight(18)
+        h:EnableMouse(true)
+        h:RegisterForDrag("LeftButton")
+        h:SetFrameStrata("TOOLTIP")
+        h:SetFrameLevel((ColorPickerFrame.GetFrameLevel and ColorPickerFrame:GetFrameLevel() or 10000) + 20)
+        h:SetScript("OnMouseDown", function(_, button)
+            if button == "LeftButton" and ColorPickerFrame.StartMoving then
+                ColorPickerFrame:StartMoving()
+            end
+        end)
+        h:SetScript("OnMouseUp", function()
+            if ColorPickerFrame.StopMovingOrSizing then
+                ColorPickerFrame:StopMovingOrSizing()
+            end
+        end)
+        h:SetScript("OnDragStart", function()
+            if ColorPickerFrame.StartMoving then
+                ColorPickerFrame:StartMoving()
+            end
+        end)
+        h:SetScript("OnDragStop", function()
+            if ColorPickerFrame.StopMovingOrSizing then
+                ColorPickerFrame:StopMovingOrSizing()
+            end
+        end)
+        ColorPickerFrame._daDragHandle = h
     end
     _G["DoiteBars_ColorPickerNonce"] = (_G["DoiteBars_ColorPickerNonce"] or 0) + 1
     local myNonce = _G["DoiteBars_ColorPickerNonce"]
@@ -1062,6 +1095,12 @@ local function BE_ShowColorPicker(r, g, b, a, changedCallback)
         if ColorPickerFrame.SetFrameStrata then ColorPickerFrame:SetFrameStrata("TOOLTIP") end
         if ColorPickerFrame.SetFrameLevel then ColorPickerFrame:SetFrameLevel(10000) end
         if ColorPickerFrame.Raise then ColorPickerFrame:Raise() end
+        if ColorPickerFrame._daDragHandle then
+            local h = ColorPickerFrame._daDragHandle
+            h:SetFrameStrata("TOOLTIP")
+            h:SetFrameLevel((ColorPickerFrame.GetFrameLevel and ColorPickerFrame:GetFrameLevel() or 10000) + 20)
+            h:Show()
+        end
 
         local base = ColorPickerFrame.GetFrameLevel and ColorPickerFrame:GetFrameLevel() or 10000
         local children = {
