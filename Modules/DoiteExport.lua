@@ -2204,8 +2204,24 @@ local function DE_CreateImportFrame()
         label:SetText(prefix .. kindLabel .. ":")
         row.label = label
 
-        local input = CreateFrame("EditBox", nil, duplicateFrame.rowsContainer, "InputBoxTemplate")
+        local input = CreateFrame("EditBox", nil, duplicateFrame.rowsContainer)
         input:SetAutoFocus(false)
+        input:SetFontObject("GameFontHighlightSmall")
+        if input.SetTextInsets then
+          input:SetTextInsets(6, 6, 0, 0)
+        end
+        if input.SetBackdrop then
+          input:SetBackdrop({
+            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true,
+            tileSize = 16,
+            edgeSize = 12,
+            insets = { left = 3, right = 3, top = 3, bottom = 3 },
+          })
+          input:SetBackdropColor(0, 0, 0, 0.85)
+          input:SetBackdropBorderColor(0.6, 0.6, 0.6, 1)
+        end
         input:SetWidth(120)
         input:SetHeight(20)
         input:SetPoint("LEFT", label, "RIGHT", 8, 0)
