@@ -4761,6 +4761,8 @@ local _hasAnyAbilityTimeLogic = false
 local _hasAnyAuraTimeLogic = false
 -- Global flag: do we have ANY reason to track target auras at all?
 local _hasAnyTargetAuraUsage = true
+-- Global flag: do we have ANY reason to react to self aura changes?
+local _hasAnySelfAuraUsage = true
 
 -- ------------------------------------------------------------
 -- Coalesced aura scan + timer rebuild (reduces UNIT_AURA bursts)
@@ -4920,32 +4922,44 @@ end
 
 local function _RebuildAuraUsageFlags()
   _hasAnyTargetAuraUsage = false
+  _hasAnySelfAuraUsage = false
 
   -- 1) Live icons
   if DoiteAurasDB and DoiteAurasDB.spells then
     local key, data
     for key, data in pairs(DoiteAurasDB.spells) do
       if type(data) == "table" then
-        -- Any explicit Buff/Debuff icon that can ever point at target?
+        -- Explicit Buff/Debuff icon usage:
+        --  - targetHelp/targetHarm => target usage
+        --  - targetSelf OR no target flags => self usage (default behavior)
         if data.type == "Buff" or data.type == "Debuff" then
           local c = data.conditions and data.conditions.aura
-          if c and (c.targetHarm or c.targetHelp) then
+          local tH = c and (c.targetHarm == true) or false
+          local tP = c and (c.targetHelp == true) or false
+          local tS = c and (c.targetSelf == true) or false
+          if tH or tP then
             _hasAnyTargetAuraUsage = true
-            return
+          end
+          if tS or (not tH and not tP and not tS) then
+            _hasAnySelfAuraUsage = true
           end
         end
 
-        -- Any ability auraConditions that can check target?
+        -- Ability/item auraConditions can include both target and player checks.
+        -- Keep both usage flags on when such lists exist.
         local ca = data.conditions and data.conditions.ability
-        if ca and ca.auraConditions and (ca.targetHarm or ca.targetHelp) then
+        if ca and ca.auraConditions then
           _hasAnyTargetAuraUsage = true
-          return
+          _hasAnySelfAuraUsage = true
         end
 
-        -- Any item auraConditions that can check target?
         local ci = data.conditions and data.conditions.item
-        if ci and ci.auraConditions and (ci.targetHarm or ci.targetHelp) then
+        if ci and ci.auraConditions then
           _hasAnyTargetAuraUsage = true
+          _hasAnySelfAuraUsage = true
+        end
+
+        if _hasAnyTargetAuraUsage and _hasAnySelfAuraUsage then
           return
         end
       end
@@ -4959,21 +4973,30 @@ local function _RebuildAuraUsageFlags()
       if type(data) == "table" then
         if data.type == "Buff" or data.type == "Debuff" then
           local c = data.conditions and data.conditions.aura
-          if c and (c.targetHarm or c.targetHelp) then
+          local tH = c and (c.targetHarm == true) or false
+          local tP = c and (c.targetHelp == true) or false
+          local tS = c and (c.targetSelf == true) or false
+          if tH or tP then
             _hasAnyTargetAuraUsage = true
-            return
+          end
+          if tS or (not tH and not tP and not tS) then
+            _hasAnySelfAuraUsage = true
           end
         end
 
         local ca = data.conditions and data.conditions.ability
-        if ca and ca.auraConditions and (ca.targetHarm or ca.targetHelp) then
+        if ca and ca.auraConditions then
           _hasAnyTargetAuraUsage = true
-          return
+          _hasAnySelfAuraUsage = true
         end
 
         local ci = data.conditions and data.conditions.item
-        if ci and ci.auraConditions and (ci.targetHarm or ci.targetHelp) then
+        if ci and ci.auraConditions then
           _hasAnyTargetAuraUsage = true
+          _hasAnySelfAuraUsage = true
+        end
+
+        if _hasAnyTargetAuraUsage and _hasAnySelfAuraUsage then
           return
         end
       end
@@ -8028,6 +8051,10 @@ eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
 eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 eventFrame:RegisterEvent("UNIT_AURA")
+eventFrame:RegisterEvent("BUFF_ADDED_SELF")
+eventFrame:RegisterEvent("BUFF_REMOVED_SELF")
+eventFrame:RegisterEvent("DEBUFF_ADDED_SELF")
+eventFrame:RegisterEvent("DEBUFF_REMOVED_SELF")
 eventFrame:RegisterEvent("SPELL_UPDATE_COOLDOWN")
 eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
 eventFrame:RegisterEvent("UNIT_MANA")
@@ -8088,6 +8115,19 @@ eventFrame:SetScript("OnEvent", function()
         dirty_aura = true
         dirty_ability = true
       end
+    end
+
+  -- Vanilla/Nampower self-aura events are more immediate/reliable than UNIT_AURA
+  -- for player buff/debuff swaps. Mirror UNIT_AURA(player) dirtying so self aura
+  -- icons and any ability/item conditions that depend on them re-evaluate instantly.
+  elseif event == "BUFF_ADDED_SELF"
+      or event == "BUFF_REMOVED_SELF"
+      or event == "DEBUFF_ADDED_SELF"
+      or event == "DEBUFF_REMOVED_SELF" then
+    -- Perf guard: ignore these events when no config can consume self aura state.
+    if _hasAnySelfAuraUsage then
+      dirty_aura = true
+      dirty_ability = true
     end
 
   elseif event == "SPELLS_CHANGED" then
