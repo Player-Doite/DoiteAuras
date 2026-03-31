@@ -95,9 +95,10 @@ local BAR_DEFAULTS = {
     textPosition  = "Center",
     orientation   = "Horizontal",
     direction     = "Left to right",
-    fillTexture   = "Interface\\TargetingFrame\\UI-StatusBar",
+    fillTexture   = "Interface\\AddOns\\DoiteAuras\\Textures\\pfUI\\bar_tukui",
     fontSize      = 10,
 }
+local DA_DEFAULT_BAR_TEXTURE = "Interface\\AddOns\\DoiteAuras\\Textures\\pfUI\\bar_tukui"
 
 local function DA_BarForceCategory(data)
     if not data then return end
@@ -123,6 +124,12 @@ end
 local function DA_IsTextureValid(path)
     return path == "Interface\\TargetingFrame\\UI-StatusBar"
         or path == "Interface\\Buttons\\WHITE8X8"
+        or path == "Interface\\AddOns\\DoiteAuras\\Textures\\pfUI\\bar"
+        or path == "Interface\\AddOns\\DoiteAuras\\Textures\\pfUI\\bar_tukui"
+        or path == "Interface\\AddOns\\DoiteAuras\\Textures\\pfUI\\bar_elvui"
+        or path == "Interface\\AddOns\\DoiteAuras\\Textures\\pfUI\\bar_gradient"
+        or path == "Interface\\AddOns\\DoiteAuras\\Textures\\pfUI\\bar_striped"
+        or path == "Interface\\PaperDollInfoFrame\\UI-Character-Skills-Bar"
 end
 
 local function DA_BarApplyDefaults(data)
@@ -141,7 +148,7 @@ local function DA_BarApplyDefaults(data)
         data.direction = DA_DefaultDirectionForOrientation(data.orientation)
     end
     if not data.fillTexture or not DA_IsTextureValid(data.fillTexture) then
-        data.fillTexture = "Interface\\TargetingFrame\\UI-StatusBar"
+        data.fillTexture = DA_DEFAULT_BAR_TEXTURE
     end
     DA_BarForceCategory(data)
 end
@@ -686,8 +693,14 @@ local function BE_GetDirectionOptions(orientation)
 end
 
 local BE_TextureChoices = {
-    { text = "UI-StatusBar (Default)", value = "Interface\\TargetingFrame\\UI-StatusBar" },
-    { text = "WHITE8X8",               value = "Interface\\Buttons\\WHITE8X8" },
+    { text = "UI-StatusBar",            value = "Interface\\TargetingFrame\\UI-StatusBar" },
+    { text = "WHITE8X8",                value = "Interface\\Buttons\\WHITE8X8" },
+    { text = "pfUI bar",                value = "Interface\\AddOns\\DoiteAuras\\Textures\\pfUI\\bar" },
+    { text = "pfUI bar_tukui",          value = "Interface\\AddOns\\DoiteAuras\\Textures\\pfUI\\bar_tukui" },
+    { text = "pfUI bar_elvui",          value = "Interface\\AddOns\\DoiteAuras\\Textures\\pfUI\\bar_elvui" },
+    { text = "pfUI bar_gradient",       value = "Interface\\AddOns\\DoiteAuras\\Textures\\pfUI\\bar_gradient" },
+    { text = "pfUI bar_striped",        value = "Interface\\AddOns\\DoiteAuras\\Textures\\pfUI\\bar_striped" },
+    { text = "UI-Character-Skills-Bar", value = "Interface\\PaperDollInfoFrame\\UI-Character-Skills-Bar" },
 }
 
 BE_IsOutsideTextPosition = function(tp)
@@ -755,9 +768,9 @@ end
 
 local function BE_InitTextureDropdown(dd, data)
     if not dd then return end
-    local cur = (data and data.fillTexture) or "Interface\\TargetingFrame\\UI-StatusBar"
+    local cur = (data and data.fillTexture) or DA_DEFAULT_BAR_TEXTURE
     if not DA_IsTextureValid(cur) then
-        cur = "Interface\\TargetingFrame\\UI-StatusBar"
+        cur = DA_DEFAULT_BAR_TEXTURE
         if data then data.fillTexture = cur end
     end
     if UIDropDownMenu_Initialize then
@@ -791,7 +804,7 @@ local function BE_InitTextureDropdown(dd, data)
         end)
     end
     UIDropDownMenu_SetSelectedValue(dd, cur)
-    local shown = "UI-StatusBar (Default)"
+    local shown = "pfUI bar_tukui"
     local i
     for i = 1, table.getn(BE_TextureChoices) do
         if BE_TextureChoices[i].value == cur then
