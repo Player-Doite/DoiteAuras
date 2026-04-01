@@ -852,6 +852,28 @@ end
 ---------------------------------------------------------------
 -- Slider helper; parents to a given frame, mirrors MakeSlider
 ---------------------------------------------------------------
+local function BE_StylePlainEditBox(editBox, justify)
+    if not editBox then return end
+    editBox:SetAutoFocus(false)
+    editBox:SetFontObject("GameFontNormalSmall")
+    editBox:SetJustifyH(justify or "CENTER")
+    if editBox.SetTextInsets then
+        editBox:SetTextInsets(6, 6, 0, 0)
+    end
+    if editBox.SetBackdrop then
+        editBox:SetBackdrop({
+            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true,
+            tileSize = 16,
+            edgeSize = 12,
+            insets = { left = 3, right = 3, top = 3, bottom = 3 }
+        })
+        editBox:SetBackdropColor(0, 0, 0, 0.85)
+        editBox:SetBackdropBorderColor(0.6, 0.6, 0.6, 1)
+    end
+end
+
 local function BE_MakeSlider(parent, name, text, x, y, width, minVal, maxVal, step)
     local s = CreateFrame("Slider", name, parent, "OptionsSliderTemplate")
     s:SetWidth(width)
@@ -867,13 +889,11 @@ local function BE_MakeSlider(parent, name, text, x, y, width, minVal, maxVal, st
     if low  then low:SetText(tostring(minVal));  low:SetFontObject("GameFontNormalSmall") end
     if high then high:SetText(tostring(maxVal)); high:SetFontObject("GameFontNormalSmall") end
 
-    local eb = CreateFrame("EditBox", name .. "_EditBox", parent, "InputBoxTemplate")
+    local eb = CreateFrame("EditBox", name .. "_EditBox", parent)
     eb:SetWidth(38); eb:SetHeight(18)
     eb:SetPoint("TOP", s, "BOTTOM", 3, -8)
-    eb:SetAutoFocus(false)
     eb:SetText("0")
-    eb:SetJustifyH("CENTER")
-    eb:SetFontObject("GameFontNormalSmall")
+    BE_StylePlainEditBox(eb, "CENTER")
     eb.slider    = s
     eb._updating = false
 
@@ -1270,11 +1290,10 @@ local function BE_PopulateContent(content, key)
             BE_RefreshEditedBar()
         end
     end)
-    refs.powerValBox = CreateFrame("EditBox", nil, content, "InputBoxTemplate")
+    refs.powerValBox = CreateFrame("EditBox", nil, content)
     refs.powerValBox:SetWidth(40); refs.powerValBox:SetHeight(18)
     refs.powerValBox:SetPoint("TOPLEFT", content, "TOPLEFT", baseX + 160, y - 2)
-    refs.powerValBox:SetAutoFocus(false)
-    refs.powerValBox:SetJustifyH("CENTER")
+    BE_StylePlainEditBox(refs.powerValBox, "CENTER")
     refs.powerValBox:SetTextColor(1, 0.82, 0)
     refs.powerValBox:SetText(tostring(tonumber(data.powerValue) or 0))
     refs.powerPctLabel = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -1337,11 +1356,10 @@ local function BE_PopulateContent(content, key)
         end
     end)
 
-    refs.hpValBox = CreateFrame("EditBox", nil, content, "InputBoxTemplate")
+    refs.hpValBox = CreateFrame("EditBox", nil, content)
     refs.hpValBox:SetWidth(40); refs.hpValBox:SetHeight(18)
     refs.hpValBox:SetPoint("TOPLEFT", content, "TOPLEFT", baseX + 220, y - 2)
-    refs.hpValBox:SetAutoFocus(false)
-    refs.hpValBox:SetJustifyH("CENTER")
+    BE_StylePlainEditBox(refs.hpValBox, "CENTER")
     refs.hpValBox:SetTextColor(1, 0.82, 0)
     refs.hpValBox:SetText(tostring(tonumber(data.hpValue) or 0))
     refs.hpPctLabel = content:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
