@@ -262,6 +262,22 @@ local function _IsHunterOrWarlock()
   return (c == "HUNTER" or c == "WARLOCK")
 end
 
+local function DoiteEdit_AbilitySupportsProcSound(data)
+  if not data then
+    return false
+  end
+  local spellName = data.name
+  if not spellName or spellName == "" then
+    spellName = data.displayName
+  end
+  if not spellName or spellName == "" then
+    return false
+  end
+  local tbl = _G.DoiteConditions_ProcWindowDurations
+  local dur = tbl and tbl[spellName]
+  return (type(dur) == "number" and dur > 0) and true or false
+end
+
 local function DoiteEdit_YellowifyButton(btn)
   if not btn then
     return
@@ -1988,6 +2004,13 @@ local function CreateConditionsUI()
   if UIDropDownMenu_SetWidth then
     pcall(UIDropDownMenu_SetWidth, 140, condFrame.cond_ability_sound_offcd_dd)
   end
+
+  condFrame.cond_ability_sound_onproc_cb = MakeCheck("DoiteCond_Ability_Sound_OnProc_CB", "On Proc", 0, row12_y - 50)
+  condFrame.cond_ability_sound_onproc_dd = CreateFrame("Frame", "DoiteCond_Ability_Sound_OnProc_DD", _Parent(), "UIDropDownMenuTemplate")
+  condFrame.cond_ability_sound_onproc_dd:SetPoint("TOPLEFT", _Parent(), "TOPLEFT", 100, row12_y - 47)
+  if UIDropDownMenu_SetWidth then
+    pcall(UIDropDownMenu_SetWidth, 140, condFrame.cond_ability_sound_onproc_dd)
+  end
   SetSeparator("ability", 12, "SOUND EFFECTS", true, true)
 
   -- Ability: dynamic Aura Conditions section
@@ -2688,10 +2711,14 @@ local function CreateConditionsUI()
     d.conditions = d.conditions or {}
     d.conditions.ability = d.conditions.ability or {}
 
-    local cb = (which == "oncd") and condFrame.cond_ability_sound_oncd_cb or condFrame.cond_ability_sound_offcd_cb
-    local dd = (which == "oncd") and condFrame.cond_ability_sound_oncd_dd or condFrame.cond_ability_sound_offcd_dd
-    local field = (which == "oncd") and "soundOnCD" or "soundOffCD"
-    local enabledField = (which == "oncd") and "soundOnCDEnabled" or "soundOffCDEnabled"
+    local cb = (which == "oncd") and condFrame.cond_ability_sound_oncd_cb
+        or ((which == "offcd") and condFrame.cond_ability_sound_offcd_cb or condFrame.cond_ability_sound_onproc_cb)
+    local dd = (which == "oncd") and condFrame.cond_ability_sound_oncd_dd
+        or ((which == "offcd") and condFrame.cond_ability_sound_offcd_dd or condFrame.cond_ability_sound_onproc_dd)
+    local field = (which == "oncd") and "soundOnCD"
+        or ((which == "offcd") and "soundOffCD" or "soundOnProc")
+    local enabledField = (which == "oncd") and "soundOnCDEnabled"
+        or ((which == "offcd") and "soundOffCDEnabled" or "soundOnProcEnabled")
 
     local enabled = cb and cb.GetChecked and cb:GetChecked()
     if enabled then
@@ -2708,6 +2735,7 @@ local function CreateConditionsUI()
 
   condFrame.cond_ability_sound_oncd_cb:SetScript("OnClick", function() _AbilitySoundToggle("oncd") end)
   condFrame.cond_ability_sound_offcd_cb:SetScript("OnClick", function() _AbilitySoundToggle("offcd") end)
+  condFrame.cond_ability_sound_onproc_cb:SetScript("OnClick", function() _AbilitySoundToggle("onproc") end)
 
   local function _AuraSoundToggle(which)
     if not currentKey then
@@ -8759,6 +8787,7 @@ local function UpdateConditionsUI(data)
     local list = {
       condFrame.cond_ability_sound_oncd_cb, condFrame.cond_ability_sound_oncd_dd,
       condFrame.cond_ability_sound_offcd_cb, condFrame.cond_ability_sound_offcd_dd,
+      condFrame.cond_ability_sound_onproc_cb, condFrame.cond_ability_sound_onproc_dd,
       condFrame.cond_aura_sound_ongain_cb, condFrame.cond_aura_sound_ongain_dd,
       condFrame.cond_aura_sound_onfade_cb, condFrame.cond_aura_sound_onfade_dd,
       condFrame.cond_item_sound_oncd_cb, condFrame.cond_item_sound_oncd_dd,
@@ -8830,6 +8859,8 @@ local function UpdateConditionsUI(data)
     condFrame.cond_ability_sound_oncd_dd:Show()
     condFrame.cond_ability_sound_offcd_cb:Show()
     condFrame.cond_ability_sound_offcd_dd:Show()
+    condFrame.cond_ability_sound_onproc_cb:Show()
+    condFrame.cond_ability_sound_onproc_dd:Show()
     condFrame.cond_ability_power:Show()
     condFrame.cond_ability_glow:Show()
     condFrame.cond_ability_greyscale:Show()
@@ -8911,12 +8942,17 @@ local function UpdateConditionsUI(data)
 
     local aSoundOn = (c.ability and c.ability.soundOnCDEnabled) == true
     local aSoundOff = (c.ability and c.ability.soundOffCDEnabled) == true
+    local aSoundProc = (c.ability and c.ability.soundOnProcEnabled) == true
     local aOnCds = (c.ability and c.ability.soundOnCD) or nil
     local aOffCds = (c.ability and c.ability.soundOffCD) or nil
+    local aProcSnd = (c.ability and c.ability.soundOnProc) or nil
+    local canUseProcSound = DoiteEdit_AbilitySupportsProcSound(data)
     condFrame.cond_ability_sound_oncd_cb:SetChecked(aSoundOn)
     condFrame.cond_ability_sound_offcd_cb:SetChecked(aSoundOff)
+    condFrame.cond_ability_sound_onproc_cb:SetChecked(aSoundProc)
     DoiteEdit_InitSoundDropdown(condFrame.cond_ability_sound_oncd_dd, "ability", "soundOnCD", aOnCds)
     DoiteEdit_InitSoundDropdown(condFrame.cond_ability_sound_offcd_dd, "ability", "soundOffCD", aOffCds)
+    DoiteEdit_InitSoundDropdown(condFrame.cond_ability_sound_onproc_dd, "ability", "soundOnProc", aProcSnd)
     DoiteEdit_EnableCheck(condFrame.cond_ability_sound_oncd_cb)
     DoiteEdit_EnableCheck(condFrame.cond_ability_sound_offcd_cb)
     if aSoundOn then
@@ -8929,6 +8965,21 @@ local function UpdateConditionsUI(data)
       DoiteEdit_SetDropdownInteractive(condFrame.cond_ability_sound_offcd_dd, true)
     else
       DoiteEdit_SetDropdownInteractive(condFrame.cond_ability_sound_offcd_dd, false)
+    end
+    if canUseProcSound then
+      DoiteEdit_EnableCheck(condFrame.cond_ability_sound_onproc_cb)
+      if aSoundProc then
+        DoiteEdit_SetDropdownInteractive(condFrame.cond_ability_sound_onproc_dd, true)
+      else
+        DoiteEdit_SetDropdownInteractive(condFrame.cond_ability_sound_onproc_dd, false)
+      end
+    else
+      condFrame.cond_ability_sound_onproc_cb:SetChecked(false)
+      DoiteEdit_DisableCheck(condFrame.cond_ability_sound_onproc_cb)
+      DoiteEdit_SetDropdownInteractive(condFrame.cond_ability_sound_onproc_dd, false)
+      if c.ability then
+        c.ability.soundOnProcEnabled = false
+      end
     end
 
     -- === TARGET DISTANCE & TYPE (Ability) ===

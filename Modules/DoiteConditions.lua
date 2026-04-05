@@ -5605,6 +5605,12 @@ local function CheckAbilityConditions(data)
       (not onCdNow),
       (data._daSoundGate and c.soundOffCDEnabled == true),
       c.soundOffCD)
+  _DoiteHandleEdgeSound(
+      data.key,
+      "abilityOnProc",
+      (_ProcWindowDuration(spellName) and _ProcWindowRemaining(spellName) and true or false),
+      (data._daSoundGate and c.soundOnProcEnabled == true),
+      c.soundOnProc)
 
   local vGlow, vGrey, vFade, vFadeAlpha = _EvaluateVfxConditions(data)
   local glow = (c.glow or vGlow) and true or false
