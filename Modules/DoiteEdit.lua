@@ -2024,7 +2024,12 @@ local function CreateConditionsUI()
 
   -- Ability: dynamic Aura Conditions section
   local abilityAuraBaseY = row14_y - 10
-  SetSeparator("ability", 14, "EXTRA: VISIBILITY (SHOW/HIDE) CONDITIONS", true, true)
+  local sepAbilityAura = SetSeparator("ability", 14, "EXTRA: VISIBILITY (SHOW/HIDE) CONDITIONS", true, true)
+  if sepAbilityAura then
+    sepAbilityAura:ClearAllPoints()
+    sepAbilityAura:SetPoint("TOPLEFT", _Parent(), "TOPLEFT", 0, row14_y - 10)
+    sepAbilityAura:SetPoint("TOPRIGHT", _Parent(), "TOPRIGHT", 0, row14_y - 10)
+  end
   condFrame.abilityAuraAnchor = CreateFrame("Frame", nil, _Parent())
   condFrame.abilityAuraAnchor:SetPoint("TOPLEFT", _Parent(), "TOPLEFT", 0, abilityAuraBaseY)
   condFrame.abilityAuraAnchor:SetPoint("TOPRIGHT", _Parent(), "TOPRIGHT", 0, abilityAuraBaseY)
@@ -2032,7 +2037,12 @@ local function CreateConditionsUI()
 
   -- Ability: dynamic Visual Effects Conditions section
   local abilityVfxBaseY = row15_y - 10
-  SetSeparator("ability", 15, "EXTRA: VISUAL EFFECT (GLOW/GREY) CONDITIONS", true, true)
+  local sepAbilityVfx = SetSeparator("ability", 15, "EXTRA: VISUAL EFFECT (GLOW/GREY) CONDITIONS", true, true)
+  if sepAbilityVfx then
+    sepAbilityVfx:ClearAllPoints()
+    sepAbilityVfx:SetPoint("TOPLEFT", _Parent(), "TOPLEFT", 0, row15_y - 10)
+    sepAbilityVfx:SetPoint("TOPRIGHT", _Parent(), "TOPRIGHT", 0, row15_y - 10)
+  end
   condFrame.abilityVfxAnchor = CreateFrame("Frame", nil, _Parent())
   condFrame.abilityVfxAnchor:SetPoint("TOPLEFT", _Parent(), "TOPLEFT", 0, abilityVfxBaseY)
   condFrame.abilityVfxAnchor:SetPoint("TOPRIGHT", _Parent(), "TOPRIGHT", 0, abilityVfxBaseY)
