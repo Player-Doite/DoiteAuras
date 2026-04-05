@@ -68,12 +68,18 @@ local function DoiteEdit_SetDropdownInteractive(dd, enabled)
     return
   end
 
+  local name = dd.GetName and dd:GetName()
+  local btn = name and _G[name .. "Button"] or nil
+
   if enabled then
     if UIDropDownMenu_EnableDropDown then
       pcall(UIDropDownMenu_EnableDropDown, dd)
     end
 
-    local name = dd.GetName and dd:GetName()
+    if btn and btn.Enable then
+      btn:Enable()
+    end
+
     if name then
       local t = _G[name .. "Text"]
       if t and t.SetTextColor then
@@ -85,7 +91,10 @@ local function DoiteEdit_SetDropdownInteractive(dd, enabled)
       pcall(UIDropDownMenu_DisableDropDown, dd)
     end
 
-    local name = dd.GetName and dd:GetName()
+    if btn and btn.Disable then
+      btn:Disable()
+    end
+
     if name then
       local t = _G[name .. "Text"]
       if t and t.SetTextColor then
@@ -2014,7 +2023,7 @@ local function CreateConditionsUI()
   SetSeparator("ability", 12, "SOUND EFFECTS", true, true)
 
   -- Ability: dynamic Aura Conditions section
-  local abilityAuraBaseY = row14_y
+  local abilityAuraBaseY = row14_y - 10
   SetSeparator("ability", 14, "EXTRA: VISIBILITY (SHOW/HIDE) CONDITIONS", true, true)
   condFrame.abilityAuraAnchor = CreateFrame("Frame", nil, _Parent())
   condFrame.abilityAuraAnchor:SetPoint("TOPLEFT", _Parent(), "TOPLEFT", 0, abilityAuraBaseY)
@@ -2022,7 +2031,7 @@ local function CreateConditionsUI()
   condFrame.abilityAuraAnchor:SetHeight(20)
 
   -- Ability: dynamic Visual Effects Conditions section
-  local abilityVfxBaseY = row15_y
+  local abilityVfxBaseY = row15_y - 10
   SetSeparator("ability", 15, "EXTRA: VISUAL EFFECT (GLOW/GREY) CONDITIONS", true, true)
   condFrame.abilityVfxAnchor = CreateFrame("Frame", nil, _Parent())
   condFrame.abilityVfxAnchor:SetPoint("TOPLEFT", _Parent(), "TOPLEFT", 0, abilityVfxBaseY)
