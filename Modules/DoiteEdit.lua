@@ -2014,7 +2014,7 @@ local function CreateConditionsUI()
     pcall(UIDropDownMenu_SetWidth, 140, condFrame.cond_ability_sound_offcd_dd)
   end
 
-  condFrame.cond_ability_sound_onproc_cb = MakeCheck("DoiteCond_Ability_Sound_OnProc_CB", "On Proc", 0, row12_y - 50)
+  condFrame.cond_ability_sound_onproc_cb = MakeCheck("DoiteCond_Ability_Sound_OnProc_CB", "On 'proc'", 0, row12_y - 50)
   condFrame.cond_ability_sound_onproc_dd = CreateFrame("Frame", "DoiteCond_Ability_Sound_OnProc_DD", _Parent(), "UIDropDownMenuTemplate")
   condFrame.cond_ability_sound_onproc_dd:SetPoint("TOPLEFT", _Parent(), "TOPLEFT", 100, row12_y - 47)
   if UIDropDownMenu_SetWidth then
@@ -2023,7 +2023,7 @@ local function CreateConditionsUI()
   SetSeparator("ability", 12, "SOUND EFFECTS", true, true)
 
   -- Ability: dynamic Aura Conditions section
-  local abilityAuraBaseY = row14_y - 10
+  local abilityAuraBaseY = row14_y - 20
   local sepAbilityAura = SetSeparator("ability", 14, "EXTRA: VISIBILITY (SHOW/HIDE) CONDITIONS", true, true)
   if sepAbilityAura then
     local sepAuraY = ((srows and srows[14]) or 0) - 15
@@ -2037,10 +2037,10 @@ local function CreateConditionsUI()
   condFrame.abilityAuraAnchor:SetHeight(20)
 
   -- Ability: dynamic Visual Effects Conditions section
-  local abilityVfxBaseY = row15_y - 15
+  local abilityVfxBaseY = row15_y - 25
   local sepAbilityVfx = SetSeparator("ability", 15, "EXTRA: VISUAL EFFECT (GLOW/GREY) CONDITIONS", true, true)
   if sepAbilityVfx then
-    local sepVfxY = ((srows and srows[15]) or 0) - 15
+    local sepVfxY = ((srows and srows[15]) or 0) - 25
     sepAbilityVfx:ClearAllPoints()
     sepAbilityVfx:SetPoint("TOPLEFT", _Parent(), "TOPLEFT", 0, sepVfxY)
     sepAbilityVfx:SetPoint("TOPRIGHT", _Parent(), "TOPRIGHT", 0, sepVfxY)
