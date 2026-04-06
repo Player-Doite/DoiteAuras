@@ -2037,10 +2037,10 @@ local function CreateConditionsUI()
   condFrame.abilityAuraAnchor:SetHeight(20)
 
   -- Ability: dynamic Visual Effects Conditions section
-  local abilityVfxBaseY = row15_y - 10
+  local abilityVfxBaseY = row15_y - 15
   local sepAbilityVfx = SetSeparator("ability", 15, "EXTRA: VISUAL EFFECT (GLOW/GREY) CONDITIONS", true, true)
   if sepAbilityVfx then
-    local sepVfxY = ((srows and srows[15]) or 0) - 10
+    local sepVfxY = ((srows and srows[15]) or 0) - 15
     sepAbilityVfx:ClearAllPoints()
     sepAbilityVfx:SetPoint("TOPLEFT", _Parent(), "TOPLEFT", 0, sepVfxY)
     sepAbilityVfx:SetPoint("TOPRIGHT", _Parent(), "TOPRIGHT", 0, sepVfxY)
@@ -5576,7 +5576,7 @@ _ReflowCondAreaHeight = function()
     local visHeight = condFrame.abilityAuraAnchor:GetHeight() or 20
     
     local ROW14_Y = -550
-    local ROW15_Y = -590
+    local ROW15_Y = -605
     
     local expansion = visHeight - 20
     if expansion < 0 then expansion = 0 end
