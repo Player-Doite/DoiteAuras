@@ -4076,16 +4076,36 @@ local function _FmtRem(remSec)
   local HOUR_CUTOVER = HOUR - MIN -- 59:00
 
   if remSec >= HOUR_CUTOVER then
-    return (math.floor((remSec / HOUR) * 2 + 0.5) / 2) .. "h" -- nearest 0.5 hour
+    remSec = math.floor((remSec / HOUR) * 2 + 0.5)
+    if not DoiteConditions._fmtRemHourCache then
+      DoiteConditions._fmtRemHourCache = {}
+    end
+    if not DoiteConditions._fmtRemHourCache[remSec] then
+      DoiteConditions._fmtRemHourCache[remSec] = (remSec / 2) .. "h"
+    end
+    return DoiteConditions._fmtRemHourCache[remSec] -- nearest 0.5 hour
   elseif remSec >= MIN then
-    return (math.floor((remSec / MIN) * 2 + 0.5) / 2) .. "m" -- nearest 0.5 min
+    remSec = math.floor((remSec / MIN) * 2 + 0.5)
+    if not DoiteConditions._fmtRemMinCache then
+      DoiteConditions._fmtRemMinCache = {}
+    end
+    if not DoiteConditions._fmtRemMinCache[remSec] then
+      DoiteConditions._fmtRemMinCache[remSec] = (remSec / 2) .. "m"
+    end
+    return DoiteConditions._fmtRemMinCache[remSec] -- nearest 0.5 min
   elseif remSec < 1.6 then
     -- only show tenths when under 1.6s left
     -- Stabilize tenths by truncating, not rounding up (matches old behavior)
     local t10 = math.floor(remSec * 10)
-    local whole = math.floor(t10 / 10)
-    local dec = t10 - (whole * 10)
-    return whole .. "." .. dec
+    if not DoiteConditions._fmtRemTenthsCache then
+      DoiteConditions._fmtRemTenthsCache = {}
+    end
+    if not DoiteConditions._fmtRemTenthsCache[t10] then
+      local whole = math.floor(t10 / 10)
+      local dec = t10 - (whole * 10)
+      DoiteConditions._fmtRemTenthsCache[t10] = whole .. "." .. dec
+    end
+    return DoiteConditions._fmtRemTenthsCache[t10]
   else
     return math.ceil(remSec)
   end
