@@ -2726,14 +2726,6 @@ local function _DoiteTrackRemainingPass(spellKey, unit, comp, threshold, useSpel
   return nil
 end
 
--- For debuff checks only: if all debuff slots are full and the name exists in buffs, treat it as a debuff hit
-local function _TargetHasOverflowDebuff(auraName)
-  if not DoiteTargetAuras or not DoiteTargetAuras.HasDebuff then
-    return false
-  end
-  return DoiteTargetAuras.HasDebuff(auraName)
-end
-
 local function _TargetHasAura(auraName, wantDebuff)
   if not auraName or not UnitExists("target") then
     return false
@@ -6018,25 +6010,22 @@ local function CheckAuraConditions(data)
         found = true
       end
     else
-      local s = auraSnapshot.target
-      if s then
-        local hit = false
-        if useSpellIdOnly and auraSpellId > 0 then
-          if wantBuff and s.buffIds and s.buffIds[auraSpellId] then
-            hit = true
-          elseif wantDebuff and _TargetHasAuraBySpellId(auraSpellId, true) then
-            hit = true
-          end
-        else
-          if wantBuff and s.buffs[name] then
-            hit = true
-          elseif wantDebuff and _TargetHasOverflowDebuff(name) then
-            hit = true
-          end
+      local hit = false
+      if useSpellIdOnly and auraSpellId > 0 then
+        if wantBuff and _TargetHasAuraBySpellId(auraSpellId, false) then
+          hit = true
+        elseif wantDebuff and _TargetHasAuraBySpellId(auraSpellId, true) then
+          hit = true
         end
-        if hit then
-          found = true
+      else
+        if wantBuff and _TargetHasAura(name, false) then
+          hit = true
+        elseif wantDebuff and _TargetHasAura(name, true) then
+          hit = true
         end
+      end
+      if hit then
+        found = true
       end
     end
   end
@@ -6047,25 +6036,22 @@ local function CheckAuraConditions(data)
         found = true
       end
     else
-      local s = auraSnapshot.target
-      if s then
-        local hit = false
-        if useSpellIdOnly and auraSpellId > 0 then
-          if wantBuff and s.buffIds and s.buffIds[auraSpellId] then
-            hit = true
-          elseif wantDebuff and _TargetHasAuraBySpellId(auraSpellId, true) then
-            hit = true
-          end
-        else
-          if wantBuff and s.buffs[name] then
-            hit = true
-          elseif wantDebuff and _TargetHasOverflowDebuff(name) then
-            hit = true
-          end
+      local hit = false
+      if useSpellIdOnly and auraSpellId > 0 then
+        if wantBuff and _TargetHasAuraBySpellId(auraSpellId, false) then
+          hit = true
+        elseif wantDebuff and _TargetHasAuraBySpellId(auraSpellId, true) then
+          hit = true
         end
-        if hit then
-          found = true
+      else
+        if wantBuff and _TargetHasAura(name, false) then
+          hit = true
+        elseif wantDebuff and _TargetHasAura(name, true) then
+          hit = true
         end
+      end
+      if hit then
+        found = true
       end
     end
   end
