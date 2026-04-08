@@ -7624,6 +7624,13 @@ local function _DoiteCustomEvaluateOne(key, data)
   local fn, compileErr = _DoiteCustomCompileForData(key, data)
   if not fn then
     _DoiteCustomPrintOnce(data, key, "compile error", compileErr)
+    if data._daCustomShow == false
+        and data._daCustomTexture == nil
+        and data._daCustomHideBG == false
+        and data._daCustomRemaining == nil
+        and data._daCustomStacks == nil then
+      return false
+    end
     data._daCustomShow = false
     data._daCustomTexture = nil
     data._daCustomHideBG = false
@@ -7642,6 +7649,13 @@ local function _DoiteCustomEvaluateOne(key, data)
   local ok, show, texture, hideBackground, remaining, stacks = pcall(fn, state)
   if not ok then
     _DoiteCustomPrintOnce(data, key, "runtime error", show)
+    if data._daCustomShow == false
+        and data._daCustomTexture == nil
+        and data._daCustomHideBG == false
+        and data._daCustomRemaining == nil
+        and data._daCustomStacks == nil then
+      return false
+    end
     data._daCustomShow = false
     data._daCustomTexture = nil
     data._daCustomHideBG = false
@@ -7652,6 +7666,13 @@ local function _DoiteCustomEvaluateOne(key, data)
   end
 
   _DoiteCustomClearError(data)
+  if data._daCustomShow == (show == true or show == 1)
+      and data._daCustomTexture == ((type(texture) == "string" and texture ~= "") and texture or nil)
+      and data._daCustomHideBG == (hideBackground == true)
+      and data._daCustomRemaining == ((type(remaining) == "number") and remaining or nil)
+      and data._daCustomStacks == ((type(stacks) == "number") and stacks or nil) then
+    return false
+  end
   data._daCustomShow = (show == true or show == 1)
   data._daCustomTexture = (type(texture) == "string" and texture ~= "") and texture or nil
   data._daCustomHideBG = (hideBackground == true)
