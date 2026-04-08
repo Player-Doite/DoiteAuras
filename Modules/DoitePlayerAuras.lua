@@ -637,8 +637,13 @@ function DoitePlayerAuras.UnregisterBuffCapEvents()
   SpellChannelStartFrame:UnregisterEvent("SPELL_CHANNEL_START")
 end
 
-function DoitePlayerAuras.ToggleDebugBuffCap()
-  DoitePlayerAuras.debugBuffCap = not DoitePlayerAuras.debugBuffCap
+function DoitePlayerAuras.SetDebugBuffCap(enabled)
+  local want = (enabled == true)
+  if DoitePlayerAuras.debugBuffCap == want then
+    return
+  end
+
+  DoitePlayerAuras.debugBuffCap = want
 
   if DoitePlayerAuras.debugBuffCap then
     -- Enabling debug mode: unregister normal events and register buff cap events
@@ -659,4 +664,8 @@ function DoitePlayerAuras.ToggleDebugBuffCap()
 	UpdateAuras()
     print("DoitePlayerAuras: Debug buff cap disabled")
   end
+end
+
+function DoitePlayerAuras.ToggleDebugBuffCap()
+  DoitePlayerAuras.SetDebugBuffCap(not DoitePlayerAuras.debugBuffCap)
 end

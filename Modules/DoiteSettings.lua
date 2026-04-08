@@ -455,14 +455,29 @@ local function DS_CreateSettingsFrame()
     end)
 
     local function DS_GetOvercapSimState()
-        local on = false
-        if DoitePlayerAuras and DoitePlayerAuras.debugBuffCap then
-            on = true
+        local available = 0
+        local enabled = 0
+
+        if DoitePlayerAuras and type(DoitePlayerAuras.ToggleDebugBuffCap) == "function" then
+            available = available + 1
+            if DoitePlayerAuras.debugBuffCap then
+                enabled = enabled + 1
+            end
         end
-        if DoiteTargetAuras and DoiteTargetAuras.debugBuffCap then
-            on = true
+
+        if DoiteTargetAuras and type(DoiteTargetAuras.ToggleDebugBuffCap) == "function" then
+            available = available + 1
+            if DoiteTargetAuras.debugBuffCap then
+                enabled = enabled + 1
+            end
         end
-        return on
+
+        if available <= 0 then
+            return false
+        end
+
+        -- Full simulation ON only when every available aura module has simulation enabled.
+        return enabled == available
     end
 
     local function DS_CanToggleOvercapSim()
@@ -501,13 +516,25 @@ local function DS_CreateSettingsFrame()
 
     overcapBtn:SetScript("OnClick", function()
         local okAny = false
+        local newState = not DS_GetOvercapSimState()
 
-        if DoitePlayerAuras and type(DoitePlayerAuras.ToggleDebugBuffCap) == "function" then
-            DoitePlayerAuras.ToggleDebugBuffCap()
+        if DoitePlayerAuras and type(DoitePlayerAuras.SetDebugBuffCap) == "function" then
+            DoitePlayerAuras.SetDebugBuffCap(newState)
+            okAny = true
+        elseif DoitePlayerAuras and type(DoitePlayerAuras.ToggleDebugBuffCap) == "function" then
+            if (DoitePlayerAuras.debugBuffCap == true) ~= newState then
+                DoitePlayerAuras.ToggleDebugBuffCap()
+            end
             okAny = true
         end
-        if DoiteTargetAuras and type(DoiteTargetAuras.ToggleDebugBuffCap) == "function" then
-            DoiteTargetAuras.ToggleDebugBuffCap()
+
+        if DoiteTargetAuras and type(DoiteTargetAuras.SetDebugBuffCap) == "function" then
+            DoiteTargetAuras.SetDebugBuffCap(newState)
+            okAny = true
+        elseif DoiteTargetAuras and type(DoiteTargetAuras.ToggleDebugBuffCap) == "function" then
+            if (DoiteTargetAuras.debugBuffCap == true) ~= newState then
+                DoiteTargetAuras.ToggleDebugBuffCap()
+            end
             okAny = true
         end
 

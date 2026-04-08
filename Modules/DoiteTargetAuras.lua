@@ -2809,7 +2809,7 @@ function DoiteTrack.HasBuff(spellName)
     return false
   end
   local c = _EnsureTargetAuraCacheFresh()
-  if c and c.buffsByName[spellName] then
+  if (not DoiteTrack.debugBuffCap) and c and c.buffsByName[spellName] then
     return true
   end
 
@@ -2835,7 +2835,7 @@ function DoiteTrack.HasBuffSpellId(spellId)
     return false
   end
   local c = _EnsureTargetAuraCacheFresh()
-  if c and c.buffsById[spellId] then
+  if (not DoiteTrack.debugBuffCap) and c and c.buffsById[spellId] then
     return true
   end
   return _GetTimedAuraStateForCurrentTargetSpellId(spellId, false) and true or false
@@ -2849,10 +2849,10 @@ function DoiteTrack.HasDebuff(spellName)
   if not c then
     return false
   end
-  if c.debuffsByName[spellName] then
+  if (not DoiteTrack.debugBuffCap) and c.debuffsByName[spellName] then
     return true
   end
-  if c.debuffCount >= 16 then
+  if (not DoiteTrack.debugBuffCap) and c.debuffCount >= 16 then
     if c.buffsByName[spellName] then
       return true
     end
@@ -2883,10 +2883,10 @@ function DoiteTrack.HasDebuffSpellId(spellId)
   if not c then
     return false
   end
-  if c.debuffsById[spellId] then
+  if (not DoiteTrack.debugBuffCap) and c.debuffsById[spellId] then
     return true
   end
-  if c.debuffCount >= 16 then
+  if (not DoiteTrack.debugBuffCap) and c.debuffCount >= 16 then
     if c.buffsById[spellId] then
       return true
     end
@@ -2902,7 +2902,7 @@ function DoiteTrack.GetBuffStacks(spellName)
     return nil
   end
   local c = _EnsureTargetAuraCacheFresh()
-  if c and c.buffStacksByName[spellName] then
+  if (not DoiteTrack.debugBuffCap) and c and c.buffStacksByName[spellName] then
     return c.buffStacksByName[spellName]
   end
 
@@ -2928,7 +2928,7 @@ function DoiteTrack.GetBuffStacksBySpellId(spellId)
     return nil
   end
   local c = _EnsureTargetAuraCacheFresh()
-  if c and c.buffStacksById[spellId] then
+  if (not DoiteTrack.debugBuffCap) and c and c.buffStacksById[spellId] then
     return c.buffStacksById[spellId]
   end
   if _GetTimedAuraStateForCurrentTargetSpellId(spellId, false) then
@@ -2945,10 +2945,10 @@ function DoiteTrack.GetDebuffStacks(spellName)
   if not c then
     return nil
   end
-  if c.debuffStacksByName[spellName] then
+  if (not DoiteTrack.debugBuffCap) and c.debuffStacksByName[spellName] then
     return c.debuffStacksByName[spellName]
   end
-  if c.debuffCount >= 16 then
+  if (not DoiteTrack.debugBuffCap) and c.debuffCount >= 16 then
     if c.buffStacksByName[spellName] then
       return c.buffStacksByName[spellName]
     end
@@ -2979,10 +2979,10 @@ function DoiteTrack.GetDebuffStacksBySpellId(spellId)
   if not c then
     return nil
   end
-  if c.debuffStacksById[spellId] then
+  if (not DoiteTrack.debugBuffCap) and c.debuffStacksById[spellId] then
     return c.debuffStacksById[spellId]
   end
-  if c.debuffCount >= 16 then
+  if (not DoiteTrack.debugBuffCap) and c.debuffCount >= 16 then
     if c.buffStacksById[spellId] then
       return c.buffStacksById[spellId]
     end
@@ -3020,7 +3020,9 @@ function DoiteTrack.GetTrackedHiddenBuffCount()
     sid = tonumber(sid) or 0
     if sid > 0 then
       local rem = _GetRemainingFromState(targetGuid, sid, now)
-      if rem and rem > 0 and not _IsSpellIdVisibleInTargetCache(c, sid, false) and not _IsSpellIdVisibleInTargetCache(c, sid, true) then
+      local treatAsHidden = DoiteTrack.debugBuffCap or
+          ((not _IsSpellIdVisibleInTargetCache(c, sid, false)) and (not _IsSpellIdVisibleInTargetCache(c, sid, true)))
+      if rem and rem > 0 and treatAsHidden then
         count = count + 1
       end
     end
@@ -3035,10 +3037,19 @@ function DoiteTrack.GetAuraCountSummary()
   return buffs, debuffs, hidden, (buffs + debuffs + hidden)
 end
 
-function DoiteTrack.ToggleDebugBuffCap()
-  DoiteTrack.debugBuffCap = not (DoiteTrack.debugBuffCap == true)
-  local state = DoiteTrack.debugBuffCap and "enabled" or "disabled"
+function DoiteTrack.SetDebugBuffCap(enabled)
+  local want = (enabled == true)
+  if (DoiteTrack.debugBuffCap == true) == want then
+    return
+  end
+
+  DoiteTrack.debugBuffCap = want
+  local state = want and "enabled" or "disabled"
   print("DoiteTargetAuras: Debug buff cap " .. state)
+end
+
+function DoiteTrack.ToggleDebugBuffCap()
+  DoiteTrack.SetDebugBuffCap(not (DoiteTrack.debugBuffCap == true))
 end
 ---------------------------------------------------------------
 -- Ingame usage
