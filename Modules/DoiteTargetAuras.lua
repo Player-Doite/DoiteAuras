@@ -2354,6 +2354,8 @@ end)
 -- Runtime API (compatible shape)
 ---------------------------------------------------------------
 -- Internal helpers
+local _GetRemainingFromState
+
 local function _ClearAuraStateForGuidSpell(guid, spellId)
   if not guid or guid == "" then
     return
@@ -2365,7 +2367,7 @@ local function _ClearAuraStateForGuidSpell(guid, spellId)
 end
 
 -- Assumes aura presence has already been verified by _AuraHasSpellId(). Uses ONLY player confirmed timer state; returns nil if unknown/not-mine/expired.
-local function _GetRemainingFromState(guid, spellId, now)
+_GetRemainingFromState = function(guid, spellId, now)
   if not guid or guid == "" then
     return nil
   end
@@ -2751,12 +2753,80 @@ local function _EnsureTargetAuraCacheFresh()
   return c
 end
 
+local function _GetTimedAuraStateForCurrentTargetSpellId(spellId, wantDebuff)
+  spellId = tonumber(spellId) or 0
+  if spellId <= 0 then
+    return nil
+  end
+
+  local targetGuid = _GetUnitGuidSafe("target")
+  if not targetGuid or targetGuid == "" then
+    return nil
+  end
+
+  local now = (GetTime and GetTime()) or 0
+  local rem = _GetRemainingFromState(targetGuid, spellId, now)
+  if not rem or rem <= 0 then
+    return nil
+  end
+
+  local bucket = AuraStateByGuid[targetGuid]
+  local st = bucket and bucket[spellId]
+  if not st then
+    return nil
+  end
+
+  if wantDebuff ~= nil then
+    local isDebuff = (st.isDebuff == true)
+    if isDebuff ~= (wantDebuff == true) then
+      return nil
+    end
+  end
+
+  return st
+end
+
+local function _IsSpellIdVisibleInTargetCache(c, spellId, wantDebuff)
+  if not c then
+    return false
+  end
+
+  if wantDebuff == true then
+    if c.debuffsById[spellId] then
+      return true
+    end
+    if c.debuffCount >= 16 and c.buffsById[spellId] then
+      return true
+    end
+    return false
+  end
+
+  return c.buffsById[spellId] or false
+end
+
 function DoiteTrack.HasBuff(spellName)
   if not spellName or spellName == "" then
     return false
   end
   local c = _EnsureTargetAuraCacheFresh()
-  return c and c.buffsByName[spellName] or false
+  if c and c.buffsByName[spellName] then
+    return true
+  end
+
+  local entry = _GetEntryForName(spellName)
+  if not entry or not entry.spellIds then
+    return false
+  end
+
+  local sid
+  for sid in pairs(entry.spellIds) do
+    sid = tonumber(sid) or 0
+    if sid > 0 and _GetTimedAuraStateForCurrentTargetSpellId(sid, false) then
+      return true
+    end
+  end
+
+  return false
 end
 
 function DoiteTrack.HasBuffSpellId(spellId)
@@ -2765,7 +2835,10 @@ function DoiteTrack.HasBuffSpellId(spellId)
     return false
   end
   local c = _EnsureTargetAuraCacheFresh()
-  return c and c.buffsById[spellId] or false
+  if c and c.buffsById[spellId] then
+    return true
+  end
+  return _GetTimedAuraStateForCurrentTargetSpellId(spellId, false) and true or false
 end
 
 function DoiteTrack.HasDebuff(spellName)
@@ -2780,8 +2853,24 @@ function DoiteTrack.HasDebuff(spellName)
     return true
   end
   if c.debuffCount >= 16 then
-    return c.buffsByName[spellName] or false
+    if c.buffsByName[spellName] then
+      return true
+    end
   end
+
+  local entry = _GetEntryForName(spellName)
+  if not entry or not entry.spellIds then
+    return false
+  end
+
+  local sid
+  for sid in pairs(entry.spellIds) do
+    sid = tonumber(sid) or 0
+    if sid > 0 and _GetTimedAuraStateForCurrentTargetSpellId(sid, true) then
+      return true
+    end
+  end
+
   return false
 end
 
@@ -2798,7 +2887,12 @@ function DoiteTrack.HasDebuffSpellId(spellId)
     return true
   end
   if c.debuffCount >= 16 then
-    return c.buffsById[spellId] or false
+    if c.buffsById[spellId] then
+      return true
+    end
+  end
+  if _GetTimedAuraStateForCurrentTargetSpellId(spellId, true) then
+    return true
   end
   return false
 end
@@ -2808,7 +2902,24 @@ function DoiteTrack.GetBuffStacks(spellName)
     return nil
   end
   local c = _EnsureTargetAuraCacheFresh()
-  return c and c.buffStacksByName[spellName] or nil
+  if c and c.buffStacksByName[spellName] then
+    return c.buffStacksByName[spellName]
+  end
+
+  local entry = _GetEntryForName(spellName)
+  if not entry or not entry.spellIds then
+    return nil
+  end
+
+  local sid
+  for sid in pairs(entry.spellIds) do
+    sid = tonumber(sid) or 0
+    if sid > 0 and _GetTimedAuraStateForCurrentTargetSpellId(sid, false) then
+      return 1
+    end
+  end
+
+  return nil
 end
 
 function DoiteTrack.GetBuffStacksBySpellId(spellId)
@@ -2817,7 +2928,13 @@ function DoiteTrack.GetBuffStacksBySpellId(spellId)
     return nil
   end
   local c = _EnsureTargetAuraCacheFresh()
-  return c and c.buffStacksById[spellId] or nil
+  if c and c.buffStacksById[spellId] then
+    return c.buffStacksById[spellId]
+  end
+  if _GetTimedAuraStateForCurrentTargetSpellId(spellId, false) then
+    return 1
+  end
+  return nil
 end
 
 function DoiteTrack.GetDebuffStacks(spellName)
@@ -2832,8 +2949,24 @@ function DoiteTrack.GetDebuffStacks(spellName)
     return c.debuffStacksByName[spellName]
   end
   if c.debuffCount >= 16 then
-    return c.buffStacksByName[spellName]
+    if c.buffStacksByName[spellName] then
+      return c.buffStacksByName[spellName]
+    end
   end
+
+  local entry = _GetEntryForName(spellName)
+  if not entry or not entry.spellIds then
+    return nil
+  end
+
+  local sid
+  for sid in pairs(entry.spellIds) do
+    sid = tonumber(sid) or 0
+    if sid > 0 and _GetTimedAuraStateForCurrentTargetSpellId(sid, true) then
+      return 1
+    end
+  end
+
   return nil
 end
 
@@ -2850,7 +2983,12 @@ function DoiteTrack.GetDebuffStacksBySpellId(spellId)
     return c.debuffStacksById[spellId]
   end
   if c.debuffCount >= 16 then
-    return c.buffStacksById[spellId]
+    if c.buffStacksById[spellId] then
+      return c.buffStacksById[spellId]
+    end
+  end
+  if _GetTimedAuraStateForCurrentTargetSpellId(spellId, true) then
+    return 1
   end
   return nil
 end
@@ -2864,12 +3002,37 @@ function DoiteTrack.GetVisibleAuraCounts()
 end
 
 function DoiteTrack.GetTrackedHiddenBuffCount()
-  return 0
+  local c = _EnsureTargetAuraCacheFresh()
+  local targetGuid = _GetUnitGuidSafe("target")
+  if not targetGuid or targetGuid == "" then
+    return 0
+  end
+
+  local bucket = AuraStateByGuid[targetGuid]
+  if type(bucket) ~= "table" then
+    return 0
+  end
+
+  local now = (GetTime and GetTime()) or 0
+  local count = 0
+  local sid
+  for sid, _ in pairs(bucket) do
+    sid = tonumber(sid) or 0
+    if sid > 0 then
+      local rem = _GetRemainingFromState(targetGuid, sid, now)
+      if rem and rem > 0 and not _IsSpellIdVisibleInTargetCache(c, sid, false) and not _IsSpellIdVisibleInTargetCache(c, sid, true) then
+        count = count + 1
+      end
+    end
+  end
+
+  return count
 end
 
 function DoiteTrack.GetAuraCountSummary()
   local buffs, debuffs = DoiteTrack.GetVisibleAuraCounts()
-  return buffs, debuffs, 0, (buffs + debuffs)
+  local hidden = DoiteTrack.GetTrackedHiddenBuffCount()
+  return buffs, debuffs, hidden, (buffs + debuffs + hidden)
 end
 
 function DoiteTrack.ToggleDebugBuffCap()
