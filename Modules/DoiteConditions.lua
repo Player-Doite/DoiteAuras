@@ -5017,6 +5017,7 @@ local function _RebuildTargetModsFlags()
   _hasAnyTargetMods_Aura = false
   if DoiteConditions then
     DoiteConditions._hasAnyItemLogic = false
+    DoiteConditions._hasAnyCustomLogic = false
   end
 
   -- 1) Live icons
@@ -5024,6 +5025,9 @@ local function _RebuildTargetModsFlags()
     for key, data in pairs(DoiteAurasDB.spells) do
       if type(data) == "table" and data.type then
         local hasItemLogic = false
+        if data.type == "Custom" and DoiteConditions then
+          DoiteConditions._hasAnyCustomLogic = true
+        end
 
         if data.type == "Item" then
           hasItemLogic = true
@@ -5077,7 +5081,7 @@ local function _RebuildTargetModsFlags()
             and _IconHasTargetMods_Aura(data) then
           _hasAnyTargetMods_Aura = true
         end
-        if _hasAnyTargetMods_Ability and _hasAnyTargetMods_Aura and DoiteConditions and DoiteConditions._hasAnyItemLogic then
+        if _hasAnyTargetMods_Ability and _hasAnyTargetMods_Aura and DoiteConditions and DoiteConditions._hasAnyItemLogic and DoiteConditions._hasAnyCustomLogic then
           return
         end
       end
@@ -5089,6 +5093,9 @@ local function _RebuildTargetModsFlags()
     for key, data in pairs(DoiteDB.icons) do
       if type(data) == "table" and data.type then
         local hasItemLogic = false
+        if data.type == "Custom" and DoiteConditions then
+          DoiteConditions._hasAnyCustomLogic = true
+        end
 
         if data.type == "Item" then
           hasItemLogic = true
@@ -5142,7 +5149,7 @@ local function _RebuildTargetModsFlags()
             and _IconHasTargetMods_Aura(data) then
           _hasAnyTargetMods_Aura = true
         end
-        if _hasAnyTargetMods_Ability and _hasAnyTargetMods_Aura and DoiteConditions and DoiteConditions._hasAnyItemLogic then
+        if _hasAnyTargetMods_Ability and _hasAnyTargetMods_Aura and DoiteConditions and DoiteConditions._hasAnyItemLogic and DoiteConditions._hasAnyCustomLogic then
           return
         end
       end
@@ -7993,7 +8000,9 @@ function DoiteConditions_OnUpdate(dt)
   end
 
   -- Custom functions run here near the end of OnUpdate.
-  didCustom = _G.DoiteConditions:EvaluateCustom() and true or false
+  if _G.DoiteConditions and _G.DoiteConditions._hasAnyCustomLogic then
+    didCustom = _G.DoiteConditions:EvaluateCustom() and true or false
+  end
 
   if needAbilityLogic or needAbilityTime or needAura or didCustom then
     dirty_aura, dirty_target, dirty_power = false, false, false
