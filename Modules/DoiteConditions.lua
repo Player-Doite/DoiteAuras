@@ -7891,6 +7891,24 @@ _teFastActive = false
 
 -- Lift the body into a real function
 function DoiteConditions_OnUpdate(dt)
+  if (not dirty_ability)
+      and (not dirty_aura)
+      and (not dirty_target)
+      and (not dirty_power)
+      and (not dirty_ability_time)
+      and (DoiteConditions._pendingAuraScanTarget ~= true)
+      and (next(DoiteConditions_SlideMgr.active) == nil)
+      and (not _hasAnyAbilityTimeLogic)
+      and (not _hasAnyAuraTimeLogic)
+      and (not _teFastActive)
+      and (not (DoiteConditions and DoiteConditions._hasAnyItemLogic))
+      and (not (_isWarrior and (_WarriorProc.REV_until > 0 or _WarriorProc.OP_until > 0)))
+      and (not (_G.DoiteConditions and _G.DoiteConditions._hasAnyCustomLogic))
+      and (not _hasAnyTargetMods_Ability)
+      and (not _hasAnyTargetMods_Aura) then
+    return
+  end
+
   _acc = _acc + dt
   _textAccum = _textAccum + dt
 
@@ -7918,7 +7936,7 @@ function DoiteConditions_OnUpdate(dt)
     local te = dc and dc._daTempEnchantCache
     local hasTE = false
 
-    if te then
+    if dc and dc._hasAnyItemLogic and te then
       local now = GetTime()
       for _, slotC in pairs(te) do
         if slotC and slotC.endTime then
@@ -7932,6 +7950,8 @@ function DoiteConditions_OnUpdate(dt)
           end
         end
       end
+    else
+      _teFastActive = false
     end
 
     if not hasTE then
