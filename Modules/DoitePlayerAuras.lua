@@ -338,6 +338,48 @@ function DoitePlayerAuras.GetHiddenBuffRemaining(spellName)
   return nil
 end
 
+-- Debug helpers: counts for UI display.
+-- These counts are "client visible + tracked hidden-by-cap buffs".
+function DoitePlayerAuras.GetVisibleAuraCounts()
+  local buffCount = 0
+  local debuffCount = 0
+
+  for i = 1, MAX_BUFF_SLOTS do
+    local aura = DoitePlayerAuras.buffs[i]
+    if aura and aura.spellId and aura.spellId ~= 0 then
+      buffCount = buffCount + 1
+    end
+  end
+
+  for i = 1, MAX_DEBUFF_SLOTS do
+    local aura = DoitePlayerAuras.debuffs[i]
+    if aura and aura.spellId and aura.spellId ~= 0 then
+      debuffCount = debuffCount + 1
+    end
+  end
+
+  return buffCount, debuffCount
+end
+
+function DoitePlayerAuras.GetTrackedHiddenBuffCount()
+  local now = GetTime()
+  local count = 0
+
+  for _, expiration in pairs(DoitePlayerAuras.cappedBuffsExpirationTime) do
+    if expiration and expiration > now then
+      count = count + 1
+    end
+  end
+
+  return count
+end
+
+function DoitePlayerAuras.GetAuraCountSummary()
+  local buffs, debuffs = DoitePlayerAuras.GetVisibleAuraCounts()
+  local hidden = DoitePlayerAuras.GetTrackedHiddenBuffCount()
+  return buffs, debuffs, hidden, (buffs + debuffs + hidden)
+end
+
 -- Frame for PLAYER_ENTERING_WORLD event
 local PlayerEnteringWorldFrame = CreateFrame("Frame", "DoitePlayerAuras_PlayerEnteringWorld")
 PlayerEnteringWorldFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
