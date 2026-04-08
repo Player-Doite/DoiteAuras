@@ -2728,86 +2728,53 @@ end
 
 -- For debuff checks only: if all debuff slots are full and the name exists in buffs, treat it as a debuff hit
 local function _TargetHasOverflowDebuff(auraName)
-  if not auraName then
+  if not DoiteTargetAuras or not DoiteTargetAuras.HasDebuff then
     return false
   end
-
-  local snap = auraSnapshot["target"]
-  if not snap then
-    return false
-  end
-
-  local debuffs = snap.debuffs
-  if debuffs and debuffs[auraName] == true then
-    return true
-  end
-
-  local count = snap.debuffCount or 0
-  if count < 16 then
-    -- Debuff bar not "full", so don't risk treating a real buff as debuff.
-    return false
-  end
-
-  local buffs = snap.buffs
-  if buffs and buffs[auraName] == true then
-    return true
-  end
-
-  return false
+  return DoiteTargetAuras.HasDebuff(auraName)
 end
 
 local function _TargetHasAura(auraName, wantDebuff)
-  local unit = "target"
-
-  if not unit or not auraName or not UnitExists(unit) then
+  if not auraName or not UnitExists("target") then
     return false
   end
-
-  local snap = auraSnapshot[unit]
-  if not snap then
+  if not DoiteTargetAuras then
     return false
   end
 
   if wantDebuff then
-    -- Debuff checks: first real debuffs, then overflow in buffs.
-    return _TargetHasOverflowDebuff(auraName)
-  else
-    local b = snap.buffs
-    return b and b[auraName] == true
+    if DoiteTargetAuras.HasDebuff then
+      return DoiteTargetAuras.HasDebuff(auraName)
+    end
+    return false
   end
-end
 
+  if DoiteTargetAuras.HasBuff then
+    return DoiteTargetAuras.HasBuff(auraName)
+  end
+  return false
+end
 
 local function _TargetHasAuraBySpellId(spellId, wantDebuff)
   spellId = tonumber(spellId) or 0
   if spellId <= 0 then
     return false
   end
-
-  local snap = auraSnapshot["target"]
-  if not snap then
+  if not DoiteTargetAuras then
     return false
   end
 
   if wantDebuff then
-    local d = snap.debuffIds
-    if d and d[spellId] then
-      return true
+    if DoiteTargetAuras.HasDebuffSpellId then
+      return DoiteTargetAuras.HasDebuffSpellId(spellId)
     end
-
-    local count = snap.debuffCount or 0
-    if count >= 16 then
-      local b = snap.buffIds
-      if b and b[spellId] then
-        return true
-      end
-    end
-
     return false
   end
 
-  local b = snap.buffIds
-  return b and b[spellId] == true
+  if DoiteTargetAuras.HasBuffSpellId then
+    return DoiteTargetAuras.HasBuffSpellId(spellId)
+  end
+  return false
 end
 
 -- Talent helpers for auraConditions (Known / Not known)
@@ -3192,6 +3159,32 @@ _GetAuraStacksOnUnit = function(unit, auraName, wantDebuff, auraSpellId, addedVi
     end
   end
 
+  if unit == "target" then
+    if not DoiteTargetAuras then
+      return nil
+    end
+
+    if addedViaSpellId == true then
+      local sid = tonumber(auraSpellId) or 0
+      if sid <= 0 then
+        return nil
+      end
+      if wantDebuff and DoiteTargetAuras.GetDebuffStacksBySpellId then
+        return DoiteTargetAuras.GetDebuffStacksBySpellId(sid)
+      elseif (not wantDebuff) and DoiteTargetAuras.GetBuffStacksBySpellId then
+        return DoiteTargetAuras.GetBuffStacksBySpellId(sid)
+      end
+      return nil
+    end
+
+    if wantDebuff and DoiteTargetAuras.GetDebuffStacks then
+      return DoiteTargetAuras.GetDebuffStacks(auraName)
+    elseif (not wantDebuff) and DoiteTargetAuras.GetBuffStacks then
+      return DoiteTargetAuras.GetBuffStacks(auraName)
+    end
+    return nil
+  end
+
   -- TODO improve logic for other units
   ----------------------------------------------------------------
   -- Primary scan: normal BUFF / DEBUFF list for non-player units
@@ -3282,15 +3275,13 @@ local function _TargetHasAnyBuffName(names)
     return false
   end
 
-  local snap = auraSnapshot[unit]
-  local b = snap and snap.buffs
-  if not b then
+  if not DoiteTargetAuras or not DoiteTargetAuras.HasBuff then
     return false
   end
 
   local n = table.getn(names)
   for i = 1, n do
-    if b[names[i]] then
+    if DoiteTargetAuras.HasBuff(names[i]) then
       return true
     end
   end

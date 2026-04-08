@@ -16,6 +16,6 @@ Modules\DoiteConditions.lua
 Modules\DoiteGroup.lua
 Modules\DoiteLogic.lua
 Modules\DoiteExport.lua
-Modules\DoiteTrack.lua
+Modules\DoiteTargetAuras.lua
 Modules\DoiteSettings.lua
 Modules\DoiteBars.lua

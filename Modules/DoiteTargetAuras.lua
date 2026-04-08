@@ -1,12 +1,14 @@
 ---------------------------------------------------------------
--- DoiteTrack.lua
+-- DoiteTargetAuras.lua
 -- Aura duration + runtime remaining-time API
 -- Please respect license note: Ask permission
 -- WoW 1.12 | Lua 5.0
 ---------------------------------------------------------------
 
-local DoiteTrack = {}
-_G["DoiteTrack"] = DoiteTrack
+local DoiteTargetAuras = {}
+_G["DoiteTargetAuras"] = DoiteTargetAuras
+_G["DoiteTrack"] = DoiteTargetAuras
+local DoiteTrack = DoiteTargetAuras
 
 ---------------------------------------------------------------
 -- Globals / config overrides
@@ -2636,6 +2638,245 @@ function DoiteTrack:GetAuraOwnershipBySpellId(spellId, unit)
   return nil, false, spellId, false, true, true
 end
 
+
+
+---------------------------------------------------------------
+-- Target aura presence/stacks cache (shared with condition checks)
+---------------------------------------------------------------
+local function _WipeBoolTable(t)
+  local k
+  for k in pairs(t) do
+    t[k] = nil
+  end
+end
+
+local function _EnsureTargetAuraCacheFresh()
+  local c = DoiteTrack._targetAuraCache
+  if not c then
+    c = {
+      stamp = -1,
+      buffCount = 0,
+      debuffCount = 0,
+      buffsByName = {},
+      debuffsByName = {},
+      buffsById = {},
+      debuffsById = {},
+      buffStacksByName = {},
+      debuffStacksByName = {},
+      buffStacksById = {},
+      debuffStacksById = {}
+    }
+    DoiteTrack._targetAuraCache = c
+  end
+
+  if not _UnitExistsFlag("target") then
+    c.stamp = -1
+    c.buffCount = 0
+    c.debuffCount = 0
+    _WipeBoolTable(c.buffsByName)
+    _WipeBoolTable(c.debuffsByName)
+    _WipeBoolTable(c.buffsById)
+    _WipeBoolTable(c.debuffsById)
+    _WipeBoolTable(c.buffStacksByName)
+    _WipeBoolTable(c.debuffStacksByName)
+    _WipeBoolTable(c.buffStacksById)
+    _WipeBoolTable(c.debuffStacksById)
+    return c
+  end
+
+  local now = math.floor(((GetTime and GetTime()) or 0) * 20)
+  if c.stamp == now then
+    return c
+  end
+
+  c.stamp = now
+  c.buffCount = 0
+  c.debuffCount = 0
+  _WipeBoolTable(c.buffsByName)
+  _WipeBoolTable(c.debuffsByName)
+  _WipeBoolTable(c.buffsById)
+  _WipeBoolTable(c.debuffsById)
+  _WipeBoolTable(c.buffStacksByName)
+  _WipeBoolTable(c.debuffStacksByName)
+  _WipeBoolTable(c.buffStacksById)
+  _WipeBoolTable(c.debuffStacksById)
+
+  local auraSpellIds = nil
+  local auraStacks = nil
+  if GetUnitField then
+    local okIds, ids = pcall(GetUnitField, "target", "aura")
+    if okIds and type(ids) == "table" then
+      auraSpellIds = ids
+    end
+    local okStacks, stacks = pcall(GetUnitField, "target", "auraApplications")
+    if okStacks and type(stacks) == "table" then
+      auraStacks = stacks
+    end
+  end
+
+  local i
+  for i = 1, 32 do
+    local sid = tonumber(auraSpellIds and auraSpellIds[i]) or 0
+    if sid > 0 then
+      local stacks = tonumber(auraStacks and auraStacks[i])
+      stacks = (stacks and (stacks + 1)) or 1
+      local nm = _GetSpellNameRank and _GetSpellNameRank(sid)
+      c.buffCount = c.buffCount + 1
+      c.buffsById[sid] = true
+      c.buffStacksById[sid] = stacks
+      if nm and nm ~= "" then
+        c.buffsByName[nm] = true
+        c.buffStacksByName[nm] = stacks
+      end
+    end
+  end
+
+  for i = 1, 16 do
+    local idx = 32 + i
+    local sid = tonumber(auraSpellIds and auraSpellIds[idx]) or 0
+    if sid > 0 then
+      local stacks = tonumber(auraStacks and auraStacks[idx])
+      stacks = (stacks and (stacks + 1)) or 1
+      local nm = _GetSpellNameRank and _GetSpellNameRank(sid)
+      c.debuffCount = c.debuffCount + 1
+      c.debuffsById[sid] = true
+      c.debuffStacksById[sid] = stacks
+      if nm and nm ~= "" then
+        c.debuffsByName[nm] = true
+        c.debuffStacksByName[nm] = stacks
+      end
+    end
+  end
+
+  return c
+end
+
+function DoiteTrack.HasBuff(spellName)
+  if not spellName or spellName == "" then
+    return false
+  end
+  local c = _EnsureTargetAuraCacheFresh()
+  return c and c.buffsByName[spellName] or false
+end
+
+function DoiteTrack.HasBuffSpellId(spellId)
+  spellId = tonumber(spellId) or 0
+  if spellId <= 0 then
+    return false
+  end
+  local c = _EnsureTargetAuraCacheFresh()
+  return c and c.buffsById[spellId] or false
+end
+
+function DoiteTrack.HasDebuff(spellName)
+  if not spellName or spellName == "" then
+    return false
+  end
+  local c = _EnsureTargetAuraCacheFresh()
+  if not c then
+    return false
+  end
+  if c.debuffsByName[spellName] then
+    return true
+  end
+  if c.debuffCount >= 16 then
+    return c.buffsByName[spellName] or false
+  end
+  return false
+end
+
+function DoiteTrack.HasDebuffSpellId(spellId)
+  spellId = tonumber(spellId) or 0
+  if spellId <= 0 then
+    return false
+  end
+  local c = _EnsureTargetAuraCacheFresh()
+  if not c then
+    return false
+  end
+  if c.debuffsById[spellId] then
+    return true
+  end
+  if c.debuffCount >= 16 then
+    return c.buffsById[spellId] or false
+  end
+  return false
+end
+
+function DoiteTrack.GetBuffStacks(spellName)
+  if not spellName or spellName == "" then
+    return nil
+  end
+  local c = _EnsureTargetAuraCacheFresh()
+  return c and c.buffStacksByName[spellName] or nil
+end
+
+function DoiteTrack.GetBuffStacksBySpellId(spellId)
+  spellId = tonumber(spellId) or 0
+  if spellId <= 0 then
+    return nil
+  end
+  local c = _EnsureTargetAuraCacheFresh()
+  return c and c.buffStacksById[spellId] or nil
+end
+
+function DoiteTrack.GetDebuffStacks(spellName)
+  if not spellName or spellName == "" then
+    return nil
+  end
+  local c = _EnsureTargetAuraCacheFresh()
+  if not c then
+    return nil
+  end
+  if c.debuffStacksByName[spellName] then
+    return c.debuffStacksByName[spellName]
+  end
+  if c.debuffCount >= 16 then
+    return c.buffStacksByName[spellName]
+  end
+  return nil
+end
+
+function DoiteTrack.GetDebuffStacksBySpellId(spellId)
+  spellId = tonumber(spellId) or 0
+  if spellId <= 0 then
+    return nil
+  end
+  local c = _EnsureTargetAuraCacheFresh()
+  if not c then
+    return nil
+  end
+  if c.debuffStacksById[spellId] then
+    return c.debuffStacksById[spellId]
+  end
+  if c.debuffCount >= 16 then
+    return c.buffStacksById[spellId]
+  end
+  return nil
+end
+
+function DoiteTrack.GetVisibleAuraCounts()
+  local c = _EnsureTargetAuraCacheFresh()
+  if not c then
+    return 0, 0
+  end
+  return c.buffCount or 0, c.debuffCount or 0
+end
+
+function DoiteTrack.GetTrackedHiddenBuffCount()
+  return 0
+end
+
+function DoiteTrack.GetAuraCountSummary()
+  local buffs, debuffs = DoiteTrack.GetVisibleAuraCounts()
+  return buffs, debuffs, 0, (buffs + debuffs)
+end
+
+function DoiteTrack.ToggleDebugBuffCap()
+  DoiteTrack.debugBuffCap = not (DoiteTrack.debugBuffCap == true)
+  local state = DoiteTrack.debugBuffCap and "enabled" or "disabled"
+  print("DoiteTargetAuras: Debug buff cap " .. state)
+end
 ---------------------------------------------------------------
 -- Ingame usage
 ---------------------------------------------------------------
