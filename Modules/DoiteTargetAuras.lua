@@ -1901,6 +1901,7 @@ function DoiteTrack:_OnAuraNPEvent()
   local casterGuid = arg2
   local targetGuid = arg3
   local durationMs = tonumber(arg8) or 0
+  local auraCapStatus = tonumber(arg9) or 0
 
   if spellId <= 0 then
     return
@@ -2115,6 +2116,40 @@ function DoiteTrack:_OnAuraNPEvent()
     _CommitNPDuration(spellId, (cp and cp > 0) and cp or 0, secRounded, spellName, spellRank, durationMs)
 
     local now = GetTime and GetTime() or 0
+
+    -- Cap-spillover fast-arm:
+    -- On buff/debuff cap overflow, *_ADDED_* can be missing. In that case arm directly from AURA_CAST.
+    do
+      local capOverflow = false
+      if DoiteTrack.debugBuffCap == true then
+        capOverflow = true
+      elseif auraCapStatus == 3 then
+        capOverflow = true
+      elseif entry.kind == "Buff" and auraCapStatus == 1 then
+        capOverflow = true
+      elseif entry.kind == "Debuff" and auraCapStatus == 2 then
+        capOverflow = true
+      end
+
+      if capOverflow then
+        local bucket = _GetAuraBucketForGuid(targetGuid, true)
+        if bucket then
+          local a = bucket[spellId]
+          if not a then
+            a = {}
+            bucket[spellId] = a
+          end
+          a.appliedAt = now
+          a.lastSeen = now
+          a.fullDur = secRounded
+          a.cp = cp or 0
+          a.isDebuff = (entry.kind == "Debuff")
+
+          t[targetGuid] = nil
+          return
+        end
+      end
+    end
 
     ----------------------------------------------------------------
     -- Refresh fix:
