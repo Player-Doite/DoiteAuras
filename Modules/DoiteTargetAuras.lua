@@ -3020,7 +3020,7 @@ function DoiteTrack.GetTrackedHiddenBuffCount()
     sid = tonumber(sid) or 0
     if sid > 0 then
       local rem = _GetRemainingFromState(targetGuid, sid, now)
-      local treatAsHidden = DoiteTrack.debugBuffCap or
+      local treatAsHidden =
           ((not _IsSpellIdVisibleInTargetCache(c, sid, false)) and (not _IsSpellIdVisibleInTargetCache(c, sid, true)))
       if rem and rem > 0 and treatAsHidden then
         count = count + 1
