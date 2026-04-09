@@ -437,6 +437,8 @@ local function _GetUnitAuraTable(unit, isDebuff)
   end
 end
 
+local AuraStateByGuid
+
 local function _AuraHasSpellId(unit, spellId, isDebuff)
   spellId = tonumber(spellId) or 0
   if not unit or spellId <= 0 then
@@ -476,6 +478,31 @@ local function _AuraHasSpellId(unit, spellId, isDebuff)
           if tonumber(buffs[j]) == spellId then
             return true
           end
+        end
+      end
+    end
+  end
+
+  -- Timed-state fallback for target overflow/non-visible auras.
+  -- Used when aura is not visible in unit fields (e.g. beyond visible cap).
+  if unit == "target" then
+    local guid = _GetUnitGuidSafe("target")
+    if guid and guid ~= "" and AuraStateByGuid then
+      local bucket = AuraStateByGuid[guid]
+      local a = bucket and bucket[spellId]
+      if a and a.appliedAt and a.fullDur and a.fullDur > 0 then
+        local now = (GetTime and GetTime()) or 0
+        local rem = (a.fullDur or 0) - (now - (a.appliedAt or now))
+        if rem > 0 then
+          if isDebuff == nil then
+            return true
+          end
+          local stateIsDebuff = (a.isDebuff == true)
+          if stateIsDebuff == (isDebuff == true) then
+            return true
+          end
+        else
+          bucket[spellId] = nil
         end
       end
     end
@@ -585,7 +612,7 @@ end
 ---------------------------------------------------------------
 -- Runtime aura state (OURS ONLY, confirmed via pending+ADDED)
 ---------------------------------------------------------------
-local AuraStateByGuid = {} -- [guid] = { [spellId] = { appliedAt, fullDur, cp, isDebuff } }
+AuraStateByGuid = {} -- [guid] = { [spellId] = { appliedAt, fullDur, cp, isDebuff } }
 
 local function _GetAuraBucketForGuid(guid, create)
   if not guid or guid == "" then
