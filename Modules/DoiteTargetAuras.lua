@@ -464,7 +464,7 @@ local function _AuraHasSpellId(unit, spellId, isDebuff)
     end
   end
 
-  if isDebuff and n and n >= 16 then
+  if isDebuff then
     local buffs = _GetUnitAuraTable(unit, false)
     if type(buffs) == "table" then
       if buffs[spellId] then
