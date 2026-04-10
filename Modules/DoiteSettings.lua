@@ -252,23 +252,30 @@ local function DS_CreateSettingsFrame()
 
     -- Screen overlay frame (exists even if settings frame is hidden)
     local auraCountOverlay = CreateFrame("Frame", "DoiteSettings_AuraCountOverlay", UIParent)
+    auraCountOverlay:SetFrameStrata("TOOLTIP")
+    auraCountOverlay:SetFrameLevel(4000)
+    auraCountOverlay:SetToplevel(true)
     auraCountOverlay:Hide()
 
     -- Two lines, each split into bold blue prefix + normal suffix
     local playerPrefix = auraCountOverlay:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     playerPrefix:SetPoint("TOP", UIParent, "TOP", 0, -20)
-    playerPrefix:SetText("|cff6FA8DCPLAYER AURAS|r")
+    playerPrefix:SetDrawLayer("OVERLAY", 7)
+    playerPrefix:SetText("|cff6FA8DCPLAYER AURAS:|r")
 
     local playerSuffix = auraCountOverlay:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     playerSuffix:SetPoint("LEFT", playerPrefix, "RIGHT", 4, -2)
+    playerSuffix:SetDrawLayer("OVERLAY", 7)
     playerSuffix:SetText("")
 
     local targetPrefix = auraCountOverlay:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     targetPrefix:SetPoint("TOP", playerPrefix, "BOTTOM", 0, -6)
-    targetPrefix:SetText("|cff6FA8DCTARGET AURAS|r")
+    targetPrefix:SetDrawLayer("OVERLAY", 7)
+    targetPrefix:SetText("|cff6FA8DCTARGET AURAS:|r")
 
     local targetSuffix = auraCountOverlay:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     targetSuffix:SetPoint("LEFT", targetPrefix, "RIGHT", 4, -2)
+    targetSuffix:SetDrawLayer("OVERLAY", 7)
     targetSuffix:SetText("")
 
     local function DS_CanReadPlayerAuraCounts()
@@ -279,10 +286,10 @@ local function DS_CreateSettingsFrame()
         return DoiteTargetAuras and type(DoiteTargetAuras.GetAuraCountSummary) == "function"
     end
 
-    local function DS_FormatAuraCountLine(total, visible, hidden)
+    local function DS_FormatAuraCountLine(buffs, debuffs, total, visible, hidden)
         return string.format(
-            "|cffffffff: |r|cffffff00%d|r|cffffffff (Visible: |r|cffffff00%d|r|cffffffff / Hidden: |r|cffffff00%d|r|cffffffff)|r",
-            total or 0, visible or 0, hidden or 0
+            "|cffffffff B:|r|cffffff00%d|r|cffffffff + D:|r|cffffff00%d|r|cffffffff = T:|r|cffffff00%d|r|cffffffff (Visible: |r|cffffff00%d|r|cffffffff / Hidden: |r|cffffff00%d|r|cffffffff)|r",
+            buffs or 0, debuffs or 0, total or 0, visible or 0, hidden or 0
         )
     end
 
@@ -294,7 +301,7 @@ local function DS_CreateSettingsFrame()
             pb, pd, ph, pt = DoitePlayerAuras.GetAuraCountSummary()
             playerPrefix:Show()
             playerSuffix:Show()
-            playerSuffix:SetText(DS_FormatAuraCountLine(pt, (pb + pd), ph))
+            playerSuffix:SetText(DS_FormatAuraCountLine(pb, pd, pt, (pb + pd), ph))
         else
             playerPrefix:Hide()
             playerSuffix:Hide()
@@ -304,7 +311,7 @@ local function DS_CreateSettingsFrame()
             tb, td, th, tt = DoiteTargetAuras.GetAuraCountSummary()
             targetPrefix:Show()
             targetSuffix:Show()
-            targetSuffix:SetText(DS_FormatAuraCountLine(tt, (tb + td), th))
+            targetSuffix:SetText(DS_FormatAuraCountLine(tb, td, tt, (tb + td), th))
         else
             targetPrefix:Hide()
             targetSuffix:Hide()
