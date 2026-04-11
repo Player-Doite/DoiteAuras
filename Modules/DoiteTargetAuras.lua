@@ -645,10 +645,57 @@ local _CarnageWatch = nil            -- { expiresAt, targetGuid, sawZero, lastCP
 
 -- Cache Flame Shock tracked ids as a numeric array to avoid pairs/tonumber work on every Molten Blast
 local _FlameShockSpellIdsList = nil -- array of spellIds, or nil if not tracked
+local _HasTrackedFlameShock = false
 
 -- Cache Rip/Rake tracked ids (used by Carnage refresh)
 local _RipSpellIdsList = nil  -- array
 local _RakeSpellIdsList = nil -- array
+
+local function _RebuildFlameShockSpellIdsList()
+  _FlameShockSpellIdsList = nil
+  _HasTrackedFlameShock = false
+
+  local seen = {}
+  local list = {}
+  local n = 0
+
+  local function addSpellId(sid)
+    sid = tonumber(sid) or 0
+    if sid <= 0 or seen[sid] then
+      return
+    end
+    seen[sid] = true
+    n = n + 1
+    list[n] = sid
+    _HasTrackedFlameShock = true
+  end
+
+  do
+    local fs = TrackedByNameNorm["flame shock"]
+    if fs and fs.onlyMine == true and fs.kind == "Debuff" and type(fs.spellIds) == "table" then
+      local sid
+      for sid in pairs(fs.spellIds) do
+        addSpellId(sid)
+      end
+    end
+  end
+
+  do
+    local sid, e
+    for sid, e in pairs(TrackedBySpellId) do
+      if e and e.onlyMine == true and e.kind == "Debuff" then
+        local n0 = _GetSpellNameRank(tonumber(sid) or 0)
+        if _NormSpellName(n0) == "flame shock" then
+          addSpellId(sid)
+        end
+      end
+    end
+  end
+
+  if n > 0 then
+    _FlameShockSpellIdsList = list
+  end
+end
 
 local function _IsBadGuid(g)
   return (not g) or g == "" or g == "0x000000000" or g == "0x0000000000000000"
@@ -1052,10 +1099,7 @@ function DoiteTrack:_RecomputeEventNeeds()
 
   local needMB = false
   if _IsPlayerShaman then
-    local fs = TrackedByNameNorm["flame shock"]
-    if fs and fs.onlyMine == true and fs.kind == "Debuff" then
-      needMB = true
-    end
+    needMB = (_HasTrackedFlameShock == true)
   end
 
   local needCarnage = false
@@ -1168,25 +1212,7 @@ function DoiteTrack:_OnDoiteAurasConfigChanged()
   self:RebuildWatchList()
 
   -- Rebuild Flame Shock spellId list cache (used by Molten Blast special case)
-  _FlameShockSpellIdsList = nil
-  do
-    local fs = TrackedByNameNorm["flame shock"]
-    if fs and fs.onlyMine == true and fs.kind == "Debuff" and type(fs.spellIds) == "table" then
-      local list = {}
-      local n = 0
-      local sid
-      for sid in pairs(fs.spellIds) do
-        sid = tonumber(sid) or 0
-        if sid > 0 then
-          n = n + 1
-          list[n] = sid
-        end
-      end
-      if n > 0 then
-        _FlameShockSpellIdsList = list
-      end
-    end
-  end
+  _RebuildFlameShockSpellIdsList()
 
   -- Rebuild Rip/Rake spellId lists (used by Carnage refresh)
   _RipSpellIdsList = nil
@@ -1280,25 +1306,7 @@ function DoiteTrack:_OnPlayerLogin()
     self:RebuildWatchList()
 
     -- Rebuild Flame Shock spellId list cache (used by Molten Blast special case)
-    _FlameShockSpellIdsList = nil
-    do
-      local fs = TrackedByNameNorm["flame shock"]
-      if fs and fs.onlyMine == true and fs.kind == "Debuff" and type(fs.spellIds) == "table" then
-        local list = {}
-        local n = 0
-        local sid
-        for sid in pairs(fs.spellIds) do
-          sid = tonumber(sid) or 0
-          if sid > 0 then
-            n = n + 1
-            list[n] = sid
-          end
-        end
-        if n > 0 then
-          _FlameShockSpellIdsList = list
-        end
-      end
-    end
+    _RebuildFlameShockSpellIdsList()
 
     -- Rebuild Rip/Rake spellId lists (used by Carnage refresh)
     _RipSpellIdsList = nil
