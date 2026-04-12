@@ -645,16 +645,12 @@ local _CarnageWatch = nil            -- { expiresAt, targetGuid, sawZero, lastCP
 
 -- Cache Flame Shock tracked ids as a numeric array to avoid pairs/tonumber work on every Molten Blast
 local _FlameShockSpellIdsList = nil -- array of spellIds, or nil if not tracked
-local _HasTrackedFlameShock = false
 
 -- Cache Rip/Rake tracked ids (used by Carnage refresh)
 local _RipSpellIdsList = nil  -- array
 local _RakeSpellIdsList = nil -- array
 
-local function _RebuildFlameShockSpellIdsList()
-  _FlameShockSpellIdsList = nil
-  _HasTrackedFlameShock = false
-
+local function _BuildOnlyMineDebuffSpellIdListByNorm(normName)
   local seen = {}
   local list = {}
   local n = 0
@@ -667,14 +663,13 @@ local function _RebuildFlameShockSpellIdsList()
     seen[sid] = true
     n = n + 1
     list[n] = sid
-    _HasTrackedFlameShock = true
   end
 
   do
-    local fs = TrackedByNameNorm["flame shock"]
-    if fs and fs.onlyMine == true and fs.kind == "Debuff" and type(fs.spellIds) == "table" then
+    local e = TrackedByNameNorm[normName]
+    if e and e.onlyMine == true and e.kind == "Debuff" and type(e.spellIds) == "table" then
       local sid
-      for sid in pairs(fs.spellIds) do
+      for sid in pairs(e.spellIds) do
         addSpellId(sid)
       end
     end
@@ -685,7 +680,7 @@ local function _RebuildFlameShockSpellIdsList()
     for sid, e in pairs(TrackedBySpellId) do
       if e and e.onlyMine == true and e.kind == "Debuff" then
         local n0 = _GetSpellNameRank(tonumber(sid) or 0)
-        if _NormSpellName(n0) == "flame shock" then
+        if _NormSpellName(n0) == normName then
           addSpellId(sid)
         end
       end
@@ -693,8 +688,34 @@ local function _RebuildFlameShockSpellIdsList()
   end
 
   if n > 0 then
-    _FlameShockSpellIdsList = list
+    return list
   end
+  return nil
+end
+
+local function _RebuildFlameShockSpellIdsList()
+  _FlameShockSpellIdsList = _BuildOnlyMineDebuffSpellIdListByNorm("flame shock")
+end
+
+local function _RebuildRipRakeSpellIdLists()
+  _RipSpellIdsList = _BuildOnlyMineDebuffSpellIdListByNorm("rip")
+  _RakeSpellIdsList = _BuildOnlyMineDebuffSpellIdListByNorm("rake")
+end
+
+local function _HasTrackedJudgementDebuff()
+  if _BuildOnlyMineDebuffSpellIdListByNorm("judgement of the crusader") then
+    return true
+  end
+  if _BuildOnlyMineDebuffSpellIdListByNorm("judgement of light") then
+    return true
+  end
+  if _BuildOnlyMineDebuffSpellIdListByNorm("judgement of wisdom") then
+    return true
+  end
+  if _BuildOnlyMineDebuffSpellIdListByNorm("judgement of justice") then
+    return true
+  end
+  return false
 end
 
 local function _IsBadGuid(g)
@@ -1099,7 +1120,7 @@ function DoiteTrack:_RecomputeEventNeeds()
 
   local needMB = false
   if _IsPlayerShaman then
-    needMB = (_HasTrackedFlameShock == true)
+    needMB = (type(_FlameShockSpellIdsList) == "table")
   end
 
   local needCarnage = false
@@ -1116,33 +1137,7 @@ function DoiteTrack:_RecomputeEventNeeds()
   ----------------------------------------------------------------
   local palTracked = false
   if _G["DoiteTrack_IsPaladin"] == true then
-    local e
-
-    e = TrackedByNameNorm["judgement of the crusader"]
-    if e and e.onlyMine == true and e.kind == "Debuff" then
-      palTracked = true
-    end
-
-    if not palTracked then
-      e = TrackedByNameNorm["judgement of light"]
-      if e and e.onlyMine == true and e.kind == "Debuff" then
-        palTracked = true
-      end
-    end
-
-    if not palTracked then
-      e = TrackedByNameNorm["judgement of wisdom"]
-      if e and e.onlyMine == true and e.kind == "Debuff" then
-        palTracked = true
-      end
-    end
-
-    if not palTracked then
-      e = TrackedByNameNorm["judgement of justice"]
-      if e and e.onlyMine == true and e.kind == "Debuff" then
-        palTracked = true
-      end
-    end
+    palTracked = _HasTrackedJudgementDebuff()
   end
 
   _G["DoiteTrack_PalJ_Tracked"] = (palTracked and true or false)
@@ -1215,45 +1210,7 @@ function DoiteTrack:_OnDoiteAurasConfigChanged()
   _RebuildFlameShockSpellIdsList()
 
   -- Rebuild Rip/Rake spellId lists (used by Carnage refresh)
-  _RipSpellIdsList = nil
-  do
-    local e = TrackedByNameNorm["rip"]
-    if e and e.onlyMine == true and e.kind == "Debuff" and type(e.spellIds) == "table" then
-      local list = {}
-      local n = 0
-      local sid
-      for sid in pairs(e.spellIds) do
-        sid = tonumber(sid) or 0
-        if sid > 0 then
-          n = n + 1
-          list[n] = sid
-        end
-      end
-      if n > 0 then
-        _RipSpellIdsList = list
-      end
-    end
-  end
-
-  _RakeSpellIdsList = nil
-  do
-    local e = TrackedByNameNorm["rake"]
-    if e and e.onlyMine == true and e.kind == "Debuff" and type(e.spellIds) == "table" then
-      local list = {}
-      local n = 0
-      local sid
-      for sid in pairs(e.spellIds) do
-        sid = tonumber(sid) or 0
-        if sid > 0 then
-          n = n + 1
-          list[n] = sid
-        end
-      end
-      if n > 0 then
-        _RakeSpellIdsList = list
-      end
-    end
-  end
+  _RebuildRipRakeSpellIdLists()
 
   self:_RecomputeEventNeeds()
   self:_ApplyEventRegistration()
@@ -1309,45 +1266,7 @@ function DoiteTrack:_OnPlayerLogin()
     _RebuildFlameShockSpellIdsList()
 
     -- Rebuild Rip/Rake spellId lists (used by Carnage refresh)
-    _RipSpellIdsList = nil
-    do
-      local e = TrackedByNameNorm["rip"]
-      if e and e.onlyMine == true and e.kind == "Debuff" and type(e.spellIds) == "table" then
-        local list = {}
-        local n = 0
-        local sid
-        for sid in pairs(e.spellIds) do
-          sid = tonumber(sid) or 0
-          if sid > 0 then
-            n = n + 1
-            list[n] = sid
-          end
-        end
-        if n > 0 then
-          _RipSpellIdsList = list
-        end
-      end
-    end
-
-    _RakeSpellIdsList = nil
-    do
-      local e = TrackedByNameNorm["rake"]
-      if e and e.onlyMine == true and e.kind == "Debuff" and type(e.spellIds) == "table" then
-        local list = {}
-        local n = 0
-        local sid
-        for sid in pairs(e.spellIds) do
-          sid = tonumber(sid) or 0
-          if sid > 0 then
-            n = n + 1
-            list[n] = sid
-          end
-        end
-        if n > 0 then
-          _RakeSpellIdsList = list
-        end
-      end
-    end
+    _RebuildRipRakeSpellIdLists()
   end
 
   -- Always refresh talent caches on LOGIN + ENTERING_WORLD (cheap; no polling).
