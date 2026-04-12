@@ -2099,6 +2099,41 @@ function DoiteTrack:_OnAuraNPEvent()
           a.cp = cp or 0
           a.isDebuff = (entry.kind == "Debuff")
 
+          -- Paladin SC overflow fallback:
+          -- If *_ADDED_* is suppressed by aura cap, still arm active judgement refresh state.
+          if _G["DoiteTrack_IsPaladin"] == true and _G["DoiteTrack_PalJ_Tracked"] == true and entry.kind == "Debuff" then
+            local token = nil
+            if spellNameNorm == "judgement of the crusader" then
+              token = "crusader"
+            elseif spellNameNorm == "judgement of light" then
+              token = "light"
+            elseif spellNameNorm == "judgement of wisdom" then
+              token = "wisdom"
+            elseif spellNameNorm == "judgement of justice" then
+              token = "justice"
+            end
+
+            if token then
+              local pj = _G["DoiteTrack_PalJ"]
+              if type(pj) ~= "table" then
+                pj = {}
+                _G["DoiteTrack_PalJ"] = pj
+              end
+
+              pj.mode = true
+              pj.sealToken = token
+              pj.activeTargetGuid = targetGuid
+              pj.activeSpellId = spellId
+              pj.activeDur = 10
+              pj.pendingTargetGuid = nil
+              pj.pendingToken = nil
+              pj.pendingExpiresAt = nil
+
+              self:_RecomputeEventNeeds()
+              self:_ApplyEventRegistration()
+            end
+          end
+
           t[targetGuid] = nil
           return
         end
