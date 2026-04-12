@@ -300,8 +300,13 @@ local function DS_CreateSettingsFrame()
     local DS_AuraCounterDrag = {
         active = false,
         frame = nil,
-        source = nil
+        source = nil,
+        watcher = nil
     }
+
+    local function DS_IsAuraCounterDragModifierDown()
+        return IsControlKeyDown() or IsShiftKeyDown()
+    end
 
     local function DS_ReanchorTargetBelowPlayer()
         targetRow:ClearAllPoints()
@@ -309,13 +314,33 @@ local function DS_CreateSettingsFrame()
     end
 
     local function DS_ReanchorPlayerAboveTarget()
+        local targetLeft = targetRow:GetLeft()
+        local targetTop = targetRow:GetTop()
+        local parentLeft = UIParent:GetLeft() or 0
+        local parentTop = UIParent:GetTop() or 0
+
+        if not targetLeft or not targetTop then
+            return
+        end
+
         playerRow:ClearAllPoints()
-        playerRow:SetPoint("TOPLEFT", targetRow, "TOPLEFT", 0, AURA_COUNTER_ROW_HEIGHT + AURA_COUNTER_ROW_SPACING)
+        playerRow:SetPoint(
+            "TOPLEFT",
+            UIParent,
+            "TOPLEFT",
+            targetLeft - parentLeft,
+            (targetTop - parentTop) + AURA_COUNTER_ROW_HEIGHT + AURA_COUNTER_ROW_SPACING
+        )
     end
 
     local function DS_StopAuraCounterDrag()
         if not DS_AuraCounterDrag.active or not DS_AuraCounterDrag.frame then
             return
+        end
+
+        if DS_AuraCounterDrag.watcher then
+            DS_AuraCounterDrag.watcher:SetScript("OnUpdate", nil)
+            DS_AuraCounterDrag.watcher = nil
         end
 
         DS_AuraCounterDrag.frame:StopMovingOrSizing()
@@ -333,7 +358,7 @@ local function DS_CreateSettingsFrame()
     end
 
     local function DS_StartAuraCounterDrag(source)
-        if not IsControlKeyDown() then
+        if not DS_IsAuraCounterDragModifierDown() then
             return
         end
 
@@ -347,6 +372,12 @@ local function DS_CreateSettingsFrame()
         DS_AuraCounterDrag.active = true
         DS_AuraCounterDrag.frame = dragFrame
         DS_AuraCounterDrag.source = source
+        DS_AuraCounterDrag.watcher = dragFrame
+        dragFrame:SetScript("OnUpdate", function()
+            if DS_AuraCounterDrag.active and (not DS_IsAuraCounterDragModifierDown()) then
+                DS_StopAuraCounterDrag()
+            end
+        end)
         dragFrame:StartMoving()
     end
 
@@ -414,9 +445,6 @@ local function DS_CreateSettingsFrame()
         if enable then
             auraCountElapsed = 0
             auraCountOverlay:SetScript("OnUpdate", function()
-                if DS_AuraCounterDrag.active and (not IsControlKeyDown()) then
-                    DS_StopAuraCounterDrag()
-                end
                 auraCountElapsed = auraCountElapsed + arg1
                 if auraCountElapsed >= 0.5 then
                     auraCountElapsed = 0
