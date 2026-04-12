@@ -257,26 +257,107 @@ local function DS_CreateSettingsFrame()
     auraCountOverlay:SetToplevel(true)
     auraCountOverlay:Hide()
 
+    local AURA_COUNTER_ROW_HEIGHT = 20
+    local AURA_COUNTER_ROW_SPACING = 6
+
+    local playerRow = CreateFrame("Frame", nil, auraCountOverlay)
+    playerRow:SetWidth(1000)
+    playerRow:SetHeight(AURA_COUNTER_ROW_HEIGHT)
+    playerRow:SetPoint("TOP", UIParent, "TOP", 0, -20)
+    playerRow:EnableMouse(true)
+    playerRow:SetMovable(true)
+    playerRow:RegisterForDrag("LeftButton")
+
+    local targetRow = CreateFrame("Frame", nil, auraCountOverlay)
+    targetRow:SetWidth(1000)
+    targetRow:SetHeight(AURA_COUNTER_ROW_HEIGHT)
+    targetRow:SetPoint("TOPLEFT", playerRow, "BOTTOMLEFT", 0, -AURA_COUNTER_ROW_SPACING)
+    targetRow:EnableMouse(true)
+    targetRow:SetMovable(true)
+    targetRow:RegisterForDrag("LeftButton")
+
     -- Two lines, each split into bold blue prefix + normal suffix
-    local playerPrefix = auraCountOverlay:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    playerPrefix:SetPoint("TOP", UIParent, "TOP", 0, -20)
+    local playerPrefix = playerRow:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    playerPrefix:SetPoint("TOPLEFT", playerRow, "TOPLEFT", 0, 0)
     playerPrefix:SetDrawLayer("OVERLAY", 7)
     playerPrefix:SetText("|cff6FA8DCPLAYER AURAS:|r")
 
-    local playerSuffix = auraCountOverlay:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    local playerSuffix = playerRow:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     playerSuffix:SetPoint("LEFT", playerPrefix, "RIGHT", 4, -2)
     playerSuffix:SetDrawLayer("OVERLAY", 7)
     playerSuffix:SetText("")
 
-    local targetPrefix = auraCountOverlay:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    targetPrefix:SetPoint("TOP", playerPrefix, "BOTTOM", 0, -6)
+    local targetPrefix = targetRow:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    targetPrefix:SetPoint("TOPLEFT", targetRow, "TOPLEFT", 0, 0)
     targetPrefix:SetDrawLayer("OVERLAY", 7)
     targetPrefix:SetText("|cff6FA8DCTARGET AURAS:|r")
 
-    local targetSuffix = auraCountOverlay:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    local targetSuffix = targetRow:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     targetSuffix:SetPoint("LEFT", targetPrefix, "RIGHT", 4, -2)
     targetSuffix:SetDrawLayer("OVERLAY", 7)
     targetSuffix:SetText("")
+
+    local DS_AuraCounterDrag = {
+        active = false,
+        frame = nil,
+        source = nil
+    }
+
+    local function DS_ReanchorTargetBelowPlayer()
+        targetRow:ClearAllPoints()
+        targetRow:SetPoint("TOPLEFT", playerRow, "BOTTOMLEFT", 0, -AURA_COUNTER_ROW_SPACING)
+    end
+
+    local function DS_ReanchorPlayerAboveTarget()
+        playerRow:ClearAllPoints()
+        playerRow:SetPoint("TOPLEFT", targetRow, "TOPLEFT", 0, AURA_COUNTER_ROW_HEIGHT + AURA_COUNTER_ROW_SPACING)
+    end
+
+    local function DS_StopAuraCounterDrag()
+        if not DS_AuraCounterDrag.active or not DS_AuraCounterDrag.frame then
+            return
+        end
+
+        DS_AuraCounterDrag.frame:StopMovingOrSizing()
+
+        if DS_AuraCounterDrag.source == "target" and not (DS_PlayerAuraCountEnabled and DS_TargetAuraCountEnabled) then
+            DS_ReanchorPlayerAboveTarget()
+            DS_ReanchorTargetBelowPlayer()
+        else
+            DS_ReanchorTargetBelowPlayer()
+        end
+
+        DS_AuraCounterDrag.active = false
+        DS_AuraCounterDrag.frame = nil
+        DS_AuraCounterDrag.source = nil
+    end
+
+    local function DS_StartAuraCounterDrag(source)
+        if not IsControlKeyDown() then
+            return
+        end
+
+        local dragFrame = nil
+        if source == "target" and not (DS_PlayerAuraCountEnabled and DS_TargetAuraCountEnabled) then
+            dragFrame = targetRow
+        else
+            dragFrame = playerRow
+        end
+
+        DS_AuraCounterDrag.active = true
+        DS_AuraCounterDrag.frame = dragFrame
+        DS_AuraCounterDrag.source = source
+        dragFrame:StartMoving()
+    end
+
+    playerRow:SetScript("OnDragStart", function()
+        DS_StartAuraCounterDrag("player")
+    end)
+    targetRow:SetScript("OnDragStart", function()
+        DS_StartAuraCounterDrag("target")
+    end)
+    playerRow:SetScript("OnDragStop", DS_StopAuraCounterDrag)
+    targetRow:SetScript("OnDragStop", DS_StopAuraCounterDrag)
 
     local function DS_CanReadPlayerAuraCounts()
         return DoitePlayerAuras and type(DoitePlayerAuras.GetAuraCountSummary) == "function"
@@ -299,20 +380,24 @@ local function DS_CreateSettingsFrame()
 
         if DS_PlayerAuraCountEnabled and DS_CanReadPlayerAuraCounts() then
             pb, pd, ph, pt = DoitePlayerAuras.GetAuraCountSummary()
+            playerRow:Show()
             playerPrefix:Show()
             playerSuffix:Show()
             playerSuffix:SetText(DS_FormatAuraCountLine(pb, pd, pt, (pb + pd), ph))
         else
+            playerRow:Hide()
             playerPrefix:Hide()
             playerSuffix:Hide()
         end
 
         if DS_TargetAuraCountEnabled and DS_CanReadTargetAuraCounts() then
             tb, td, th, tt = DoiteTargetAuras.GetAuraCountSummary()
+            targetRow:Show()
             targetPrefix:Show()
             targetSuffix:Show()
             targetSuffix:SetText(DS_FormatAuraCountLine(tb, td, tt, (tb + td), th))
         else
+            targetRow:Hide()
             targetPrefix:Hide()
             targetSuffix:Hide()
         end
@@ -329,6 +414,9 @@ local function DS_CreateSettingsFrame()
         if enable then
             auraCountElapsed = 0
             auraCountOverlay:SetScript("OnUpdate", function()
+                if DS_AuraCounterDrag.active and (not IsControlKeyDown()) then
+                    DS_StopAuraCounterDrag()
+                end
                 auraCountElapsed = auraCountElapsed + arg1
                 if auraCountElapsed >= 0.5 then
                     auraCountElapsed = 0
@@ -337,6 +425,7 @@ local function DS_CreateSettingsFrame()
             end)
             DS_UpdateAuraCountOverlayOnce()
         else
+            DS_StopAuraCounterDrag()
             auraCountOverlay:SetScript("OnUpdate", nil)
             auraCountOverlay:Hide()
         end
