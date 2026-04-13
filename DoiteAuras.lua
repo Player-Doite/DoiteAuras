@@ -155,10 +155,10 @@ do
 end
 
 ---------------------------------------------------------------
--- Nampower / UnitXP SP3 requirement helper
--- Requires UnitXP & a specific Nampower version
+-- Nampower requirement helper
+-- Requires a specific Nampower version
 ---------------------------------------------------------------
-local _NP_REQ_MAJOR, _NP_REQ_MINOR, _NP_REQ_PATCH = 2, 40, 0 -- Change when needed
+local _NP_REQ_MAJOR, _NP_REQ_MINOR, _NP_REQ_PATCH = 4, 2, 0 -- Change when needed
 
 local function _NP_GetVersion()
   if type(GetNampowerVersion) == "function" then
@@ -200,19 +200,7 @@ local function DA_GetMissingRequiredMods()
   -- Nampower: must be >= the version in _NP_REQ_MAJOR/_NP_REQ_MINOR/_NP_REQ_PATCH
   local npOK, npVerStr = _NP_AtLeast(_NP_REQ_MAJOR, _NP_REQ_MINOR, _NP_REQ_PATCH)
   if not npOK then
-    table.insert(missing, "Nampower 2.40.0+ (you have " .. tostring(npVerStr) .. ")")
-  end
-
-  -- UnitXP SP3: pcall(UnitXP, "nop", "nop") must succeed
-  local hasUnitXP = false
-  if type(UnitXP) == "function" then
-    local ok = pcall(UnitXP, "nop", "nop")
-    if ok then
-      hasUnitXP = true
-    end
-  end
-  if not hasUnitXP then
-    table.insert(missing, "UnitXP SP3")
+    table.insert(missing, "Nampower 4.2.0+ (you have " .. tostring(npVerStr) .. ")")
   end
 
   return missing
@@ -4207,7 +4195,7 @@ _daLoad:SetScript("OnEvent", function()
       else
         -- One or more missing → modern client requirement message
         local list = table.concat(missing, ", ")
-        cf:AddMessage("|cff6FA8DCDoiteAuras:|r This addon requires Nampower 2.40.0+ and UnitXP SP3. Missing: " .. list .. ".")
+        cf:AddMessage("|cff6FA8DCDoiteAuras:|r This addon requires Nampower 4.2.0+. Missing: " .. list .. ".")
         -- BLOCKER: after printing the message, hard-disable the addon
         _G["DoiteAuras_HardDisabled"] = true
 

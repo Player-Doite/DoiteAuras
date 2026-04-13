@@ -4417,7 +4417,21 @@ function UpdateItemStacksForMissing()
   ----------------------------------------------------------------
   -- Target Distance & Type dropdowns (shared lists)
   ----------------------------------------------------------------
-  local distanceChoices = { "Any", "In range", "Melee range", "Not in range", "Behind", "In front", "Behind & in range", "In front & in range" }
+  local distanceChoices = { "Any", "In range", "Not in range", "Behind", "In front", "Behind & in range", "In front & in range" }
+  local distanceNeedsUnitXP = {
+    ["Behind"] = true,
+    ["In front"] = true,
+    ["Behind & in range"] = true,
+    ["In front & in range"] = true
+  }
+
+  local function _HasUnitXP()
+    if type(UnitXP) ~= "function" then
+      return false
+    end
+    local ok = pcall(UnitXP, "nop", "nop")
+    return ok == true
+  end
 
   local unitTypeChoices = {
     "Any", "Players", "NPC", "Boss", "Not a boss",
@@ -4457,12 +4471,22 @@ function UpdateItemStacksForMissing()
     ClearDropdown(dd)
     UIDropDownMenu_Initialize(dd, function(frame, level, menuList)
       local info
+      local hasUnitXP = _HasUnitXP()
       for _, txt in ipairs(choices) do
         local picked = txt
         info = {}
-        info.text = txt
+        local requiresUnitXP = (field == "targetDistance") and (distanceNeedsUnitXP[picked] == true)
+        if requiresUnitXP and (not hasUnitXP) then
+          info.text = "|cff808080Req.UnitXP: " .. txt .. "|r"
+          info.disabled = true
+        else
+          info.text = txt
+        end
         info.value = txt
         info.func = function(button)
+          if requiresUnitXP and (not hasUnitXP) then
+            return
+          end
           local val = (button and button.value) or picked
           -- Update widget text/selection
           if UIDropDownMenu_SetSelectedValue then

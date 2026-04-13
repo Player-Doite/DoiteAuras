@@ -3348,82 +3348,15 @@ local function _NormalizeTargetField(val)
   if not val or val == "" or val == "Any" then
     return nil
   end
+  if val == "Melee range" then
+    return "In range"
+  end
   return val
 end
 
--- Optional: spell range in yards from DBC ("rangeMax" is yards * 10)
-local function _GetSpellMaxRangeYds(spellName)
-  if not spellName or not GetSpellIdForName or not GetSpellRecField then
-    return nil
-  end
-  local sid = GetSpellIdForName(spellName)
-  if not sid or sid <= 0 then
-    return nil
-  end
-
-  local raw = GetSpellRecField(sid, "rangeMax")
-  if not raw or raw <= 0 then
-    return nil
-  end
-
-  return raw / 10
-end
-
 ---------------------------------------------------------------
--- Spell range overrides and resurrection spell list
+-- Resurrection spell list
 ---------------------------------------------------------------
-
--- Spells whose IsSpellInRange return values are unreliable; treat them as explicit melee or ranged for distance checks instead of trusting API.
-local _SpellRangeOverrideByClass = {
-  WARRIOR = {
-    ["Heroic Strike"] = "melee",
-    ["Cleave"] = "melee",
-    -- Add more warrior spells here if needed.
-  },
-  -- Add other classes here if I discover more broken spells.
-}
-
-local _SpellRangeOverrideCache = {}
-local _playerClass = nil
-
-local function _GetPlayerClassToken()
-  if _playerClass and _playerClass ~= "" then
-    return _playerClass
-  end
-  if UnitClass then
-    local _, cls = UnitClass("player")
-    _playerClass = cls and string.upper(cls) or ""
-  else
-    _playerClass = ""
-  end
-  return _playerClass
-end
-
-local function _GetSpellRangeOverrideMode(spellName)
-  if not spellName then
-    return nil
-  end
-
-  local cached = _SpellRangeOverrideCache[spellName]
-  if cached ~= nil then
-    return (cached ~= false) and cached or nil
-  end
-
-  local cls = _GetPlayerClassToken()
-  local mode = nil
-  local byClass = _SpellRangeOverrideByClass[cls]
-  if byClass then
-    mode = byClass[spellName]
-  end
-
-  if mode then
-    _SpellRangeOverrideCache[spellName] = mode
-    return mode
-  end
-
-  _SpellRangeOverrideCache[spellName] = false
-  return nil
-end
 
 -- Resurrection spells that are allowed to do distance checks on dead friendly targets.
 local _ResurrectionSpellByName = {
@@ -3438,89 +3371,6 @@ local function _IsResurrectionSpell(spellName)
     return false
   end
   return _ResurrectionSpellByName[spellName] == true
-end
-
--- These are NOT yards, they are xp3's normalized melee meter.
-_G.DoiteConditions_MeleeRangeByRace = _G.DoiteConditions_MeleeRangeByRace or {
-  -- Small hitbox races
-  GNOME = 0.20,
-  GOBLIN = 0.20,
-
-  -- "Normal" body size races
-  HUMAN = 0.23,
-  ORC = 0.23,
-  TROLL = 0.23,
-  DWARF = 0.23,
-  NIGHTELF = 0.23,
-  BLOODELF = 0.23,
-  SCOURGE = 0.23,
-
-  -- Big bois
-  TAUREN = 0.30,
-}
-
-_G.DoiteConditions_MeleeRangeDefault = _G.DoiteConditions_MeleeRangeDefault or 0.23
-
-local _playerMeleeThreshold = nil
-
-local function _GetPlayerMeleeThreshold()
-  if _playerMeleeThreshold then
-    return _playerMeleeThreshold
-  end
-
-  local byRace = _G.DoiteConditions_MeleeRangeByRace or {}
-
-  local raceName, raceFile
-  if UnitRace then
-    raceName, raceFile = UnitRace("player")
-  end
-
-  local key = nil
-  if raceFile and raceFile ~= "" then
-    -- Stable, non-localized token: "Goblin","Tauren","NightElf","Scourge", etc.
-    key = string.upper(raceFile)
-  elseif raceName and raceName ~= "" then
-    -- Fallback: strip spaces and upper-case
-    key = string.upper(string.gsub(raceName, "%s+", ""))
-  end
-
-  local thr = _G.DoiteConditions_MeleeRangeDefault or 0.23
-  if key and byRace[key] then
-    thr = byRace[key]
-  end
-
-  _playerMeleeThreshold = thr
-  return thr
-end
-
-local function _RefreshPlayerMeleeThreshold()
-  _playerMeleeThreshold = nil
-  _GetPlayerMeleeThreshold()
-end
-
--- Generic distance in yards from player to unit; optional "mode" tuning for UnitXP
-local function _GetUnitDistanceYds(unit, mode)
-  if type(UnitXP) ~= "function" or not UnitExists then
-    return nil
-  end
-  local exists = UnitExists(unit)
-  if not exists then
-    return nil
-  end
-
-  local ok, dist
-  if mode == "melee" then
-    ok, dist = pcall(UnitXP, "distanceBetween", "player", unit, "meleeAutoAttack")
-  elseif mode == "aoe" then
-    ok, dist = pcall(UnitXP, "distanceBetween", "player", unit, "AoE")
-  else
-    ok, dist = pcall(UnitXP, "distanceBetween", "player", unit)
-  end
-
-  if not ok or type(dist) ~= "number" or dist < 0 then
-    return nil
-  end
-  return dist
 end
 
 -- Nampower-safe IsSpellInRange wrapper; returns true/false or nil if unknown
@@ -3551,12 +3401,6 @@ local function _IsSpellInRangeSafe(spellName, unit)
   end
   return nil
 end
-
--- Generic "In range" threshold (non-spell icons) in default UnitXP distance units.
-_G.DoiteConditions_GenericInRangeThreshold = _G.DoiteConditions_GenericInRangeThreshold or 1.5
-
--- Ranged-override threshold (yards) when treating a spell as pure ranged.
-_G.DoiteConditions_RangedOverrideThresholdYds = _G.DoiteConditions_RangedOverrideThresholdYds or 30
 
 -- Main "targetDistance" eval
 local function _PassesTargetDistance(condTbl, unit, spellName)
@@ -3627,7 +3471,7 @@ local function _PassesTargetDistance(condTbl, unit, spellName)
   end
 
   -- Dead-target guard for range-based checks
-  if val == "In range" or val == "Not in range" or val == "Melee range" then
+  if val == "In range" or val == "Not in range" then
     if isDead then
       local allowRes = false
       if spellName and isFriend and (not isHostile) then
@@ -3644,63 +3488,12 @@ local function _PassesTargetDistance(condTbl, unit, spellName)
   end
 
   ----------------------------------------------------------------
-  -- Range-based checks ("In range", "Not in range", "Melee range")
+  -- Range-based checks ("In range", "Not in range")
   ----------------------------------------------------------------
-  local inRange = nil
-  local overrideMode = nil
-
-  if spellName then
-    overrideMode = _GetSpellRangeOverrideMode(spellName)
-  end
-
-  -- Prefer IsSpellInRange when knowing which spell this icon represents
-  if spellName and overrideMode == nil then
-    inRange = _IsSpellInRangeSafe(spellName, unit)
-  end
-
-  -- Fallback when IsSpellInRange isn't usable
+  local inRange = _IsSpellInRangeSafe(spellName, unit)
   if inRange == nil then
-    if spellName then
-      if overrideMode == "melee" then
-        local dist = _GetUnitDistanceYds(unit, "melee") or _GetUnitDistanceYds(unit, nil)
-        if not dist then
-          inRange = true
-        else
-          local thr = _GetPlayerMeleeThreshold()
-          inRange = (dist <= thr)
-        end
-
-      elseif overrideMode == "range" then
-        -- Broken spell flagged as ranged: use a fixed yard threshold.
-        local dist = _GetUnitDistanceYds(unit, nil)
-        if not dist then
-          inRange = true
-        else
-          local thr = _G.DoiteConditions_RangedOverrideThresholdYds or 30
-          inRange = (dist <= thr)
-        end
-
-      else
-        -- No override: assume "melee-ish" ability when the addon can't do a proper range check
-        local dist = _GetUnitDistanceYds(unit, "melee") or _GetUnitDistanceYds(unit, nil)
-        if not dist then
-          -- No distance info at all: don't kill the icon.
-          inRange = true
-        else
-          local thr = _GetPlayerMeleeThreshold()
-          inRange = (dist <= thr)
-        end
-      end
-    else
-      -- Generic "In range" (e.g. items/auras) – tuneable threshold in xp3 units.
-      local dist = _GetUnitDistanceYds(unit, nil)
-      if not dist then
-        inRange = true
-      else
-        local generic = _G.DoiteConditions_GenericInRangeThreshold or 1.5
-        inRange = (dist <= generic)
-      end
-    end
+    -- Keep legacy behavior of not hiding an icon if range cannot be resolved.
+    inRange = true
   end
 
   if val == "In range" then
@@ -3708,18 +3501,8 @@ local function _PassesTargetDistance(condTbl, unit, spellName)
       return (posOK and inRange)
     end
     return inRange
-
   elseif val == "Not in range" then
-    return not inRange
-
-  elseif val == "Melee range" then
-    -- already blocked dead targets above; this is only for living units.
-    local dist = _GetUnitDistanceYds(unit, "melee") or _GetUnitDistanceYds(unit, nil)
-    if not dist then
-      return true
-    end
-    local thr = _GetPlayerMeleeThreshold()
-    return (dist <= thr)
+    return (not inRange)
   end
 
   return true
@@ -7934,7 +7717,7 @@ function DoiteConditions_OnUpdate(dt)
     end
   end
 
-  -- Lightweight distance heartbeat: keep "In range" / "Melee range" /
+  -- Lightweight distance heartbeat: keep target distance checks responsive.
   _distAccum = _distAccum + dt
   if _distAccum >= 0.15 then
     _distAccum = 0
@@ -8035,11 +7818,10 @@ eventFrame:SetScript("OnEvent", function()
     end
     dirty_ability, dirty_aura, dirty_target, dirty_power = true, true, true, true
 
-    -- Cache player class for lightweight warrior-specific logic + range overrides
+    -- Cache player class for lightweight warrior-specific logic
     local _, cls = UnitClass("player")
     cls = cls and string.upper(cls) or ""
     _isWarrior = (cls == "WARRIOR")
-    _playerClass = cls
 
     -- Prime time-heartbeat flags
     if _RebuildAbilityTimeHeartbeatFlag then
@@ -8054,10 +7836,6 @@ eventFrame:SetScript("OnEvent", function()
     if _RebuildTargetModsFlags then
       _RebuildTargetModsFlags()
     end
-    if _RefreshPlayerMeleeThreshold then
-      _RefreshPlayerMeleeThreshold()
-    end
-
   elseif event == "UNIT_AURA" then
     if arg1 == "player" then
       dirty_aura = true
