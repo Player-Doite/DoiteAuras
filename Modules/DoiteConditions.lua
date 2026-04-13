@@ -3420,6 +3420,7 @@ local function _PassesTargetDistance(condTbl, unit, spellName)
   local isFriend = UnitIsFriend and UnitIsFriend("player", unit)
   local canAttack = UnitCanAttack and UnitCanAttack("player", unit)
   local isHostile = canAttack and (not isFriend)
+  local hasUnitXP = (type(UnitXP) == "function")
 
   -- Combined positional+range modes
   local wantPos = nil  -- "behind" / "front" / nil
@@ -3431,11 +3432,21 @@ local function _PassesTargetDistance(condTbl, unit, spellName)
     val = "In range"
   end
 
+  -- UnitXP unavailable fallback behavior for imported/saved configs:
+  -- - Behind / In front => treated as Any
+  -- - Behind & in range / In front & in range => treated as In range
+  if not hasUnitXP then
+    if val == "Behind" or val == "In front" then
+      return true
+    end
+    wantPos = nil
+  end
+
   -- Positional checks first (also supports the combined modes above)
   local posOK = true
 
   if val == "Behind" or wantPos == "behind" then
-    if type(UnitXP) == "function" then
+    if hasUnitXP then
       local ok, behind = pcall(UnitXP, "behind", "player", unit)
       if ok then
         posOK = (behind == true)
@@ -3451,7 +3462,7 @@ local function _PassesTargetDistance(condTbl, unit, spellName)
     end
 
   elseif val == "In front" or wantPos == "front" then
-    if type(UnitXP) == "function" then
+    if hasUnitXP then
       local okB, behind = pcall(UnitXP, "behind", "player", unit)
       local okS, inSight = pcall(UnitXP, "inSight", "player", unit)
       if not okB then
