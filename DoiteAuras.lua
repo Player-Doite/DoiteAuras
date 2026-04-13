@@ -158,7 +158,7 @@ end
 -- Nampower requirement helper
 -- Requires a specific Nampower version
 ---------------------------------------------------------------
-local _NP_REQ_MAJOR, _NP_REQ_MINOR, _NP_REQ_PATCH = 4, 2, 0 -- Change when needed
+local _NP_REQ_MAJOR, _NP_REQ_MINOR, _NP_REQ_PATCH = 4, 1, 3 -- Change when needed
 
 local function _NP_GetVersion()
   if type(GetNampowerVersion) == "function" then
@@ -200,7 +200,7 @@ local function DA_GetMissingRequiredMods()
   -- Nampower: must be >= the version in _NP_REQ_MAJOR/_NP_REQ_MINOR/_NP_REQ_PATCH
   local npOK, npVerStr = _NP_AtLeast(_NP_REQ_MAJOR, _NP_REQ_MINOR, _NP_REQ_PATCH)
   if not npOK then
-    table.insert(missing, "Nampower 4.2.0+ (you have " .. tostring(npVerStr) .. ")")
+    table.insert(missing, "Nampower 4.1.3+ (you have " .. tostring(npVerStr) .. ")")
   end
 
   return missing
@@ -4195,7 +4195,7 @@ _daLoad:SetScript("OnEvent", function()
       else
         -- One or more missing → modern client requirement message
         local list = table.concat(missing, ", ")
-        cf:AddMessage("|cff6FA8DCDoiteAuras:|r This addon requires Nampower 4.2.0+. Missing: " .. list .. ".")
+        cf:AddMessage("|cff6FA8DCDoiteAuras:|r This addon requires Nampower 4.1.3+. Missing: " .. list .. ".")
         -- BLOCKER: after printing the message, hard-disable the addon
         _G["DoiteAuras_HardDisabled"] = true
 
