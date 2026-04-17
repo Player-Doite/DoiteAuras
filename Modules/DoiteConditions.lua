@@ -1049,7 +1049,9 @@ local function _CooldownFromNampowerTable(cd)
   if dur <= 0 then
     dur = rem
   end
-  local onCd = ((tonumber(cd.isOnCooldown) or 0) == 1) and (rem > DOITE_ITEM_CD_IGNORE)
+  -- Prefer remaining time over flag stability; some clients can flip isOnCooldown
+  -- while cooldownRemainingMs still reports the active item cooldown.
+  local onCd = (rem > DOITE_ITEM_CD_IGNORE)
   if not onCd then
     rem = 0
   end
