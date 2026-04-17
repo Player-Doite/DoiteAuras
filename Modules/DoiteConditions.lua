@@ -1401,7 +1401,6 @@ local function _GetInventorySlotState(slot)
   if not slot then
     return false, false, 0, 0, false
   end
-  local link = GetInventoryItemLink and GetInventoryItemLink("player", slot) or nil
   local snap = _GetPlayerItemSnapshot()
   local eq = snap.eq
   local info = eq and eq[slot] or nil
@@ -1409,12 +1408,6 @@ local function _GetInventorySlotState(slot)
     info = GetEquippedItem("player", slot)
   end
   local itemId = info and info.itemId
-  if (not itemId) and link then
-    local _, _, idStr = str_find(link, "item:(%d+)")
-    if idStr then
-      itemId = tonumber(idStr)
-    end
-  end
   if not itemId then
     return false, false, 0, 0, false
   end
@@ -2140,9 +2133,6 @@ local function _EvaluateItemCoreState(data, c)
       local bags = snap.bags
       local bagData = bags and bags[loc.bag] or nil
       local bInfo = bagData and bagData[loc.slot] or nil
-      if (not bInfo) and GetBagItem then
-        bInfo = GetBagItem(loc.bag, loc.slot)
-      end
       local itemId = bInfo and bInfo.itemId or nil
       hasItem = itemId and true or false
       local spellId = nil
