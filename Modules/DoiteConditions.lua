@@ -1040,14 +1040,16 @@ local function _CooldownFromNampowerTable(cd)
   local rem = (tonumber(cd.cooldownRemainingMs) or 0) / 1000
   local d1 = (tonumber(cd.individualDurationMs) or 0) / 1000
   local d2 = (tonumber(cd.categoryDurationMs) or 0) / 1000
-  local d3 = (tonumber(cd.gcdCategoryDurationMs) or 0) / 1000
   local dur = d1
   if d2 > dur then dur = d2 end
-  if d3 > dur then dur = d3 end
+  -- For item "real cooldown", prefer individual/category; ignore GCD duration as primary.
+  if rem > dur then
+    dur = rem
+  end
   if dur <= 0 then
     dur = rem
   end
-  local onCd = ((tonumber(cd.isOnCooldown) or 0) == 1) and (rem > 0) and (dur > DOITE_ITEM_CD_IGNORE)
+  local onCd = ((tonumber(cd.isOnCooldown) or 0) == 1) and (rem > DOITE_ITEM_CD_IGNORE)
   if not onCd then
     rem = 0
   end
