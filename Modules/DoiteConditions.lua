@@ -2187,14 +2187,8 @@ _G.DoiteConditions_ProcWindowDurations = _G.DoiteConditions_ProcWindowDurations 
   ["Surprise Attack"] = 4.0,
   ["Riposte"] = 4.0,
   ["Arcane Surge"] = 4.0,
-  ["Lacerate"] = 3.0,
+  ["Lacerate"] = 4.0,
 }
-do
-  local tbl = _G.DoiteConditions_ProcWindowDurations
-  if tbl and (type(tbl["Lacerate"]) ~= "number" or tbl["Lacerate"] <= 0) then
-    tbl["Lacerate"] = 3.0
-  end
-end
 
 -- SpellName -> absolute endTime (GetTime() + duration)
 _G.DoiteConditions_ProcUntil = _G.DoiteConditions_ProcUntil or {}
