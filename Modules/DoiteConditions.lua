@@ -1047,14 +1047,14 @@ local function _CooldownFromNampowerTable(cd)
   if dur <= 0 then
     dur = rem
   end
-  local onCd = (rem > 0) and (dur > DOITE_ITEM_CD_IGNORE)
+  local onCd = ((tonumber(cd.isOnCooldown) or 0) == 1) and (rem > 0) and (dur > DOITE_ITEM_CD_IGNORE)
   if not onCd then
     rem = 0
   end
   return onCd, rem, dur
 end
 
-local function _GetItemCooldownState(itemId, invSlot, bag, bagSlot)
+local function _GetItemCooldownState(itemId, invSlot, spellId)
   if itemId then
     if (invSlot == INV_SLOT_TRINKET1 or invSlot == INV_SLOT_TRINKET2) and GetTrinketCooldown then
       local cd = GetTrinketCooldown(invSlot)
@@ -1071,22 +1071,14 @@ local function _GetItemCooldownState(itemId, invSlot, bag, bagSlot)
       end
     end
   end
-
-  local start, dur0
-  if invSlot then
-    start, dur0 = GetInventoryItemCooldown("player", invSlot)
-  elseif bag ~= nil and bagSlot ~= nil then
-    start, dur0 = GetContainerItemCooldown(bag, bagSlot)
-  end
-
-  if start and dur0 and start > 0 and dur0 > DOITE_ITEM_CD_IGNORE then
-    local rem = (start + dur0) - GetTime()
-    if rem < 0 then
-      rem = 0
+  if spellId and GetSpellIdCooldown then
+    local cd = GetSpellIdCooldown(spellId)
+    local onCd, rem, dur = _CooldownFromNampowerTable(cd)
+    if onCd ~= nil then
+      return onCd, rem, dur
     end
-    return (rem > 0), rem, dur0
   end
-  return false, 0, dur0 or 0
+  return false, 0, 0
 end
 
 local function _SlotIndexForName(name)
@@ -1423,9 +1415,13 @@ local function _GetInventorySlotState(slot)
     return false, false, 0, 0, false
   end
 
-  local onCd, rem, dur = _GetItemCooldownState(itemId, slot, nil, nil)
+  local spellId = nil
+  if info then
+    spellId = tonumber(info.useSpellId) or tonumber(info.itemActiveSpellId) or tonumber(info.spellId) or nil
+  end
+  local onCd, rem, dur = _GetItemCooldownState(itemId, slot, spellId)
 
-  -- Detect usable / on-use items with API-first checks, then slot-tooltip fallback.
+  -- Detect usable / on-use items from structured item/cooldown APIs.
   -- Cache by itemId when possible (stable key, avoids link-variant key growth).
   local useCache = DoiteConditions._itemUseCache
   if not useCache then
@@ -1475,37 +1471,17 @@ local function _GetInventorySlotState(slot)
       end
     end
 
-    -- Fallback for clients/helpers that don't expose the richer fields above.
-    if (not isUse) and GetItemSpell then
-      local spellName = GetItemSpell(itemId)
-      if spellName and spellName ~= "" then
-        isUse = true
-      end
-    end
-
-    -- Last-resort fallback: parse the actual equipped-slot tooltip for classic/local helpers
-    -- that do not provide spell metadata reliably.
-    if (not isUse) and _EnsureTooltip and DoiteConditionsTooltip and DoiteConditionsTooltip.SetInventoryItem then
-      _EnsureTooltip()
-      DoiteConditionsTooltip:ClearLines()
-      DoiteConditionsTooltip:SetInventoryItem("player", slot)
-
-      local i = 1
-      while i <= 15 do
-        local fs = _CondTipLeft[i]
-        if not fs or not fs.GetText then
-          break
-        end
-        local txt = fs:GetText()
-        if txt and txt ~= "" then
-          local lower = string.lower(txt)
-          if str_find(lower, "use:") or str_find(lower, "use ")
-              or str_find(lower, "consume") then
+    if (not isUse) and spellId and GetSpellIdCooldown then
+      local cd = GetSpellIdCooldown(spellId)
+      if type(cd) == "table" then
+        if cd.itemHasActiveSpell == 1 then
+          isUse = true
+        else
+          local sid = tonumber(cd.itemActiveSpellId) or 0
+          if sid > 0 then
             isUse = true
-            break
           end
         end
-        i = i + 1
       end
     end
 
@@ -2151,7 +2127,11 @@ local function _EvaluateItemCoreState(data, c)
       end
       local itemId = eqInfo and eqInfo.itemId or nil
       hasItem = itemId and true or false
-      onCd, rem, dur = _GetItemCooldownState(itemId, loc, nil, nil)
+      local spellId = nil
+      if eqInfo then
+        spellId = tonumber(eqInfo.useSpellId) or tonumber(eqInfo.itemActiveSpellId) or tonumber(eqInfo.spellId) or nil
+      end
+      onCd, rem, dur = _GetItemCooldownState(itemId, loc, spellId)
     else
       local bags = snap.bags
       local bagData = bags and bags[loc.bag] or nil
@@ -2161,7 +2141,11 @@ local function _EvaluateItemCoreState(data, c)
       end
       local itemId = bInfo and bInfo.itemId or nil
       hasItem = itemId and true or false
-      onCd, rem, dur = _GetItemCooldownState(itemId, nil, loc.bag, loc.slot)
+      local spellId = nil
+      if bInfo then
+        spellId = tonumber(bInfo.useSpellId) or tonumber(bInfo.itemActiveSpellId) or tonumber(bInfo.spellId) or nil
+      end
+      onCd, rem, dur = _GetItemCooldownState(itemId, nil, spellId)
     end
 
     if not state.hasItem and hasItem then

@@ -987,13 +987,6 @@ local function DA_ItemHasUseEffect(itemId, slotId)
         end
     end
 
-    if GetItemSpell then
-        local spellName = GetItemSpell(itemId)
-        if spellName and spellName ~= "" then
-            return true
-        end
-    end
-
     return false
 end
 

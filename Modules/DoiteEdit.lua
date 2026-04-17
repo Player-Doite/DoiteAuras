@@ -5964,10 +5964,6 @@ do
           if sid > 0 then return true end
         end
       end
-      if GetItemSpell then
-        local sn = GetItemSpell(itemId)
-        if sn and sn ~= "" then return true end
-      end
       return false
     end
     local slots = {13, 14, 16, 17, 18}
@@ -7417,10 +7413,6 @@ do
           local sid = tonumber(cd.itemActiveSpellId) or 0
           if sid > 0 then return true end
         end
-      end
-      if GetItemSpell then
-        local sn = GetItemSpell(itemId)
-        if sn and sn ~= "" then return true end
       end
       return false
     end
