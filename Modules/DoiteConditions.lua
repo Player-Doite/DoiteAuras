@@ -1059,28 +1059,35 @@ local function _CooldownFromNampowerTable(cd)
 end
 
 local function _GetItemCooldownState(itemId, invSlot, spellId)
+  local bestOnCd, bestRem, bestDur = false, 0, 0
+  local function _TakeBest(cd)
+    local onCd, rem, dur = _CooldownFromNampowerTable(cd)
+    if onCd == nil then
+      return
+    end
+    rem = tonumber(rem) or 0
+    dur = tonumber(dur) or 0
+    if rem > bestRem then
+      bestOnCd = (rem > DOITE_ITEM_CD_IGNORE)
+      bestRem = rem
+      bestDur = dur
+    end
+  end
+
   if itemId then
     if (invSlot == INV_SLOT_TRINKET1 or invSlot == INV_SLOT_TRINKET2) and GetTrinketCooldown then
-      local cd = GetTrinketCooldown(invSlot)
-      local onCd, rem, dur = _CooldownFromNampowerTable(cd)
-      if onCd ~= nil then
-        return onCd, rem, dur
-      end
+      _TakeBest(GetTrinketCooldown(invSlot))
     end
     if GetItemIdCooldown then
-      local cd = GetItemIdCooldown(itemId)
-      local onCd, rem, dur = _CooldownFromNampowerTable(cd)
-      if onCd ~= nil then
-        return onCd, rem, dur
-      end
+      _TakeBest(GetItemIdCooldown(itemId))
     end
   end
   if spellId and GetSpellIdCooldown then
-    local cd = GetSpellIdCooldown(spellId)
-    local onCd, rem, dur = _CooldownFromNampowerTable(cd)
-    if onCd ~= nil then
-      return onCd, rem, dur
-    end
+    _TakeBest(GetSpellIdCooldown(spellId))
+  end
+
+  if bestRem > 0 then
+    return bestOnCd, bestRem, bestDur
   end
   return false, 0, 0
 end
