@@ -34,8 +34,6 @@ local str_find = string.find
 local str_gsub = string.gsub
 local SpellUsableArgCache = {}
 local _SoundStateByKey = {}
-local _GetCanonicalSpellNameFromData
-local _TalentIsKnownByName
 
 local function _DoitePlayConfiguredSound(fileName)
   if not fileName or fileName == "" then
@@ -155,59 +153,6 @@ _G.DoiteConditions_SpellIndexCache = SpellIndexCache
 _G.DoiteConditions_SpellBookTypeCache = _G.DoiteConditions_SpellBookTypeCache or {}
 
 local _isWarrior = false
-local _isHunter = false
-local _hunterLacerateProcEnabled = false
-local _hunterLacerateProcNextRefresh = 0
-
-local function _IsTrackingUsableAbilityByName(spellName)
-  if not spellName or spellName == "" then
-    return false
-  end
-  if not DoiteAurasDB or not DoiteAurasDB.spells then
-    return false
-  end
-
-  local key, data
-  for key, data in pairs(DoiteAurasDB.spells) do
-    if type(data) == "table" and data.type == "Ability"
-        and data.conditions and data.conditions.ability
-        and data.conditions.ability.mode == "usable" then
-      local nm = _GetCanonicalSpellNameFromData(data)
-      if nm == spellName then
-        return true
-      end
-    end
-  end
-
-  return false
-end
-
-local function _RefreshHunterLacerateProcEligibility(force)
-  if not _isHunter then
-    _hunterLacerateProcEnabled = false
-    _hunterLacerateProcNextRefresh = 0
-    return false
-  end
-
-  local now = _Now()
-  if (not force) and _hunterLacerateProcNextRefresh > now then
-    return _hunterLacerateProcEnabled
-  end
-
-  -- Refresh at most every 2 seconds on combat-log events.
-  _hunterLacerateProcNextRefresh = now + 2
-
-  if not _ProcWindowDuration("Lacerate") then
-    _hunterLacerateProcEnabled = false
-    return false
-  end
-
-  local trackingLacerate = _IsTrackingUsableAbilityByName("Lacerate")
-  local knowsTalent = _TalentIsKnownByName("Lacerate")
-
-  _hunterLacerateProcEnabled = (trackingLacerate and knowsTalent) and true or false
-  return _hunterLacerateProcEnabled
-end
 
 local function _GetSpellIndexByName(spellName)
   if not spellName then
@@ -2289,7 +2234,7 @@ end
 -- Keep warrior-specific state for target-matching
 local _WarriorProc = { OP_until = 0, OP_target = nil, REV_until = 0 }
 -- Canonical ability name resolver (spellbook name preferred)
-_GetCanonicalSpellNameFromData = function(data)
+local function _GetCanonicalSpellNameFromData(data)
   if not data or type(data) ~= "table" then
     return nil
   end
@@ -2505,10 +2450,6 @@ do
     _daClassCL:RegisterEvent("CHAT_MSG_SPELL_SELF_DAMAGE")
 
     _daClassCL:SetScript("OnEvent", function()
-      if not _RefreshHunterLacerateProcEligibility(false) then
-        return
-      end
-
       local line = arg1
       if not line or line == "" then
         return
@@ -2963,7 +2904,7 @@ local function _TargetHasAuraBySpellId(spellId, wantDebuff)
 end
 
 -- Talent helpers for auraConditions (Known / Not known)
-_TalentIsKnownByName = function(talentName)
+local function _TalentIsKnownByName(talentName)
   if not talentName or talentName == "" then
     return false
   end
@@ -8033,8 +7974,6 @@ eventFrame:SetScript("OnEvent", function()
     local _, cls = UnitClass("player")
     cls = cls and string.upper(cls) or ""
     _isWarrior = (cls == "WARRIOR")
-    _isHunter = (cls == "HUNTER")
-    _RefreshHunterLacerateProcEligibility(true)
 
     -- Prime time-heartbeat flags
     if _RebuildAbilityTimeHeartbeatFlag then
@@ -8077,7 +8016,6 @@ eventFrame:SetScript("OnEvent", function()
         btCache[k] = nil
       end
     end
-    _RefreshHunterLacerateProcEligibility(true)
     dirty_ability = true
 
   elseif event == "PLAYER_TARGET_CHANGED" then
