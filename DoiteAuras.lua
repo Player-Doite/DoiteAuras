@@ -815,7 +815,8 @@ local DA_AbilityDropdownPassiveAllow = {
 }
 _G["DA_AbilityDropdownPassiveAllow"] = DA_AbilityDropdownPassiveAllow
 
--- Add non-"on use" items that should still show in item dropdowns
+-- Add non-"on use" items that should still show in item dropdowns.
+-- Keep this narrow: reagent-like utility items that do not expose use-spell metadata.
 local DA_ItemDropdownAllow = {
     ["Infernal Stone"] = true,
     ["Demonic Figurine"] = true,
@@ -937,26 +938,62 @@ local function DA_AddItemOption(name)
     DA_ItemOptions[n + 1] = name
 end
 
+local DA_ItemInfoByIdCache = {}
+
+local function DA_GetItemInfoById(itemId)
+    if not itemId then return nil, nil end
+    local c = DA_ItemInfoByIdCache[itemId]
+    if c then
+        return c.name, c.texture
+    end
+    local name, _, _, _, _, _, _, _, _, texture = GetItemInfo(itemId)
+    if not name and not texture then
+        return nil, nil
+    end
+    c = { name = name, texture = texture }
+    DA_ItemInfoByIdCache[itemId] = c
+    return name, texture
+end
+
 local function DA_IsAllowlistedItemName(itemName)
     local allow = _G["DA_ItemDropdownAllow"]
     return (allow and itemName and allow[itemName] == true) and true or false
 end
 
--- Check current DoiteAurasTooltip for a line that looks like "Use..." or "consume..."
-local function DA_TooltipHasUseOrConsume()
-    local i
-    for i = 1, 15 do
-        local fs = DA_TipLeft[i]
-        if fs and fs.GetText then
-            local txt = fs:GetText()
-            if txt then
-                local lower = string.lower(txt)
-                if string.find(lower, "use:") or string.find(lower, "use ") or string.find(lower, "consume") then
-                    return true
-                end
+local function DA_ItemHasUseEffect(itemId, slotId)
+    if not itemId then return false end
+
+    if (slotId == 13 or slotId == 14) and GetTrinketCooldown then
+        local tcd = GetTrinketCooldown(slotId)
+        if type(tcd) == "table" then
+            if tcd.itemHasActiveSpell == 1 then
+                return true
+            end
+            if tonumber(tcd.itemActiveSpellId) and tonumber(tcd.itemActiveSpellId) > 0 then
+                return true
             end
         end
     end
+
+    if GetItemIdCooldown then
+        local cd = GetItemIdCooldown(itemId)
+        if type(cd) == "table" then
+            if cd.itemHasActiveSpell == 1 then
+                return true
+            end
+            if tonumber(cd.itemActiveSpellId) and tonumber(cd.itemActiveSpellId) > 0 then
+                return true
+            end
+        end
+    end
+
+    if GetItemSpell then
+        local spellName = GetItemSpell(itemId)
+        if spellName and spellName ~= "" then
+            return true
+        end
+    end
+
     return false
 end
 
@@ -967,13 +1004,11 @@ local function DA_ScanEquippedUsable()
     local i
     for i = 1, table.getn(slots) do
         local slotId = slots[i]
-        if GetInventoryItemLink and GetInventoryItemLink("player", slotId) then
-            daTip:ClearLines()
-            daTip:SetInventoryItem("player", slotId)
-
-            local nameFS = DoiteAurasTooltipTextLeft1
-            local itemName = nameFS and nameFS:GetText()
-            if itemName and (DA_TooltipHasUseOrConsume() or DA_IsAllowlistedItemName(itemName)) then
+        local info = GetEquippedItem and GetEquippedItem("player", slotId)
+        local itemId = info and info.itemId
+        if itemId then
+            local itemName = DA_GetItemInfoById(itemId)
+            if itemName and (DA_IsAllowlistedItemName(itemName) or DA_ItemHasUseEffect(itemId, slotId)) then
                 DA_AddItemOption(itemName)
             end
         end
@@ -982,26 +1017,25 @@ end
 
 -- Scan all bags (0 = backpack, 1–4 = bag slots) for usable / consumable items
 local function DA_ScanBagUsable()
-    if not GetContainerNumSlots or not GetContainerItemLink then return end
+    local bags = GetBagItems and GetBagItems()
+    if not bags then return end
 
-    local bag
-    for bag = 0, 4 do
-        local numSlots = GetContainerNumSlots(bag)
-        if numSlots and numSlots > 0 then
-            local slot
-            for slot = 1, numSlots do
-                if GetContainerItemLink(bag, slot) then
-                    daTip:ClearLines()
-                    daTip:SetBagItem(bag, slot)
-
-                    local nameFS = DoiteAurasTooltipTextLeft1
-                    local itemName = nameFS and nameFS:GetText()
-                    if itemName and (DA_TooltipHasUseOrConsume() or DA_IsAllowlistedItemName(itemName)) then
+    local bag = 0
+    while bag <= 4 do
+        local contents = bags[bag]
+        if contents then
+            local slot, itemInfo
+            for slot, itemInfo in pairs(contents) do
+                local itemId = itemInfo and itemInfo.itemId
+                if itemId then
+                    local itemName = DA_GetItemInfoById(itemId)
+                    if itemName and (DA_IsAllowlistedItemName(itemName) or DA_ItemHasUseEffect(itemId, nil)) then
                         DA_AddItemOption(itemName)
                     end
                 end
             end
         end
+        bag = bag + 1
     end
 end
 
@@ -1016,45 +1050,36 @@ local function DA_FindItemTextureByName(itemName)
     local i
     for i = 1, table.getn(slots) do
         local slotId = slots[i]
-        if GetInventoryItemLink and GetInventoryItemLink("player", slotId) then
-            daTip:ClearLines()
-            daTip:SetInventoryItem("player", slotId)
-
-            local nameFS  = DoiteAurasTooltipTextLeft1
-            local tipName = nameFS and nameFS:GetText()
-            if tipName and string.lower(tipName) == target then
-                if GetInventoryItemTexture then
-                    local tex = GetInventoryItemTexture("player", slotId)
-                    if tex then return tex end
-                end
+        local info = GetEquippedItem and GetEquippedItem("player", slotId)
+        local itemId = info and info.itemId
+        if itemId then
+            local tipName, tex = DA_GetItemInfoById(itemId)
+            if tipName and string.lower(tipName) == target and tex then
+                return tex
             end
         end
     end
 
     -- 2) Bags (0–4)
-    if not GetContainerNumSlots or not GetContainerItemLink or not GetContainerItemInfo then
-        return nil
-    end
+    local bags = GetBagItems and GetBagItems()
+    if not bags then return nil end
 
-    local bag
-    for bag = 0, 4 do
-        local numSlots = GetContainerNumSlots(bag)
-        if numSlots and numSlots > 0 then
-            local slot
-            for slot = 1, numSlots do
-                if GetContainerItemLink(bag, slot) then
-                    daTip:ClearLines()
-                    daTip:SetBagItem(bag, slot)
-
-                    local nameFS  = DoiteAurasTooltipTextLeft1
-                    local tipName = nameFS and nameFS:GetText()
-                    if tipName and string.lower(tipName) == target then
-                        local tex = GetContainerItemInfo(bag, slot)
-                        if tex then return tex end
+    local bag = 0
+    while bag <= 4 do
+        local contents = bags[bag]
+        if contents then
+            local slot, itemInfo
+            for slot, itemInfo in pairs(contents) do
+                local itemId = itemInfo and itemInfo.itemId
+                if itemId then
+                    local tipName, tex = DA_GetItemInfoById(itemId)
+                    if tipName and string.lower(tipName) == target and tex then
+                        return tex
                     end
                 end
             end
         end
+        bag = bag + 1
     end
 
     return nil
@@ -2152,40 +2177,9 @@ end
 -- Helper: Use item by name scanning bags/inventory
 local function DA_UseItemByName(itemName)
     if not itemName or itemName == "" then return end
-
-    -- Check bags 0-4
-    for bag = 0, 4 do
-        local slots = GetContainerNumSlots(bag)
-        if slots and slots > 0 then
-            for slot = 1, slots do
-                local link = GetContainerItemLink(bag, slot)
-                if link then
-                    local _, _, name = string.find(link, "%[(.+)%]")
-                    if name then
-                        if name == itemName then
-                            UseContainerItem(bag, slot)
-                            return true
-                        end
-                    end
-                end
-            end
-        end
+    if UseItemIdOrName and UseItemIdOrName(itemName) == 1 then
+        return true
     end
-
-    -- Check equipped inventory (e.g. trinkets)
-    -- Slots 0-19 covers all equipment
-    for slot = 0, 19 do
-        local link = GetInventoryItemLink("player", slot)
-        if link then
-            local _, _, name = string.find(link, "%[(.+)%]")
-            if name and name == itemName then
-                if DEFAULT_CHAT_FRAME then DEFAULT_CHAT_FRAME:AddMessage(" -> FOUND in Inventory Slot " .. slot .. ". Using it.") end
-                UseInventoryItem(slot)
-                return true
-            end
-        end
-    end
-
     if DEFAULT_CHAT_FRAME then DEFAULT_CHAT_FRAME:AddMessage("DoiteAuras: Item [" .. itemName .. "] NOT FOUND in bags or inventory.") end
 end
 
@@ -2213,38 +2207,23 @@ local function DA_ShowDetailedItemTooltip(frame, itemName)
 
     GameTooltip:SetOwner(frame, anchor)
 
-    -- 1) Scan equipped inventory
-    for slot = 0, 19 do
-        local link = GetInventoryItemLink("player", slot)
-        if link then
-            local _, _, name = string.find(link, "%[(.+)%]")
-            if name and name == itemName then
+    -- 1) Use Nampower item location lookup first (equipped or bag)
+    if FindPlayerItemSlot then
+        local bag, slot = FindPlayerItemSlot(itemName)
+        if slot then
+            if bag == nil then
                 GameTooltip:SetInventoryItem("player", slot)
+                GameTooltip:Show()
+                return
+            elseif bag >= 0 and bag <= 4 then
+                GameTooltip:SetBagItem(bag, slot)
                 GameTooltip:Show()
                 return
             end
         end
     end
 
-    -- 2) Scan bags
-    for bag = 0, 4 do
-        local slots = GetContainerNumSlots(bag)
-        if slots and slots > 0 then
-            for slot = 1, slots do
-                local link = GetContainerItemLink(bag, slot)
-                if link then
-                    local _, _, name = string.find(link, "%[(.+)%]")
-                    if name and name == itemName then
-                        GameTooltip:SetBagItem(bag, slot)
-                        GameTooltip:Show()
-                        return
-                    end
-                end
-            end
-        end
-    end
-
-    -- 3) Fallback to basic info if item not currently held
+    -- 2) Fallback to basic info if item not currently held
     local _, link = GetItemInfo(itemName)
     if link then
         GameTooltip:SetHyperlink(link)

@@ -5936,24 +5936,67 @@ do
       seen[name] = true
       table.insert(items, name)
     end
-    local function _NameFromLink(link)
-      if not link or link == "" then return nil end
-      local nm = GetItemInfo and GetItemInfo(link)
+    local function _NameFromId(itemId)
+      if not itemId then return nil end
+      local nm = GetItemInfo and GetItemInfo(itemId)
       if nm and nm ~= "" then return nm end
-      local _, _, txt = string.find(link, "%[(.-)%]")
-      return txt
+      return nil
     end
-    local i
-    for _, i in ipairs({13,14,16,17,18}) do
-      _Add(_NameFromLink(GetInventoryItemLink and GetInventoryItemLink("player", i)))
+    local function _Allowlisted(name)
+      local allow = _G["DA_ItemDropdownAllow"]
+      return (allow and name and allow[name] == true) and true or false
     end
-    local bag, slot
-    for bag = 0, 4 do
-      local n = GetContainerNumSlots and GetContainerNumSlots(bag)
-      if n and n > 0 then
-        for slot = 1, n do
-          _Add(_NameFromLink(GetContainerItemLink and GetContainerItemLink(bag, slot)))
+    local function _HasUse(itemId, slotId)
+      if not itemId then return false end
+      if (slotId == 13 or slotId == 14) and GetTrinketCooldown then
+        local tcd = GetTrinketCooldown(slotId)
+        if type(tcd) == "table" then
+          if tcd.itemHasActiveSpell == 1 then return true end
+          local sid = tonumber(tcd.itemActiveSpellId) or 0
+          if sid > 0 then return true end
         end
+      end
+      if GetItemIdCooldown then
+        local cd = GetItemIdCooldown(itemId)
+        if type(cd) == "table" then
+          if cd.itemHasActiveSpell == 1 then return true end
+          local sid = tonumber(cd.itemActiveSpellId) or 0
+          if sid > 0 then return true end
+        end
+      end
+      if GetItemSpell then
+        local sn = GetItemSpell(itemId)
+        if sn and sn ~= "" then return true end
+      end
+      return false
+    end
+    local slots = {13, 14, 16, 17, 18}
+    local i
+    for i = 1, table.getn(slots) do
+      local slotId = slots[i]
+      local info = GetEquippedItem and GetEquippedItem("player", slotId)
+      local itemId = info and info.itemId
+      local name = _NameFromId(itemId)
+      if name and (_Allowlisted(name) or _HasUse(itemId, slotId)) then
+        _Add(name)
+      end
+    end
+    local bags = GetBagItems and GetBagItems()
+    if bags then
+      local bag = 0
+      while bag <= 4 do
+        local bagData = bags[bag]
+        if bagData then
+          local slot, itemInfo
+          for slot, itemInfo in pairs(bagData) do
+            local itemId = itemInfo and itemInfo.itemId
+            local name = _NameFromId(itemId)
+            if name and (_Allowlisted(name) or _HasUse(itemId, nil)) then
+              _Add(name)
+            end
+          end
+        end
+        bag = bag + 1
       end
     end
     table.sort(items, function(a, b)
@@ -7347,24 +7390,67 @@ do
       seen[name] = true
       table.insert(items, name)
     end
-    local function _NameFromLink(link)
-      if not link or link == "" then return nil end
-      local nm = GetItemInfo and GetItemInfo(link)
+    local function _NameFromId(itemId)
+      if not itemId then return nil end
+      local nm = GetItemInfo and GetItemInfo(itemId)
       if nm and nm ~= "" then return nm end
-      local _, _, txt = string.find(link, "%[(.-)%]")
-      return txt
+      return nil
     end
-    local i
-    for _, i in ipairs({13,14,16,17,18}) do
-      _Add(_NameFromLink(GetInventoryItemLink and GetInventoryItemLink("player", i)))
+    local function _Allowlisted(name)
+      local allow = _G["DA_ItemDropdownAllow"]
+      return (allow and name and allow[name] == true) and true or false
     end
-    local bag, slot
-    for bag = 0, 4 do
-      local n = GetContainerNumSlots and GetContainerNumSlots(bag)
-      if n and n > 0 then
-        for slot = 1, n do
-          _Add(_NameFromLink(GetContainerItemLink and GetContainerItemLink(bag, slot)))
+    local function _HasUse(itemId, slotId)
+      if not itemId then return false end
+      if (slotId == 13 or slotId == 14) and GetTrinketCooldown then
+        local tcd = GetTrinketCooldown(slotId)
+        if type(tcd) == "table" then
+          if tcd.itemHasActiveSpell == 1 then return true end
+          local sid = tonumber(tcd.itemActiveSpellId) or 0
+          if sid > 0 then return true end
         end
+      end
+      if GetItemIdCooldown then
+        local cd = GetItemIdCooldown(itemId)
+        if type(cd) == "table" then
+          if cd.itemHasActiveSpell == 1 then return true end
+          local sid = tonumber(cd.itemActiveSpellId) or 0
+          if sid > 0 then return true end
+        end
+      end
+      if GetItemSpell then
+        local sn = GetItemSpell(itemId)
+        if sn and sn ~= "" then return true end
+      end
+      return false
+    end
+    local slots = {13, 14, 16, 17, 18}
+    local i
+    for i = 1, table.getn(slots) do
+      local slotId = slots[i]
+      local info = GetEquippedItem and GetEquippedItem("player", slotId)
+      local itemId = info and info.itemId
+      local name = _NameFromId(itemId)
+      if name and (_Allowlisted(name) or _HasUse(itemId, slotId)) then
+        _Add(name)
+      end
+    end
+    local bags = GetBagItems and GetBagItems()
+    if bags then
+      local bag = 0
+      while bag <= 4 do
+        local bagData = bags[bag]
+        if bagData then
+          local slot, itemInfo
+          for slot, itemInfo in pairs(bagData) do
+            local itemId = itemInfo and itemInfo.itemId
+            local name = _NameFromId(itemId)
+            if name and (_Allowlisted(name) or _HasUse(itemId, nil)) then
+              _Add(name)
+            end
+          end
+        end
+        bag = bag + 1
       end
     end
     table.sort(items, function(a, b)
