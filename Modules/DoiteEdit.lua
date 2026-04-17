@@ -284,6 +284,9 @@ local function DoiteEdit_AbilitySupportsProcSound(data)
   end
   local tbl = _G.DoiteConditions_ProcWindowDurations
   local dur = tbl and tbl[spellName]
+  if (type(dur) ~= "number" or dur <= 0) and spellName == "Lacerate" then
+    dur = 3.0
+  end
   return (type(dur) == "number" and dur > 0) and true or false
 end
 
