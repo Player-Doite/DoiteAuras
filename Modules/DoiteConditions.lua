@@ -2306,7 +2306,7 @@ end)
 local _daClassCL = CreateFrame("Frame", "DoiteClassCL")
 local _daClassCL2 = CreateFrame("Frame", "DoiteClassCL2")
 
-local function _IsTrackedProcAbility(spellName)
+local function _HasTrackedProcSpell(spellName)
   if not spellName or spellName == "" then
     return false
   end
@@ -2317,14 +2317,10 @@ local function _IsTrackedProcAbility(spellName)
 
   local _, data
   for _, data in pairs(db) do
-    if type(data) == "table" and data.type == "Ability"
-        and data.conditions and data.conditions.ability then
-      local c = data.conditions.ability
-      if c and (c.mode == "usable" or c.mode == "notcd") then
-        local nm = _GetCanonicalSpellNameFromData(data)
-        if nm == spellName then
-          return true
-        end
+    if type(data) == "table" and data.type == "Ability" then
+      local nm = data.name or data.displayName
+      if nm == spellName then
+        return true
       end
     end
   end
@@ -2337,174 +2333,186 @@ do
   cls = cls and string.upper(cls) or ""
 
   if cls == "WARRIOR" then
-    if _IsTrackedProcAbility("Overpower") then
-      -- Overpower: needs dodge detection
-      _daClassCL:RegisterEvent("CHAT_MSG_COMBAT_SELF_MISSES")
-      _daClassCL:RegisterEvent("CHAT_MSG_SPELL_SELF_DAMAGE")
+    -- Overpower: needs dodge detection
+    _daClassCL:RegisterEvent("CHAT_MSG_COMBAT_SELF_MISSES")
+	_daClassCL:RegisterEvent("CHAT_MSG_SPELL_SELF_DAMAGE")
 
-      _daClassCL:SetScript("OnEvent", function()
-        local line = arg1
-        if not line or line == "" then
-          return
-        end
+    _daClassCL:SetScript("OnEvent", function()
+      if not _HasTrackedProcSpell("Overpower") then
+        return
+      end
 
-        -- Overpower: target dodged you
-        local tgt
-        local _, _, t1 = str_find(line, "You attack%.%s+(.+)%s+dodges")
-        if t1 then
-          tgt = t1
-        else
-          local _, _, t2 = str_find(line, "Your%s+.+%s+was%s+dodged%s+by%s+(.+)")
-          tgt = t2
-        end
+      local line = arg1
+      if not line or line == "" then
+        return
+      end
 
-        if tgt then
-          tgt = str_gsub(tgt, "%s*[%.!%?]+%s*$", "")
-          _WarriorProc.OP_target = tgt
+      -- Overpower: target dodged you
+      local tgt
+      local _, _, t1 = str_find(line, "You attack%.%s+(.+)%s+dodges")
+      if t1 then
+        tgt = t1
+      else
+        local _, _, t2 = str_find(line, "Your%s+.+%s+was%s+dodged%s+by%s+(.+)")
+        tgt = t2
+      end
 
-          local now = _Now()
-          local dur = _ProcWindowDuration("Overpower") or 4.0
-          _WarriorProc.OP_until = now + dur
-          _ProcWindowSet("Overpower", _WarriorProc.OP_until)
-        end
-      end)
-    end
+      if tgt then
+        tgt = str_gsub(tgt, "%s*[%.!%?]+%s*$", "")
+        _WarriorProc.OP_target = tgt
 
-    if _IsTrackedProcAbility("Revenge") then
-      -- Revenge: needs incoming hits/blocks/parries/dodges
-      _daClassCL2:RegisterEvent("CHAT_MSG_COMBAT_CREATURE_VS_SELF_MISSES")
-      _daClassCL2:RegisterEvent("CHAT_MSG_COMBAT_CREATURE_VS_SELF_HITS")
+        local now = _Now()
+        local dur = _ProcWindowDuration("Overpower") or 4.0
+        _WarriorProc.OP_until = now + dur
+        _ProcWindowSet("Overpower", _WarriorProc.OP_until)
+      end
+    end)
 
-      _daClassCL2:SetScript("OnEvent", function()
-        local line = arg1
-        if not line or line == "" then
-          return
-        end
+    -- Revenge: needs incoming hits/blocks/parries/dodges
+    _daClassCL2:RegisterEvent("CHAT_MSG_COMBAT_CREATURE_VS_SELF_MISSES")
+    _daClassCL2:RegisterEvent("CHAT_MSG_COMBAT_CREATURE_VS_SELF_HITS")
 
-        -- Revenge: you dodged/parried/blocked
-        if str_find(line, "You dodge")
-            or str_find(line, "You parry")
-            or str_find(line, "You block")
-            or ((str_find(line, " hits you for ") or str_find(line, " crits you for "))
-            and str_find(line, " blocked)")) then
+    _daClassCL2:SetScript("OnEvent", function()
+      if not _HasTrackedProcSpell("Revenge") then
+        return
+      end
 
-          local now = _Now()
-          local dur = _ProcWindowDuration("Revenge") or 4.0
-          _WarriorProc.REV_until = now + dur
-          _ProcWindowSet("Revenge", _WarriorProc.REV_until)
+      local line = arg1
+      if not line or line == "" then
+        return
+      end
 
-          dirty_ability = true
-        end
-      end)
-    end
+      -- Revenge: you dodged/parried/blocked
+      if str_find(line, "You dodge")
+          or str_find(line, "You parry")
+          or str_find(line, "You block")
+          or ((str_find(line, " hits you for ") or str_find(line, " crits you for "))
+          and str_find(line, " blocked)")) then
+
+        local now = _Now()
+        local dur = _ProcWindowDuration("Revenge") or 4.0
+        _WarriorProc.REV_until = now + dur
+        _ProcWindowSet("Revenge", _WarriorProc.REV_until)
+
+        dirty_ability = true
+      end
+    end)
 
   elseif cls == "ROGUE" then
-    if _IsTrackedProcAbility("Surprise Attack") then
-      -- Surprise Attack: needs dodge detection
-      _daClassCL:RegisterEvent("CHAT_MSG_COMBAT_SELF_MISSES")
-      _daClassCL:RegisterEvent("CHAT_MSG_SPELL_SELF_DAMAGE")
+    -- Surprise Attack: needs dodge detection
+    _daClassCL:RegisterEvent("CHAT_MSG_COMBAT_SELF_MISSES")
+    _daClassCL:RegisterEvent("CHAT_MSG_SPELL_SELF_DAMAGE")
 
-      _daClassCL:SetScript("OnEvent", function()
-        local line = arg1
-        if not line or line == "" then
-          return
-        end
+    _daClassCL:SetScript("OnEvent", function()
+      if not _HasTrackedProcSpell("Surprise Attack") then
+        return
+      end
 
-        -- Surprise Attack: target dodged you
-        local dodged = false
-        local _, _, t1 = str_find(line, "You attack%.%s+(.+)%s+dodges")
-        if t1 then
+      local line = arg1
+      if not line or line == "" then
+        return
+      end
+
+      -- Surprise Attack: target dodged you
+      local dodged = false
+      local _, _, t1 = str_find(line, "You attack%.%s+(.+)%s+dodges")
+      if t1 then
+        dodged = true
+      else
+        local _, _, t2 = str_find(line, "Your%s+.+%s+was%s+dodged%s+by%s+(.+)")
+        if t2 then
           dodged = true
-        else
-          local _, _, t2 = str_find(line, "Your%s+.+%s+was%s+dodged%s+by%s+(.+)")
-          if t2 then
-            dodged = true
-          end
         end
+      end
 
-        if dodged then
-          local dur = _ProcWindowDuration("Surprise Attack")
-          if dur then
-            local now = _Now()
-            _ProcWindowSet("Surprise Attack", now + dur)
-            dirty_ability = true
-          end
-        end
-      end)
-    end
-
-    if _IsTrackedProcAbility("Riposte") then
-      -- Riposte: procs on YOUR parry (not target-bound)
-      _daClassCL2:RegisterEvent("CHAT_MSG_COMBAT_CREATURE_VS_SELF_MISSES")
-      _daClassCL2:RegisterEvent("CHAT_MSG_COMBAT_CREATURE_VS_SELF_HITS")
-
-      _daClassCL2:SetScript("OnEvent", function()
-        local line = arg1
-        if not line or line == "" then
-          return
-        end
-
-        -- Riposte: you parried an attack
-        if str_find(line, "You parry") then
-          local dur = _ProcWindowDuration("Riposte") or 4.0
+      if dodged then
+        local dur = _ProcWindowDuration("Surprise Attack")
+        if dur then
           local now = _Now()
-          _ProcWindowSet("Riposte", now + dur)
+          _ProcWindowSet("Surprise Attack", now + dur)
           dirty_ability = true
         end
-      end)
-    end
+      end
+    end)
+
+    -- Riposte: procs on YOUR parry (not target-bound)
+    _daClassCL2:RegisterEvent("CHAT_MSG_COMBAT_CREATURE_VS_SELF_MISSES")
+    _daClassCL2:RegisterEvent("CHAT_MSG_COMBAT_CREATURE_VS_SELF_HITS")
+
+    _daClassCL2:SetScript("OnEvent", function()
+      if not _HasTrackedProcSpell("Riposte") then
+        return
+      end
+
+      local line = arg1
+      if not line or line == "" then
+        return
+      end
+
+      -- Riposte: you parried an attack
+      if str_find(line, "You parry") then
+        local dur = _ProcWindowDuration("Riposte") or 4.0
+        local now = _Now()
+        _ProcWindowSet("Riposte", now + dur)
+        dirty_ability = true
+      end
+    end)
 
   elseif cls == "MAGE" then
-    if _IsTrackedProcAbility("Arcane Surge") then
-      -- Arcane Surge: needs resist detection
-      _daClassCL:RegisterEvent("CHAT_MSG_SPELL_SELF_DAMAGE")
+    -- Arcane Surge: needs resist detection
+    _daClassCL:RegisterEvent("CHAT_MSG_SPELL_SELF_DAMAGE")
 
-      _daClassCL:SetScript("OnEvent", function()
-        local line = arg1
-        if not line or line == "" then
-          return
+    _daClassCL:SetScript("OnEvent", function()
+      if not _HasTrackedProcSpell("Arcane Surge") then
+        return
+      end
+
+      local line = arg1
+      if not line or line == "" then
+        return
+      end
+
+      -- Arcane Surge: spell was resisted (fully or partially)
+      if str_find(line, " was resisted")
+          or str_find(line, " resisted%)")
+          or str_find(line, " resisted by")
+          or str_find(line, " resists your ") then
+
+        local dur = _ProcWindowDuration("Arcane Surge")
+        if dur then
+          local now = _Now()
+          _ProcWindowSet("Arcane Surge", now + dur)
+          dirty_ability = true
         end
-
-        -- Arcane Surge: spell was resisted (fully or partially)
-        if str_find(line, " was resisted")
-            or str_find(line, " resisted%)")
-            or str_find(line, " resisted by")
-            or str_find(line, " resists your ") then
-
-          local dur = _ProcWindowDuration("Arcane Surge")
-          if dur then
-            local now = _Now()
-            _ProcWindowSet("Arcane Surge", now + dur)
-            dirty_ability = true
-          end
-        end
-      end)
-    end
+      end
+    end)
   elseif cls == "HUNTER" then
-    if _IsTrackedProcAbility("Lacerate") then
-      -- Lacerate: procs on any player crit, not target-bound.
-      _daClassCL:RegisterEvent("CHAT_MSG_COMBAT_SELF_HITS")
-      _daClassCL:RegisterEvent("CHAT_MSG_SPELL_SELF_DAMAGE")
+    -- Lacerate: procs on any player crit, not target-bound.
+    _daClassCL:RegisterEvent("CHAT_MSG_COMBAT_SELF_HITS")
+    _daClassCL:RegisterEvent("CHAT_MSG_SPELL_SELF_DAMAGE")
 
-      _daClassCL:SetScript("OnEvent", function()
-        local line = arg1
-        if not line or line == "" then
-          return
-        end
+    _daClassCL:SetScript("OnEvent", function()
+      if not _HasTrackedProcSpell("Lacerate") then
+        return
+      end
 
-        -- White crit: "You crit [target] for #."
-        -- Ability crit: "Your [ability] crits [target] for #."
-        if str_find(line, "^You%s+crit%s+.+%s+for%s+")
-            or str_find(line, "^Your%s+.+%s+crits%s+.+%s+for%s+") then
-          local dur = _ProcWindowDuration("Lacerate")
-          if dur then
-            local now = _Now()
-            _ProcWindowSet("Lacerate", now + dur)
-            dirty_ability = true
-          end
+      local line = arg1
+      if not line or line == "" then
+        return
+      end
+
+      -- White crit: "You crit [target] for #."
+      -- Ability crit: "Your [ability] crits [target] for #."
+      if str_find(line, "^You%s+crit%s+.+%s+for%s+")
+          or str_find(line, "^Your%s+.+%s+crits%s+.+%s+for%s+") then
+        local dur = _ProcWindowDuration("Lacerate")
+        if dur then
+          local now = _Now()
+          _ProcWindowSet("Lacerate", now + dur)
+          dirty_ability = true
         end
-      end)
-    end
+      end
+    end)
   end
 end
 
@@ -6604,8 +6612,9 @@ local function _Doite_UpdateOverlayForFrame(frame, key, dataTbl, slideActive)
         end
       end
 
-      -- 2) Proc-window remaining text (for mode == "usable" or "notcd")
-      if (not remShown) and spellName and (ca.mode == "usable" or ca.mode == "notcd") then
+      -- 2) Proc-window remaining text (for usable/notcd/nocdoncd)
+      if (not remShown) and spellName
+          and (ca.mode == "usable" or ca.mode == "notcd" or ca.mode == "nocdoncd") then
         local procDur = _ProcWindowDuration(spellName)
         if procDur then
           local realCd = false
